@@ -96,4 +96,4 @@ scene = Clear(
 
 This "compiles" to the same scene-graph from above, because of the expression abstraction from before.
 
-Special care is needed when writing complex layouts though, to keep expression size from exploding in size.
+Special care is needed when writing complex layouts though, to keep expressions from exploding in size.
