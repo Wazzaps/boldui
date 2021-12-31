@@ -26,3 +26,74 @@ This lets the client render high-framerate graphics even in bad network conditio
 5. **Instant response over remote desktop:** The client knows how to draw the UI when resizing, etc.
 6. **Flexible programming style:** Multiple ways of making a scene graph can be tested (Flutter / React / HTML / etc.) without reinventing the renderer.
 
+## How?
+
+### The scene-graph protocol
+
+Currently, it's a JSON list because I don't want to commit to a binary protocol yet.
+
+Here's a small example:
+
+```json
+[
+   {"type": "clear", "color": 4280295472},
+   {
+      "type": "rect",
+      "rect": [
+         10,
+         10,
+         {"type": "sub", "a": {"type": "var", "name": "width"}, "b": 10},
+         {"type": "sub", "a": {"type": "var", "name": "height"}, "b": 10}
+      ],
+      "color": 4288716960
+   }
+]
+```
+
+The "width" and "height" variables correspond to the dimensions of the client window. Here we subtract 10 from both to
+determine the right and bottom coordinates of the rect.
+
+As you can see, after clearing the screen, this scene draws a rectangle with a 10px padding on all sides.
+
+### The low-level Python API
+
+Instead of manually writing the JSON scene-graph, here's the first abstraction:
+
+```python
+scene = [
+   Ops.clear(color=0xff202030),
+   Ops.rect(
+      rect=(
+         10,
+         10,
+         Expr.var('width') - 10,
+         Expr.var('height') - 10,
+      ),
+      color=0xffa0a0a0
+   ),
+]
+```
+
+This has two abstractions:
+
+- Builder functions for the JSON objects
+- Simple expression syntax (overloaded operation methods)
+
+### The high-level Python API
+
+The API above isn't very scalable because all coordinates are relative to the global scene dimensions. Instead we can
+use a flutter-like layout protocol to make the layout declaratively, like so:
+
+```python
+scene = Clear(
+    color=0xff202030,
+    child=Padding(
+        child=Rectangle(0xffa0a0a0),
+        left=10, top=10, right=10, bottom=10
+    ),
+)
+```
+
+This "compiles" to the same scene-graph from above, because of the expression abstraction from before.
+
+Special care is needed when writing complex layouts though, to keep expression size from exploding in size.
