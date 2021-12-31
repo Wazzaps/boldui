@@ -165,6 +165,30 @@ class Rectangle(Widget):
         return [Ops.rect((left, top, right, bottom), self.color)]
 
 
+class Text(Widget):
+    def __init__(self, text, font_size, color):
+        self.text = text
+        self.font_size = font_size
+        self.color = color
+
+    def __repr__(self):
+        return 'Text({}, font_size={}, color={})'.format(
+            repr(self.text), self.font_size, self.color
+        )
+
+    def get_flex_x(self) -> float:
+        return 1
+
+    def get_flex_y(self) -> float:
+        return 1
+
+    def layout(self, _min_width, _min_height, max_width, max_height):
+        return max_width, max_height
+
+    def render(self, left, top, right, bottom):
+        return [Ops.text(self.text, (left + right) // 2, (bottom + top) // 2, self.font_size, self.color)]
+
+
 class Flexible(Widget):
     def __init__(self, child, flex_x=1, flex_y=1):
         self.child = child
@@ -218,6 +242,14 @@ def main():
         color=0xff202030,
         child=HBox([
             Padding(
+                Text(
+                    'Hello, World!',
+                    font_size=18,
+                    color=0xffa0a0a0,
+                ),
+                left=10, top=10, right=10, bottom=10,
+            ),
+            Padding(
                 Center(
                     SizedBox(
                         Rectangle(0xffa0a0a0),
@@ -268,11 +300,21 @@ def main():
     #         ),
     #     ]),
     # )
+
     # root = Clear(
     #     color=0xff202030,
     #     child=Padding(
     #         child=Rectangle(0xffa0a0a0),
     #         left=10, top=10, right=10, bottom=10
+    #     ),
+    # )
+
+    # root = Clear(
+    #     color=0xff202030,
+    #     child=Text(
+    #         'Hello, World!',
+    #         font_size=32,
+    #         color=0xffa0a0a0,
     #     ),
     # )
 

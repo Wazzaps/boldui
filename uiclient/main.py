@@ -152,8 +152,17 @@ class UIClient:
                     UIClient._resolve_int(item['rect'][3], context)
                 ), self._paint_from_int_color(UIClient._resolve_int(item['color'], context)))
             elif item['type'] == 'text':
-                canvas.drawString(item['text'], item['x'], item['y'], skia.Font(None, item['fontSize']),
-                                  self._paint_from_int_color(item['color']))
+                paint = self._paint_from_int_color(UIClient._resolve_int(item['color'], context))
+                font = skia.Font(None, UIClient._resolve_int(item['fontSize'], context))
+                measurement = font.measureText(item['text'], skia.TextEncoding.kUTF8, None, paint)
+
+                canvas.drawString(
+                    item['text'],
+                    UIClient._resolve_int(item['x'], context) - measurement // 2,
+                    UIClient._resolve_int(item['y'], context),
+                    font,
+                    paint
+                )
         canvas.flush()
 
 

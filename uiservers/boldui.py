@@ -51,6 +51,17 @@ class Ops:
         return {'type': 'rect', 'rect': list(map(Expr.unwrap, rect)), 'color': Expr.unwrap(color)}
 
     @staticmethod
+    def text(text, x, y, font_size, color):
+        return {
+            'type': 'text',
+            'text': text,
+            'x': Expr.unwrap(x),
+            'y': Expr.unwrap(y),
+            'fontSize': Expr.unwrap(font_size),
+            'color': Expr.unwrap(color),
+        }
+
+    @staticmethod
     def if_(cond, t, f):
         return {'type': 'if', 'cond': Expr.unwrap(cond), 'then': Expr.unwrap(t), 'else': Expr.unwrap(f)}
 
@@ -236,4 +247,3 @@ class ProtocolServer:
 
     def _handle_packet(self, packet):
         print('Received packet:', packet)
-
