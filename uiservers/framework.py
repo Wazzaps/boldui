@@ -14,6 +14,12 @@ class Widget:
     def render(self, left: Expr, top: Expr, right: Expr, bottom: Expr) -> Dict:
         pass
 
+    def get_flex_x(self) -> float:
+        return 0
+
+    def get_flex_y(self) -> float:
+        return 0
+
 
 class HBox(Widget):
     def __init__(self, children):
@@ -22,16 +28,38 @@ class HBox(Widget):
     def __repr__(self):
         return 'HBox(children={})'.format(repr(self.children))
 
+    def get_flex_x(self) -> float:
+        return 0
+
+    def get_flex_y(self) -> float:
+        return 0
+
     def layout(self, min_width, min_height, max_width, max_height):
         return max_width, max_height
 
     def render(self, left, top, right, bottom):
         result = []
-        space_per_child = (right - left) // len(self.children)
-        current_left = left
-        for child in self.children:
-            result += child.render(current_left, top, space_per_child + current_left, bottom)
-            current_left += space_per_child
+        free_space = right - left
+
+        children_flex = [child.get_flex_x() for child in self.children]
+        children_sizes = [0 for _ in self.children]
+        total_flex = sum(children_flex)
+
+        for i, (child, child_flex) in enumerate(zip(self.children, children_flex)):
+            if child_flex == 0:
+                children_sizes[i] = child.layout(0, top - bottom, float('inf'), top - bottom)[0]
+                free_space -= children_sizes[i]
+
+        per_flex_unit_size = abs(free_space) // total_flex
+        for i, child_flex in enumerate(children_flex):
+            if child_flex > 0:
+                children_sizes[i] = per_flex_unit_size * child_flex
+
+        current_left_coord = left
+        for i, (child, child_size) in enumerate(zip(self.children, children_sizes)):
+            result += child.render(current_left_coord, top, current_left_coord + child_size, bottom)
+            current_left_coord += children_sizes[i]
+
         return result
 
 
@@ -48,11 +76,17 @@ class Padding(Widget):
             self.left, self.top, self.right, self.bottom, repr(self.child)
         )
 
+    def get_flex_x(self) -> float:
+        return self.child.get_flex_x()
+
+    def get_flex_y(self) -> float:
+        return self.child.get_flex_y()
+
     def layout(self, min_width, min_height, max_width, max_height):
-        child_min_width = min_width - self.left - self.right
-        child_min_height = min_height - self.top - self.bottom
-        child_max_width = max_width - self.left - self.right
-        child_max_height = max_height - self.top - self.bottom
+        child_min_width = Expr(min_width) - self.left - self.right
+        child_min_height = Expr(min_height) - self.top - self.bottom
+        child_max_width = Expr(max_width) - self.left - self.right
+        child_max_height = Expr(max_height) - self.top - self.bottom
         child_width, child_height = self.child.layout(child_min_width, child_min_height,
                                                       child_max_width, child_max_height)
         return child_width + self.left + self.right, child_height + self.top + self.bottom
@@ -67,6 +101,12 @@ class Center(Widget):
 
     def __repr__(self):
         return 'Center(child={})'.format(repr(self.child))
+
+    def get_flex_x(self) -> float:
+        return 1
+
+    def get_flex_y(self) -> float:
+        return 1
 
     def layout(self, min_width, min_height, max_width, max_height):
         return max_width, max_height
@@ -89,6 +129,13 @@ class SizedBox(Widget):
             self.width, self.height, repr(self.child)
         )
 
+    def get_flex_x(self) -> float:
+        return 1 if self.width is None else 0
+
+    def get_flex_y(self) -> float:
+        return 1 if self.height is None else 0
+
+
     def layout(self, min_width, min_height, max_width, max_height):
         width = self.width if self.width is not None else max_width
         height = self.height if self.height is not None else max_height
@@ -105,11 +152,41 @@ class Rectangle(Widget):
     def __repr__(self):
         return 'Rectangle(color={})'.format(repr(self.color))
 
+    def get_flex_x(self) -> float:
+        return 1
+
+    def get_flex_y(self) -> float:
+        return 1
+
     def layout(self, _min_width, _min_height, max_width, max_height):
         return max_width, max_height
 
     def render(self, left, top, right, bottom):
         return [Ops.rect((left, top, right, bottom), self.color)]
+
+
+class Flexible(Widget):
+    def __init__(self, child, flex_x=1, flex_y=1):
+        self.child = child
+        self.flex_x = flex_x
+        self.flex_y = flex_y
+
+    def __repr__(self):
+        return 'Flexible(flex_x={}, flex_y={}, child={})'.format(
+            self.flex_x, self.flex_y, repr(self.child)
+        )
+
+    def get_flex_x(self) -> float:
+        return self.flex_x
+
+    def get_flex_y(self) -> float:
+        return self.flex_y
+
+    def layout(self, _min_width, _min_height, max_width, max_height):
+        return max_width, max_height
+
+    def render(self, left, top, right, bottom):
+        return self.child.render(left, top, right, bottom)
 
 
 class Clear(Widget):
@@ -119,6 +196,12 @@ class Clear(Widget):
 
     def __repr__(self):
         return 'Clear(color={}, child={})'.format(repr(self.color), repr(self.child))
+
+    def get_flex_x(self) -> float:
+        return 1
+
+    def get_flex_y(self) -> float:
+        return 1
 
     def layout(self, _min_width, _min_height, max_width, max_height):
         return max_width, max_height
@@ -146,18 +229,45 @@ def main():
             ),
             Padding(
                 Rectangle(
-                    color=Expr(Ops.if_(Expr.var('width') > 600, 0xffa0a0a0, 0xffd09090))
-                ),
-                left=10, top=10, right=10, bottom=10
-            ),
-            Padding(
-                Rectangle(
                     color=Expr(Ops.if_(Expr.var('height') > 600, 0xffa0a0a0, 0xff9090d0))
                 ),
                 left=10, top=10, right=10, bottom=10
             ),
+            Flexible(
+                Padding(
+                    Rectangle(
+                        color=Expr(Ops.if_(Expr.var('width') > 800, 0xffa0a0a0, 0xffd09090))
+                    ),
+                    left=10, top=10, right=10, bottom=10
+                ),
+                flex_x=3,
+            ),
         ]),
     )
+
+    # root = Clear(
+    #     color=0xff202030,
+    #     child=HBox([
+    #         Padding(
+    #             SizedBox(
+    #                 Rectangle(0xffa0a0a0),
+    #                 width=100,
+    #             ),
+    #             left=10, top=10, right=10, bottom=10,
+    #         ),
+    #         Flexible(
+    #             Padding(
+    #                 Rectangle(0xffa0a0a0),
+    #                 left=10, top=10, right=10, bottom=10
+    #             ),
+    #             flex_x=3,
+    #         ),
+    #         Padding(
+    #             Rectangle(0xffa0a0a0),
+    #             left=10, top=10, right=10, bottom=10
+    #         ),
+    #     ]),
+    # )
     # root = Clear(
     #     color=0xff202030,
     #     child=Padding(
@@ -165,6 +275,7 @@ def main():
     #         left=10, top=10, right=10, bottom=10
     #     ),
     # )
+
     size = root.layout(Expr(0), Expr(0), Expr.var('width'), Expr.var('height'))
     scene = root.render(Expr(0), Expr(0), size[0], size[1])
     for op in scene:
