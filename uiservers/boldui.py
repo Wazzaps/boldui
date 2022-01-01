@@ -27,7 +27,7 @@ def stringify_op(obj, indent=0):
                            'ne', 'neg', 'b_and', 'b_or', 'b_invert', 'if'):
             return str(Expr(obj))
 
-        if obj['type'] in ('clear', 'rect'):
+        if obj['type'] in ('clear', 'rect', 'text'):
             result += 'Ops.' + obj['type'] + '('
             if len(obj.keys()) != 1:
                 result += '\n'
@@ -39,7 +39,7 @@ def stringify_op(obj, indent=0):
             result += ')'
             return result
 
-    return str(obj)
+    return repr(obj)
 
 
 class Ops:
