@@ -2,6 +2,7 @@
 import json
 import math
 import socket
+import struct
 import sys
 import threading
 import time
@@ -10,6 +11,11 @@ from typing import Tuple
 import skia
 
 from main_loop import main_loop
+
+
+class Actions:
+    UPDATE_SCENE = 0
+    HANDLER_REPLY = 1
 
 
 class Protocol:
@@ -42,7 +48,7 @@ class Protocol:
 
             self._handle_packet(packet)
 
-    def _send_packet(self, packet):
+    def send_packet(self, packet):
         print('Sending packet:', packet)
         self.socket.send(len(packet).to_bytes(4, 'big'))
         self.socket.send(packet)
@@ -51,7 +57,7 @@ class Protocol:
         packet_type = int.from_bytes(packet[:4], 'big')
         packet = packet[4:]
 
-        if packet_type == 0:  # Update Scene
+        if packet_type == Actions.UPDATE_SCENE:
             self.ui_client.scene = json.loads(packet)
             print(self.ui_client.scene)
         else:
@@ -144,10 +150,10 @@ class UIClient:
         else:
             raise ValueError('Unknown type: {}'.format(value))
 
-    def draw(self, canvas: skia.Canvas, size: Tuple[int, int]) -> None:
+    def draw(self, canvas: skia.Canvas, scene_size: Tuple[int, int]) -> None:
         context = {
-            'width': size[0],
-            'height': size[1],
+            'width': scene_size[0],
+            'height': scene_size[1],
             'time': time.time()
         }
         for item in self.scene:
@@ -173,6 +179,48 @@ class UIClient:
                     paint
                 )
         canvas.flush()
+
+    def handle_mouse_down(self, x: int, y: int, scene_size: Tuple[int, int]):
+        context = {
+            'width': scene_size[0],
+            'height': scene_size[1],
+            'event_x': x,
+            'event_y': y,
+            'time': time.time()
+        }
+        replies = []
+        for item in self.scene:
+            MOUSE_DOWN_EVT = 1 << 0
+            if item['type'] == 'evt_hnd' and item['events'] & MOUSE_DOWN_EVT:
+                rect = (
+                    UIClient._resolve_int(item['rect'][0], context),
+                    UIClient._resolve_int(item['rect'][1], context),
+                    UIClient._resolve_int(item['rect'][2], context),
+                    UIClient._resolve_int(item['rect'][3], context)
+                )
+                if rect[0] <= x <= rect[2] and rect[1] <= y <= rect[3]:
+                    for handler in item['handler']:
+                        if handler['type'] == 'reply':
+                            formatted_data = handler['id'].to_bytes(4, 'big')
+                            for data in handler['data']:
+                                val = UIClient._resolve_int(data, context)
+
+                                if isinstance(val, int):
+                                    formatted_data += b'\x00'
+                                    formatted_data += val.to_bytes(8, 'big')
+                                elif isinstance(val, float):
+                                    formatted_data += b'\x01'
+                                    formatted_data += struct.pack('>d', val)
+                                else:
+                                    raise ValueError('Invalid reply data type: {}'.format(type(val)))
+                            replies.append(formatted_data)
+
+        if replies:
+            self.protocol.send_packet(
+                Actions.HANDLER_REPLY.to_bytes(4, 'big')
+                + len(replies).to_bytes(2, 'big')
+                + b''.join(((len(reply) - 4).to_bytes(2, 'big') + reply) for reply in replies)
+            )
 
 
 if __name__ == '__main__':

@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-import enum
+from __future__ import annotations
+
 import json
 import os
 import socket
-import time
+import struct
+from typing import List
 
 
 class Actions:
     UPDATE_SCENE = 0
+    HANDLER_REPLY = 1
 
 
 def stringify_op(obj, indent=0):
@@ -52,6 +55,19 @@ class Ops:
         return {'type': 'rect', 'rect': list(map(Expr.unwrap, rect)), 'color': Expr.unwrap(color)}
 
     @staticmethod
+    def reply(ident: int, data: List[Expr | int | float]):
+        return {'type': 'reply', 'id': ident, 'data': list(map(Expr.unwrap, data))}
+
+    @staticmethod
+    def event_handler(rect, events, handler):
+        return {
+            'type': 'evt_hnd',
+            'rect': list(map(Expr.unwrap, rect)),
+            'events': events,
+            'handler': handler
+        }
+
+    @staticmethod
     def text(text, x, y, font_size, color):
         return {
             'type': 'text',
@@ -75,7 +91,7 @@ class Expr:
             self.val = val
 
     @staticmethod
-    def unwrap(value):
+    def unwrap(value: Expr | int | float):
         if isinstance(value, (int, float)):
             return value
         else:
@@ -225,15 +241,25 @@ class Expr:
 
 
 class ProtocolServer:
-    def __init__(self, address, initial_scene=None):
+    def __init__(self, address, initial_scene=None, reply_handler=None):
         self.address = address
-        self.initial_scene = initial_scene
+        self._scene = initial_scene
+        self.reply_handler = reply_handler
         if os.path.exists(address):
             os.remove(address)
 
         self.server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.server.bind(address)
         self.socket = None
+
+    @property
+    def scene(self):
+        return self._scene
+
+    @scene.setter
+    def scene(self, value):
+        self._scene = value
+        self.send_scene()
 
     def serve(self):
         while True:
@@ -251,8 +277,8 @@ class ProtocolServer:
                 break
 
             print("Handshake complete, sending initial scene")
-            if self.initial_scene:
-                self._send_packet(Actions.UPDATE_SCENE.to_bytes(4, 'big') + json.dumps(self.initial_scene).encode())
+            if self.scene:
+                self.send_scene()
 
             while True:
                 packet = b''
@@ -274,4 +300,32 @@ class ProtocolServer:
         self.socket.send(packet)
 
     def _handle_packet(self, packet):
-        print('Received packet:', packet)
+        action = int.from_bytes(packet[:4], 'big')
+        data = packet[4:]
+        if action == Actions.HANDLER_REPLY:
+            reply_count = int.from_bytes(data[:2], 'big')
+            data = data[2:]
+            for i in range(reply_count):
+                reply_len = int.from_bytes(data[:2], 'big')
+                reply_id = int.from_bytes(data[2:6], 'big')
+                reply_data = data[6:6+reply_len]
+                data_array = []
+                while reply_data:
+                    item_type = reply_data[0]
+                    if item_type == 0:
+                        data_array.append(int.from_bytes(reply_data[1:9], 'big'))
+                        reply_data = reply_data[9:]
+                    elif item_type == 1:
+                        data_array.append(struct.unpack('>d', reply_data[1:9])[0])
+                        reply_data = reply_data[9:]
+                    else:
+                        raise ValueError(f"Unknown item type {item_type}")
+                if self.reply_handler:
+                    # print(f'Reply: {hex(reply_id)} : {data_array}')
+                    self.reply_handler(reply_id, data_array)
+
+        else:
+            print('Unknown packet type:', packet)
+
+    def send_scene(self):
+        self._send_packet(Actions.UPDATE_SCENE.to_bytes(4, 'big') + json.dumps(self._scene).encode())

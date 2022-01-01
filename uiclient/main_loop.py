@@ -39,6 +39,8 @@ def main_loop(state):
                         if event.type == sdl2.SDL_QUIT:
                             running = False
                             break
+                        elif event.type == sdl2.SDL_MOUSEBUTTONDOWN:
+                            state.handle_mouse_down(event.button.x, event.button.y, (surface.width(), surface.height()))
                         elif event.type == sdl2.SDL_WINDOWEVENT:
                             if event.window.event == sdl2.SDL_WINDOWEVENT_RESIZED:
                                 # w, h = event.window.data1, event.window.data2
