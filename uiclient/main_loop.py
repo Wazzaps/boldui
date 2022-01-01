@@ -1,4 +1,3 @@
-
 import contextlib
 import ctypes
 import sys
@@ -79,4 +78,3 @@ def skia_surface(window: sdl2.SDL_Window):
     assert surface is not None
     yield surface
     context.abandonContext()
-

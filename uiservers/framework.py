@@ -135,7 +135,6 @@ class SizedBox(Widget):
     def get_flex_y(self) -> float:
         return 1 if self.height is None else 0
 
-
     def layout(self, min_width, min_height, max_width, max_height):
         width = self.width if self.width is not None else max_width
         height = self.height if self.height is not None else max_height
