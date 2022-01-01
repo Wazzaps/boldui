@@ -64,12 +64,25 @@ class HBox(Widget):
 
 
 class Padding(Widget):
-    def __init__(self, child, left=0, top=0, right=0, bottom=0):
+    def __init__(self, child, left=0, top=0, right=0, bottom=0, horizontal=None, vertical=None, all=None):
         self.child = child
-        self.left = Expr(left)
-        self.top = Expr(top)
-        self.right = Expr(right)
-        self.bottom = Expr(bottom)
+
+        if all is not None:
+            self.left = Expr(all)
+            self.top = Expr(all)
+            self.right = Expr(all)
+            self.bottom = Expr(all)
+        else:
+            self.left = Expr(left)
+            self.top = Expr(top)
+            self.right = Expr(right)
+            self.bottom = Expr(bottom)
+        if horizontal is not None:
+            self.left = Expr(horizontal)
+            self.right = Expr(horizontal)
+        if vertical is not None:
+            self.top = Expr(vertical)
+            self.bottom = Expr(vertical)
 
     def __repr__(self):
         return 'Padding(left={}, top={}, right={}, bottom={}, child={})'.format(
@@ -246,7 +259,7 @@ def main():
                     font_size=18,
                     color=0xffa0a0a0,
                 ),
-                left=10, top=10, right=10, bottom=10,
+                all=10,
             ),
             Padding(
                 Center(
@@ -256,20 +269,20 @@ def main():
                         height=abs(((Expr.var('time') + 0.5) % 1) - 0.5) * 50 + 100,
                     ),
                 ),
-                left=10, top=10, right=10, bottom=10,
+                all=10,
             ),
             Padding(
                 Rectangle(
                     color=Expr(Ops.if_(Expr.var('height') > 600, 0xffa0a0a0, 0xff9090d0))
                 ),
-                left=10, top=10, right=10, bottom=10
+                all=10
             ),
             Flexible(
                 Padding(
                     Rectangle(
                         color=Expr(Ops.if_(Expr.var('width') > 800, 0xffa0a0a0, 0xffd09090))
                     ),
-                    left=10, top=10, right=10, bottom=10
+                    all=10
                 ),
                 flex_x=3,
             ),
@@ -284,18 +297,18 @@ def main():
     #                 Rectangle(0xffa0a0a0),
     #                 width=100,
     #             ),
-    #             left=10, top=10, right=10, bottom=10,
+    #             all=10,
     #         ),
     #         Flexible(
     #             Padding(
     #                 Rectangle(0xffa0a0a0),
-    #                 left=10, top=10, right=10, bottom=10
+    #                 all=10
     #             ),
     #             flex_x=3,
     #         ),
     #         Padding(
     #             Rectangle(0xffa0a0a0),
-    #             left=10, top=10, right=10, bottom=10
+    #             all=10
     #         ),
     #     ]),
     # )
@@ -304,7 +317,7 @@ def main():
     #     color=0xff202030,
     #     child=Padding(
     #         child=Rectangle(0xffa0a0a0),
-    #         left=10, top=10, right=10, bottom=10
+    #         all=10
     #     ),
     # )
 

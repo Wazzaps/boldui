@@ -142,6 +142,9 @@ class Expr:
     def __and__(self, other):
         return Expr({'type': 'b_and', 'a': self.val, 'b': Expr.unwrap(other)})
 
+    def sqrt(self):
+        return Expr({'type': 'sqrt', 'a': self.val})
+
     def __gt__(self, other):
         return Expr({'type': 'gt', 'a': self.val, 'b': Expr.unwrap(other)})
 
@@ -190,6 +193,8 @@ class Expr:
             return f'({Expr(self.val["a"])} % {Expr(self.val["b"])})'
         elif self.val['type'] == 'abs':
             return f'abs({Expr(self.val["a"])})'
+        elif self.val['type'] == 'sqrt':
+            return f'sqrt({Expr(self.val["a"])})'
         elif self.val['type'] == 'gt':
             return f'({Expr(self.val["a"])} > {Expr(self.val["b"])})'
         elif self.val['type'] == 'lt':

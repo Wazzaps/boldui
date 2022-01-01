@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import math
 import socket
 import sys
 import threading
@@ -91,6 +92,14 @@ class UIClient:
                 return UIClient._resolve_int(value['a'], context) % UIClient._resolve_int(value['b'], context)
             elif value['type'] == 'pow':
                 return UIClient._resolve_int(value['a'], context) ** UIClient._resolve_int(value['b'], context)
+            elif value['type'] == 'sqrt':
+                return UIClient._resolve_int(value['a'], context) ** 0.5
+            elif value['type'] == 'sin':
+                return math.sin(UIClient._resolve_int(value['a'], context))
+            elif value['type'] == 'cos':
+                return math.cos(UIClient._resolve_int(value['a'], context))
+            elif value['type'] == 'tan':
+                return math.tan(UIClient._resolve_int(value['a'], context))
             elif value['type'] == 'neg':
                 return -UIClient._resolve_int(value['a'], context)
             elif value['type'] == 'abs':
