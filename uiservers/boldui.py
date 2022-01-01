@@ -23,7 +23,8 @@ def stringify_op(obj, indent=0):
         result += ']'
         return result
     elif isinstance(obj, dict) and 'type' in obj:
-        if obj['type'] in ('var', 'add', 'sub', 'mul', 'div', 'b_or', 'b_and'):
+        if obj['type'] in ('add', 'sub', 'mul', 'div', 'b_or', 'b_and', 'mod', 'abs', 'gt', 'lt', 'ge', 'le', 'eq',
+                           'ne', 'neg', 'b_and', 'b_or', 'b_invert', 'if'):
             return str(Expr(obj))
 
         if obj['type'] in ('clear', 'rect'):
@@ -189,6 +190,28 @@ class Expr:
             return f'({Expr(self.val["a"])} % {Expr(self.val["b"])})'
         elif self.val['type'] == 'abs':
             return f'abs({Expr(self.val["a"])})'
+        elif self.val['type'] == 'gt':
+            return f'({Expr(self.val["a"])} > {Expr(self.val["b"])})'
+        elif self.val['type'] == 'lt':
+            return f'({Expr(self.val["a"])} < {Expr(self.val["b"])})'
+        elif self.val['type'] == 'ge':
+            return f'({Expr(self.val["a"])} >= {Expr(self.val["b"])})'
+        elif self.val['type'] == 'le':
+            return f'({Expr(self.val["a"])} <= {Expr(self.val["b"])})'
+        elif self.val['type'] == 'eq':
+            return f'({Expr(self.val["a"])} == {Expr(self.val["b"])})'
+        elif self.val['type'] == 'ne':
+            return f'({Expr(self.val["a"])} != {Expr(self.val["b"])})'
+        elif self.val['type'] == 'neg':
+            return f'-{Expr(self.val["a"])}'
+        elif self.val['type'] == 'b_and':
+            return f'({Expr(self.val["a"])} & {Expr(self.val["b"])})'
+        elif self.val['type'] == 'b_or':
+            return f'({Expr(self.val["a"])} | {Expr(self.val["b"])})'
+        elif self.val['type'] == 'b_invert':
+            return f'~{Expr(self.val["a"])}'
+        elif self.val['type'] == 'if':
+            return f'if {Expr(self.val["cond"])} {{ {Expr(self.val["then"])} }} else {{ {Expr(self.val["else"])} }}'
         else:
             return json.dumps(self.val)
 
