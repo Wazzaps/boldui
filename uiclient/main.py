@@ -59,7 +59,7 @@ class Protocol:
 
         if packet_type == Actions.UPDATE_SCENE:
             self.ui_client.scene = json.loads(packet)
-            print(self.ui_client.scene)
+            # print(self.ui_client.scene)
         else:
             print('Unknown packet type:', packet)
 
@@ -70,6 +70,7 @@ class UIClient:
             {'type': 'clear', 'color': 0xff202020},
         ]
         self.protocol = Protocol(address, self)
+        self.persistent_context = {}
 
         self.protocol.connect()
 
@@ -80,6 +81,18 @@ class UIClient:
             (color >> 8) & 0xff,
             color & 0xff,
             (color >> 24) & 0xff))
+
+    @staticmethod
+    def _resolve_str(value, context):
+        if isinstance(value, str):
+            return value
+        elif isinstance(value, dict):
+            if value['type'] == 'to_str':
+                return str(UIClient._resolve_int(value['a'], context))
+            else:
+                raise ValueError('Unknown str operation: {}'.format(value['type']))
+        else:
+            raise ValueError('Unknown type: {}'.format(value))
 
     @staticmethod
     def _resolve_int(value, context):
@@ -144,7 +157,7 @@ class UIClient:
                 else:
                     return UIClient._resolve_int(value['else'], context)
             elif value['type'] == 'var':
-                return context[value['name']]
+                return context.get(value['name'], 0)
             else:
                 raise ValueError('Unknown int operation: {}'.format(value['type']))
         else:
@@ -152,6 +165,7 @@ class UIClient:
 
     def draw(self, canvas: skia.Canvas, scene_size: Tuple[int, int]) -> None:
         context = {
+            **self.persistent_context,
             'width': scene_size[0],
             'height': scene_size[1],
             'time': time.time()
@@ -168,13 +182,15 @@ class UIClient:
                 ), self._paint_from_int_color(UIClient._resolve_int(item['color'], context)))
             elif item['type'] == 'text':
                 paint = self._paint_from_int_color(UIClient._resolve_int(item['color'], context))
-                font = skia.Font(None, UIClient._resolve_int(item['fontSize'], context))
-                measurement = font.measureText(item['text'], skia.TextEncoding.kUTF8, None, paint)
+                font_size = UIClient._resolve_int(item['fontSize'], context)
+                font = skia.Font(None, font_size)
+                text = UIClient._resolve_str(item['text'], context)
+                measurement = font.measureText(text, skia.TextEncoding.kUTF8, None, paint)
 
                 canvas.drawString(
-                    item['text'],
+                    text,
                     UIClient._resolve_int(item['x'], context) - measurement // 2,
-                    UIClient._resolve_int(item['y'], context),
+                    UIClient._resolve_int(item['y'], context) + font_size // 2,
                     font,
                     paint
                 )
@@ -182,6 +198,7 @@ class UIClient:
 
     def handle_mouse_down(self, x: int, y: int, scene_size: Tuple[int, int]):
         context = {
+            **self.persistent_context,
             'width': scene_size[0],
             'height': scene_size[1],
             'event_x': x,
@@ -214,6 +231,8 @@ class UIClient:
                                 else:
                                     raise ValueError('Invalid reply data type: {}'.format(type(val)))
                             replies.append(formatted_data)
+                        elif handler['type'] == 'set_var':
+                            self.persistent_context[handler['name']] = UIClient._resolve_int(handler['value'], context)
 
         if replies:
             self.protocol.send_packet(

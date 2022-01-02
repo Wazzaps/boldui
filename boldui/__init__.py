@@ -60,6 +60,10 @@ class Ops:
         return {'type': 'reply', 'id': ident, 'data': list(map(Expr.unwrap, data))}
 
     @staticmethod
+    def set_var(name: str, value: Expr):
+        return {'type': 'set_var', 'name': name, 'value': Expr.unwrap(value)}
+
+    @staticmethod
     def event_handler(rect, events, handler):
         return {
             'type': 'evt_hnd',
@@ -92,8 +96,8 @@ class Expr:
             self.val = val
 
     @staticmethod
-    def unwrap(value: Expr | int | float):
-        if isinstance(value, (int, float)):
+    def unwrap(value: Expr | int | float | str):
+        if isinstance(value, (int, float, str)):
             return value
         else:
             return value.val
@@ -102,12 +106,17 @@ class Expr:
     def var(name):
         return Expr({'type': 'var', 'name': name})
 
+    def to_str(self):
+        return Expr({'type': 'to_str', 'a': self.val})
+
     def __add__(self, other):
         other = Expr.unwrap(other)
         if isinstance(other, (int, float)) and isinstance(self.val, (int, float)):
             return Expr(self.val + other)
-        elif isinstance(other, (int, float)) and other == 0:
+        elif isinstance(other, (int, float)) and other == Expr.unwrap(0):
             return self
+        elif isinstance(self.val, (int, float)) and self.val == 0:
+            return Expr(other)
         elif isinstance(other, (int, float)) and self.val['type'] == 'add':
             new_val = Expr(self.val['b']) + other
             if new_val.val == 0:
@@ -127,8 +136,10 @@ class Expr:
         other = Expr.unwrap(other)
         if isinstance(other, (int, float)) and isinstance(self.val, (int, float)):
             return Expr(self.val - other)
-        elif isinstance(other, (int, float)) and other == 0:
+        elif isinstance(other, (int, float)) and other == Expr.unwrap(0):
             return self
+        elif isinstance(self.val, (int, float)) and self.val == 0:
+            return Expr(other)
         elif isinstance(other, (int, float)) and self.val['type'] == 'add':
             new_val = Expr(self.val['b']) - other
             if new_val.val == 0:

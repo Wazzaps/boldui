@@ -1,11 +1,30 @@
 #!/usr/bin/env python3
 import abc
+import contextlib
 from typing import Tuple, Dict
 
-from boldui import Ops, Expr, ProtocolServer, stringify_op
+from boldui import Ops, Expr
+
+Context = {}
+
+
+@contextlib.contextmanager
+def export(name, value):
+    prev = Context.pop(name) if name in Context else None
+    Context[name] = value
+
+    yield
+
+    if prev is not None:
+        Context[name] = prev
+    else:
+        del Context[name]
 
 
 class Widget:
+    def __init__(self):
+        self.build()
+
     def layout(self, min_width: Expr, min_height: Expr, max_width: Expr, max_height: Expr) -> Tuple[Expr, Expr]:
         raise RuntimeError('This widget shouldn\'t be rendered directly')
 
@@ -28,25 +47,47 @@ class Row(Widget):
         self.children = children
         self.align = align
         self._built_children = []
+        super(Row, self).__init__()
 
     def __repr__(self):
-        return 'Row(children={})'.format(repr(self.children))
+        return 'Row(align={}, children={})'.format(self.align, self.children)
 
     def get_flex_x(self) -> float:
-        total_flex = sum(child.get_flex_x() for child in self._built_children)
-        return 1 if total_flex else 0
+        total_flex_x = sum(child.get_flex_x() for child in self._built_children)
+        return 1 if total_flex_x else 0
 
     def get_flex_y(self) -> float:
-        total_flex = sum(child.get_flex_y() for child in self._built_children)
-        return 1 if total_flex else 0
+        total_flex_y = sum(child.get_flex_y() for child in self._built_children)
+        return 1 if total_flex_y else 0
 
     def build(self) -> Widget:
+        self._built_children = []
         for child in self.children:
             self._built_children.append(child.build())
         return self
 
     def layout(self, min_width, min_height, max_width, max_height):
-        return max_width, max_height
+        children_flex_x = [child.get_flex_x() for child in self._built_children]
+        children_flex_y = [child.get_flex_y() for child in self._built_children]
+        total_flex_x = sum(children_flex_x)
+        total_flex_y = sum(children_flex_y)
+
+        width = max_width
+        height = max_height
+
+        # One of the axis are not flexible, need to calculate actual size
+        if total_flex_x == 0 or total_flex_y == 0:
+            children_sizes = [[Expr(0), Expr(0)] for _ in self._built_children]
+            for i, (child, child_flex_x, child_flex_y) in enumerate(zip(self._built_children, children_flex_x, children_flex_y)):
+                if child_flex_x == 0 or child_flex_y == 0:
+                    children_sizes[i] = list(child.layout(0, min_height, float('inf'), max_height))
+
+            if total_flex_x == 0:
+                width = sum((size[0] for size in children_sizes), Expr(0))
+            if total_flex_y == 0:
+                height = sum((size[1] for size in children_sizes), Expr(0))
+
+        return width, height
 
     def render(self, left, top, right, bottom):
         result = []
@@ -59,7 +100,7 @@ class Row(Widget):
 
         for i, (child, child_flex_x, child_flex_y) in enumerate(zip(self._built_children, children_flex_x, children_flex_y)):
             if child_flex_x == 0 or child_flex_y == 0:
-                children_sizes[i] = list(child.layout(0, bottom - top, float('inf'), bottom - top))
+                children_sizes[i] = list(child.layout(0, 0, float('inf'), bottom - top))
                 if child_flex_x == 0:
                     free_space -= children_sizes[i][0]
 
@@ -75,8 +116,8 @@ class Row(Widget):
         current_left_coord = left
         for i, (child, child_size) in enumerate(zip(self._built_children, children_sizes)):
             if self.align == 'center':
-                item_top = top + (bottom - child_size[1]) // 2
-                item_bottom = top + (bottom + child_size[1]) // 2
+                item_top = top + (bottom - top - child_size[1]) // 2
+                item_bottom = top + (bottom - top + child_size[1]) // 2
             elif self.align == 'top':
                 item_top = top
                 item_bottom = top + child_size[1]
@@ -93,9 +134,10 @@ class Column(Widget):
         self.children = children
         self.align = align
         self._built_children = []
+        super(Column, self).__init__()
 
     def __repr__(self):
-        return 'Column(children={})'.format(repr(self.children))
+        return 'Column(align={}, children={})'.format(self.align, repr(self.children))
 
     def get_flex_x(self) -> float:
         total_flex = sum(child.get_flex_x() for child in self._built_children)
@@ -106,12 +148,33 @@ class Column(Widget):
         return 1 if total_flex else 0
 
     def build(self) -> Widget:
+        self._built_children = []
         for child in self.children:
             self._built_children.append(child.build())
         return self
 
     def layout(self, min_width, min_height, max_width, max_height):
-        return max_width, max_height
+        children_flex_x = [child.get_flex_x() for child in self._built_children]
+        children_flex_y = [child.get_flex_y() for child in self._built_children]
+        total_flex_x = sum(children_flex_x)
+        total_flex_y = sum(children_flex_y)
+
+        width = max_width
+        height = max_height
+
+        # One of the axis are not flexible, need to calculate actual size
+        if total_flex_x == 0 or total_flex_y == 0:
+            children_sizes = [[Expr(0), Expr(0)] for _ in self._built_children]
+            for i, (child, child_flex_x, child_flex_y) in enumerate(zip(self._built_children, children_flex_x, children_flex_y)):
+                if child_flex_x == 0 or child_flex_y == 0:
+                    children_sizes[i] = list(child.layout(0, min_height, float('inf'), max_height))
+
+            if total_flex_x == 0:
+                width = sum((size[0] for size in children_sizes), Expr(0))
+            if total_flex_y == 0:
+                height = sum((size[1] for size in children_sizes), Expr(0))
+
+        return width, height
 
     def render(self, left, top, right, bottom):
         result = []
@@ -124,7 +187,7 @@ class Column(Widget):
 
         for i, (child, child_flex_x, child_flex_y) in enumerate(zip(self._built_children, children_flex_x, children_flex_y)):
             if child_flex_x == 0 or child_flex_y == 0:
-                children_sizes[i] = list(child.layout(right - left, 0, right - left, float('inf')))
+                children_sizes[i] = list(child.layout(0, 0, right - left, float('inf')))
                 if child_flex_y == 0:
                     free_space -= children_sizes[i][1]
 
@@ -140,8 +203,8 @@ class Column(Widget):
         current_top_coord = top
         for i, (child, child_size) in enumerate(zip(self._built_children, children_sizes)):
             if self.align == 'center':
-                item_left = left + (right - child_size[0]) // 2
-                item_right = left + (right + child_size[0]) // 2
+                item_left = left + (right - left - child_size[0]) // 2
+                item_right = left + (right - left + child_size[0]) // 2
             elif self.align == 'top':
                 item_left = left
                 item_right = left + child_size[0]
@@ -157,6 +220,7 @@ class Padding(Widget):
     def __init__(self, child, left=0, top=0, right=0, bottom=0, horizontal=None, vertical=None, all=None):
         self.child = child
         self._built_child = None
+        super(Padding, self).__init__()
 
         if all is not None:
             self.left = Expr(all)
@@ -207,6 +271,7 @@ class Center(Widget):
     def __init__(self, child):
         self.child = child
         self._built_child = None
+        super(Center, self).__init__()
 
     def __repr__(self):
         return 'Center(child={})'.format(repr(self.child))
@@ -237,6 +302,7 @@ class SizedBox(Widget):
         self._built_child = None
         self.width = Expr(width) if width is not None else None
         self.height = Expr(height) if height is not None else None
+        super(SizedBox, self).__init__()
 
     def __repr__(self):
         return 'SizedBox(width={}, height={}, child={})'.format(
@@ -265,6 +331,7 @@ class SizedBox(Widget):
 class Rectangle(Widget):
     def __init__(self, color):
         self.color = color
+        super(Rectangle, self).__init__()
 
     def __repr__(self):
         return 'Rectangle(color={})'.format(repr(self.color))
@@ -287,9 +354,10 @@ class Rectangle(Widget):
 
 class Text(Widget):
     def __init__(self, text, font_size=14, color=0xffffffff):
-        self.text = text
+        self.text = Expr.unwrap(text)
         self.font_size = font_size
         self.color = color
+        super(Text, self).__init__()
 
     def __repr__(self):
         return 'Text({}, font_size={}, color={})'.format(
@@ -318,6 +386,7 @@ class Flexible(Widget):
         self._built_child = None
         self.flex_x = flex_x
         self.flex_y = flex_y
+        super(Flexible, self).__init__()
 
     def __repr__(self):
         return 'Flexible(flex_x={}, flex_y={}, child={})'.format(
@@ -345,11 +414,73 @@ class Flexible(Widget):
             return []
 
 
+class EventHandler(Widget):
+    COUNTER = 1
+
+    def __init__(self, child=None, on_mouse_down=None):
+        self.child = child
+        self.on_mouse_down = on_mouse_down
+
+        self._built_child = None
+        self._id = EventHandler.COUNTER
+        EventHandler.COUNTER += 1
+
+        super(EventHandler, self).__init__()
+
+    def __repr__(self):
+        return 'EventHandler(child={})'.format(repr(self.child))
+
+    def get_flex_x(self) -> float:
+        if self._built_child:
+            self._built_child.get_flex_x()
+        else:
+            return 1
+
+    def get_flex_y(self) -> float:
+        if self._built_child:
+            self._built_child.get_flex_y()
+        else:
+            return 1
+
+    def build(self) -> Widget:
+        Context['_reply_handlers'][self._id] = self.on_mouse_down
+        if self.child:
+            self._built_child = self.child.build()
+        return self
+
+    def layout(self, min_width, min_height, max_width, max_height):
+        if self._built_child:
+            return self._built_child.layout(min_width, min_height, max_width, max_height)
+        else:
+            return max_width, max_height
+
+    def render(self, left, top, right, bottom):
+        events = 0
+        handlers = [
+            Ops.reply(self._id, [Expr.var('event_x'), Expr.var('event_y'), Expr.var('time')])
+        ]
+
+        if self.on_mouse_down:
+            events |= 1 << 0
+            if isinstance(self.on_mouse_down, list):
+                handlers = self.on_mouse_down
+
+        handler = Ops.event_handler((left, top, right, bottom), events, handlers)
+        if self._built_child:
+            return [
+                handler,
+                *self._built_child.render(left, top, right, bottom),
+            ]
+        else:
+            return [handler]
+
+
 class Clear(Widget):
     def __init__(self, child, color):
         self.child = child
         self._built_child = None
         self.color = color
+        super(Clear, self).__init__()
 
     def __repr__(self):
         return 'Clear(color={}, child={})'.format(repr(self.color), repr(self.child))
@@ -372,3 +503,84 @@ class Clear(Widget):
             Ops.clear(self.color),
             *self._built_child.render(left, top, right, bottom)
         ]
+
+
+class Stack(Widget):
+    def __init__(self, children, align='center'):
+        self.children = children
+        self.align = align
+        self._built_children = []
+        super(Stack, self).__init__()
+
+    def __repr__(self):
+        return 'Stack(align={}, children={})'.format(self.align, repr(self.children))
+
+    def get_flex_x(self) -> float:
+        total_flex = sum(child.get_flex_x() for child in self._built_children)
+        return 1 if total_flex else 0
+
+    def get_flex_y(self) -> float:
+        total_flex = sum(child.get_flex_y() for child in self._built_children)
+        return 1 if total_flex else 0
+
+    def build(self) -> Widget:
+        self._built_children = []
+        for child in self.children:
+            self._built_children.append(child.build())
+        return self
+
+    def layout(self, min_width, min_height, max_width, max_height):
+        children_flex_x = [child.get_flex_x() for child in self._built_children]
+        children_flex_y = [child.get_flex_y() for child in self._built_children]
+        total_flex_x = sum(children_flex_x)
+        total_flex_y = sum(children_flex_y)
+
+        width = max_width
+        height = max_height
+
+        # One of the axis are not flexible, need to calculate actual size
+        if total_flex_x == 0 or total_flex_y == 0:
+            children_sizes = [[Expr(0), Expr(0)] for _ in self._built_children]
+            for i, (child, child_flex_x, child_flex_y) in enumerate(zip(self._built_children, children_flex_x, children_flex_y)):
+                if child_flex_x == 0 or child_flex_y == 0:
+                    children_sizes[i] = list(child.layout(0, min_height, float('inf'), max_height))
+
+            if children_sizes and total_flex_x == 0:
+                width = children_sizes[0][0]
+                for child_size in children_sizes:
+                    width = max(width, child_size[0])
+            elif not children_sizes:
+                width = Expr(0)
+
+            if children_sizes and total_flex_y == 0:
+                height = children_sizes[0][1]
+                for child_size in children_sizes:
+                    height = max(height, child_size[1])
+            elif not children_sizes:
+                height = Expr(0)
+
+        return width, height
+
+    def render(self, left, top, right, bottom):
+        result = []
+
+        children_flex_x = [child.get_flex_x() for child in self._built_children]
+        children_flex_y = [child.get_flex_y() for child in self._built_children]
+        children_sizes = [[Expr(0), Expr(0)] for _ in self._built_children]
+
+        for i, (child, child_flex_x, child_flex_y) in enumerate(zip(self._built_children, children_flex_x, children_flex_y)):
+            if child_flex_x == 0 or child_flex_y == 0:
+                children_sizes[i] = list(child.layout(0, 0, float('inf'), float('inf')))
+
+        for i, child_flex_y in enumerate(children_flex_y):
+            if child_flex_y > 0:
+                children_sizes[i][1] = bottom - top
+
+        for i, child_flex_x in enumerate(children_flex_x):
+            if child_flex_x > 0:
+                children_sizes[i][0] = right - left
+
+        for i, (child, child_size) in enumerate(zip(self._built_children, children_sizes)):
+            result += child.render(left, top, left + child_size[0], top + child_size[1])
+
+        return result
