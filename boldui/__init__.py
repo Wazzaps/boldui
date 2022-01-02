@@ -5,6 +5,7 @@ import json
 import os
 import socket
 import struct
+import subprocess
 from typing import List
 
 
@@ -262,6 +263,7 @@ class ProtocolServer:
         self.send_scene()
 
     def serve(self):
+        subprocess.Popen('sleep 0.2 && uiclient/main.py /tmp/boldui.hello_world.sock', shell=True)
         while True:
             print('Waiting for connection...')
             self.server.listen(1)
@@ -280,6 +282,7 @@ class ProtocolServer:
             if self.scene:
                 self.send_scene()
 
+            print(f'Server PID is {os.getpid()}')
             while True:
                 packet = b''
                 packet_length = self.socket.recv(4)
