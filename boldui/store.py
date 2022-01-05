@@ -124,35 +124,40 @@ class ModelProxyDescriptor:
         self._is_bind = is_bind
 
     def __get__(self, instance, owner=None):
-        return ModelProxy(self._base_model, self._submodel, self._path, is_bind=self._is_bind)
+        return make_model_proxy()(self._base_model, self._submodel, self._path, is_bind=self._is_bind)
 
 
-class ModelProxy:
-    def __init__(self, base_model: BaseModel, submodel: type, path: str, is_bind: bool = False):
-        self._base_model = base_model
-        self._submodel = submodel
-        self._path = path
-        self._is_bind = is_bind
+def make_model_proxy():
+    class ModelProxy:
+        def __init__(self, base_model: BaseModel, submodel: type, path: str, is_bind: bool = False):
+            self._base_model = base_model
+            self._submodel = submodel
+            self._path = path
+            self._is_bind = is_bind
 
-        for field_name, field_type in submodel.__annotations__.items():
-            new_path = f'{path}.{field_name}'
-            if issubclass(field_type, BaseModel):
-                print(f'bind proxy: {field_name}')
-                setattr(type(self), field_name, ModelProxyDescriptor(base_model, field_type, new_path, is_bind=is_bind))
+            for field_name, field_type in submodel.__annotations__.items():
+                new_path = f'{path}.{field_name}'
+                if issubclass(field_type, BaseModel):
+                    print(f'bind proxy: {field_name}')
+                    setattr(type(self), field_name, ModelProxyDescriptor(base_model, field_type, new_path, is_bind=is_bind))
+                else:
+                    print(f'bind item: {field_name}')
+                    setattr(type(self), field_name, ModelItemDescriptor(base_model, field_type, new_path, is_bind=is_bind))
+
+        def __getattr__(self, item):
+            # print(self)
+            try:
+                return getattr(type(self), item)
+            except AttributeError:
+                raise AttributeError(f'Invalid field "{self._path[1:]}.{item}" on model "{type(self._base_model).__name__}"')
+
+        def __str__(self):
+            if self._is_bind:
+                return f'<Bind ModelProxy: {type(self._base_model).__name__}{self._path}>'
             else:
-                print(f'bind item: {field_name}')
-                setattr(type(self), field_name, ModelItemDescriptor(base_model, field_type, new_path, is_bind=is_bind))
+                return f'<ModelProxy: {type(self._base_model).__name__}{self._path}>'
 
-    def __getattr__(self, item):
-        # print(self)
-        return getattr(type(self), item)
-        raise AttributeError(f'Invalid field "{self._path[1:]}.{item}" on model "{type(self._base_model).__name__}"')
-
-    def __str__(self):
-        if self._is_bind:
-            return f'<Bind ModelProxy: {type(self._base_model).__name__}{self._path}>'
-        else:
-            return f'<ModelProxy: {type(self._base_model).__name__}{self._path}>'
+    return ModelProxy
 
 
 def test():

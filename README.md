@@ -97,3 +97,9 @@ scene = Clear(
 This "compiles" to the same scene-graph from above, because of the expression abstraction from before.
 
 Special care is needed when writing complex layouts though, to keep expressions from exploding in size.
+
+### Running the example
+
+```shell
+systemd-socket-activate --listen="$XDG_RUNTIME_DIR/boldui.hello_world.sock" python3 example_framework_store_counter.py & python3 uiclient/main.py "$XDG_RUNTIME_DIR/boldui.hello_world.sock"
+```

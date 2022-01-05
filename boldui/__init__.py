@@ -262,8 +262,8 @@ class ProtocolServer:
         if os.path.exists(address):
             os.remove(address)
 
-        self.server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.server.bind(address)
+        SYSTEMD_SOCK_FD = 3
+        self.server = socket.fromfd(SYSTEMD_SOCK_FD, socket.AF_UNIX, socket.SOCK_STREAM)
         self.socket = None
 
     @property
@@ -276,7 +276,6 @@ class ProtocolServer:
         self.send_scene()
 
     def serve(self):
-        subprocess.Popen('sleep 0.2 && uiclient/main.py /tmp/boldui.hello_world.sock', shell=True)
         while True:
             print('Waiting for connection...')
             self.server.listen(1)
@@ -311,6 +310,9 @@ class ProtocolServer:
                         break
 
                 self._handle_packet(packet)
+
+            print('Client disconnected')
+            break
 
     def _send_packet(self, packet):
         # print('Sending packet:', packet)
