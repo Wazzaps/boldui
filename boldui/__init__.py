@@ -29,7 +29,7 @@ def stringify_op(obj, indent=0):
         return result
     elif isinstance(obj, dict) and 'type' in obj:
         if obj['type'] in ('add', 'sub', 'mul', 'div', 'b_or', 'b_and', 'mod', 'abs', 'gt', 'lt', 'ge', 'le', 'eq',
-                           'ne', 'neg', 'b_and', 'b_or', 'b_invert', 'if'):
+                           'ne', 'neg', 'b_and', 'b_or', 'b_invert', 'if', 'min', 'max'):
             return str(Expr(obj))
 
         if obj['type'] in ('clear', 'rect', 'text'):
@@ -109,6 +109,12 @@ class Expr:
 
     def to_str(self):
         return Expr({'type': 'to_str', 'a': self.val})
+
+    def min(self, other):
+        return Expr({'type': 'min', 'a': self.val, 'b': Expr.unwrap(other)})
+
+    def max(self, other):
+        return Expr({'type': 'max', 'a': self.val, 'b': Expr.unwrap(other)})
 
     def __add__(self, other):
         other = Expr.unwrap(other)
@@ -208,6 +214,10 @@ class Expr:
             return self.val['name']
         elif self.val['type'] == 'add':
             return f'({Expr(self.val["a"])} + {Expr(self.val["b"])})'
+        elif self.val['type'] == 'min':
+            return f'min({Expr(self.val["a"])}, {Expr(self.val["b"])})'
+        elif self.val['type'] == 'max':
+            return f'max({Expr(self.val["a"])}, {Expr(self.val["b"])})'
         elif self.val['type'] == 'sub':
             return f'({Expr(self.val["a"])} - {Expr(self.val["b"])})'
         elif self.val['type'] == 'mul':

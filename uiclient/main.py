@@ -161,6 +161,10 @@ class UIClient:
                 return UIClient.resolve_int(value['a'], context) << UIClient.resolve_int(value['b'], context)
             elif value['type'] == 'shr':
                 return UIClient.resolve_int(value['a'], context) >> UIClient.resolve_int(value['b'], context)
+            elif value['type'] == 'min':
+                return min(UIClient.resolve_int(value['a'], context), UIClient.resolve_int(value['b'], context))
+            elif value['type'] == 'max':
+                return max(UIClient.resolve_int(value['a'], context), UIClient.resolve_int(value['b'], context))
             elif value['type'] == 'if':
                 if UIClient.resolve_int(value['cond'], context):
                     return UIClient.resolve_int(value['then'], context)

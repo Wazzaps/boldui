@@ -1,6 +1,7 @@
 import contextlib
 import ctypes
 import sys
+import time
 
 import sdl2
 import sdl2.ext
@@ -30,6 +31,9 @@ def main_loop(state):
     event = sdl2.SDL_Event()
     running = True
 
+    last_measurement = time.time()
+    counter = 0
+
     while running:
         with skia_surface(window) as surface:  # type: skia.Surface
             resized = False
@@ -54,6 +58,12 @@ def main_loop(state):
 
                     if not resized:
                         state.draw(canvas, (surface.width(), surface.height()))
+                        counter += 1
+                        elapsed = time.time() - last_measurement
+                        if elapsed > 3.0:
+                            print(f"FPS: {counter / elapsed}")
+                            counter = 0
+                            last_measurement = time.time()
 
                         sdl2.SDL_GL_SwapWindow(window)
                         sdl2.SDL_Delay(1)

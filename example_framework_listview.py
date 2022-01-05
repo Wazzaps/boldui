@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+from boldui import Ops, Expr
 from boldui.app import App, update_widget
 from boldui.framework import Rectangle, SizedBox, Text, Stack, EventHandler, Widget, Column, PositionOffset
 from boldui.store import BaseModel
@@ -11,9 +11,6 @@ class Model(BaseModel):
 
 class ListView(Widget):
     def build(self):
-        def scroll_handler(event):
-            Model.scroll_pos = min(Model.scroll_pos + event[3] * 10, 0)
-
         return EventHandler(
             PositionOffset(
                 Column([
@@ -23,9 +20,14 @@ class ListView(Widget):
                     )
                     for i in range(20)
                 ]),
-                y=Model.bind.scroll_pos,
+                y=Expr.var('lv_scroll_pos')
             ),
-            on_scroll=scroll_handler,
+            on_scroll=[
+                Ops.set_var(
+                    'lv_scroll_pos',
+                    (Expr.var('lv_scroll_pos') + Expr.var('scroll_y') * 10).min(0)
+                )
+            ],
         )
 
 
