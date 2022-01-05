@@ -48,7 +48,8 @@ def main():
     scene = built_root.render(Expr(0), Expr(0), size[0], size[1])
     for op in scene:
         print(stringify_op(op))
-    server = ProtocolServer("/tmp/boldui.hello_world.sock", scene)
+    server = ProtocolServer("/tmp/boldui.hello_world.sock")
+    server.scene = scene
     server.serve()
 
 

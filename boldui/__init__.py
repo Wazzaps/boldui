@@ -12,6 +12,7 @@ from typing import List
 class Actions:
     UPDATE_SCENE = 0
     HANDLER_REPLY = 1
+    SET_VAR = 2
 
 
 def stringify_op(obj, indent=0):
@@ -253,9 +254,10 @@ class Expr:
 
 
 class ProtocolServer:
-    def __init__(self, address, initial_scene=None, reply_handler=None):
+    def __init__(self, address, reply_handler=None):
+        self.pending_vars = {}
         self.address = address
-        self._scene = initial_scene
+        self._scene = None
         self.reply_handler = reply_handler
         if os.path.exists(address):
             os.remove(address)
@@ -292,6 +294,8 @@ class ProtocolServer:
             print("Handshake complete, sending initial scene")
             if self.scene:
                 self.send_scene()
+            for var in self.pending_vars:
+                self.set_remote_var(var, self.pending_vars[var][0], self.pending_vars[var][1])
 
             print(f'Server PID is {os.getpid()}')
             while True:
@@ -342,4 +346,11 @@ class ProtocolServer:
             print('Unknown packet type:', packet)
 
     def send_scene(self):
-        self._send_packet(Actions.UPDATE_SCENE.to_bytes(4, 'big') + json.dumps(self._scene).encode())
+        if self.socket:
+            self._send_packet(Actions.UPDATE_SCENE.to_bytes(4, 'big') + json.dumps(self._scene).encode())
+
+    def set_remote_var(self, name, val_type, value):
+        self.pending_vars[name] = (val_type, value)
+        if self.socket:
+            self._send_packet(Actions.SET_VAR.to_bytes(4, 'big') + name.encode() + b'\x00' + val_type.encode()
+                              + b'\x00' + json.dumps(value).encode())

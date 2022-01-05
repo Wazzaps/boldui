@@ -3,6 +3,8 @@ import abc
 import contextlib
 from typing import Tuple, Dict
 
+import lmdb
+
 from boldui import Ops, Expr
 
 Context = {}

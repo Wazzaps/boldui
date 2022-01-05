@@ -16,6 +16,7 @@ from main_loop import main_loop
 class Actions:
     UPDATE_SCENE = 0
     HANDLER_REPLY = 1
+    SET_VAR = 2
 
 
 class Protocol:
@@ -60,6 +61,15 @@ class Protocol:
         if packet_type == Actions.UPDATE_SCENE:
             self.ui_client.scene = json.loads(packet)
             # print(self.ui_client.scene)
+        elif packet_type == Actions.SET_VAR:
+            var_name, var_type, var_value = packet.split(b'\x00')
+            if var_type == b'n':
+                new_value = UIClient.resolve_int(json.loads(var_value), self.ui_client.persistent_context)
+            elif var_type == b's':
+                new_value = UIClient.resolve_str(json.loads(var_value), self.ui_client.persistent_context)
+            else:
+                raise Exception('Unknown var type')
+            self.ui_client.persistent_context[var_name.decode()] = new_value
         else:
             print('Unknown packet type:', packet)
 
@@ -83,79 +93,79 @@ class UIClient:
             (color >> 24) & 0xff))
 
     @staticmethod
-    def _resolve_str(value, context):
+    def resolve_str(value, context):
         if isinstance(value, str):
             return value
         elif isinstance(value, dict):
             if value['type'] == 'to_str':
-                return str(UIClient._resolve_int(value['a'], context))
+                return str(UIClient.resolve_int(value['a'], context))
             else:
                 raise ValueError('Unknown str operation: {}'.format(value['type']))
         else:
             raise ValueError('Unknown type: {}'.format(value))
 
     @staticmethod
-    def _resolve_int(value, context):
+    def resolve_int(value, context):
         if isinstance(value, (int, float)):
             return value
         elif isinstance(value, dict):
             if value['type'] == 'add':
-                return UIClient._resolve_int(value['a'], context) + UIClient._resolve_int(value['b'], context)
+                return UIClient.resolve_int(value['a'], context) + UIClient.resolve_int(value['b'], context)
             elif value['type'] == 'sub':
-                return UIClient._resolve_int(value['a'], context) - UIClient._resolve_int(value['b'], context)
+                return UIClient.resolve_int(value['a'], context) - UIClient.resolve_int(value['b'], context)
             elif value['type'] == 'mul':
-                return UIClient._resolve_int(value['a'], context) * UIClient._resolve_int(value['b'], context)
+                return UIClient.resolve_int(value['a'], context) * UIClient.resolve_int(value['b'], context)
             elif value['type'] == 'div':
-                return UIClient._resolve_int(value['a'], context) // UIClient._resolve_int(value['b'], context)
+                return UIClient.resolve_int(value['a'], context) // UIClient.resolve_int(value['b'], context)
             elif value['type'] == 'mod':
-                return UIClient._resolve_int(value['a'], context) % UIClient._resolve_int(value['b'], context)
+                return UIClient.resolve_int(value['a'], context) % UIClient.resolve_int(value['b'], context)
             elif value['type'] == 'pow':
-                return UIClient._resolve_int(value['a'], context) ** UIClient._resolve_int(value['b'], context)
+                return UIClient.resolve_int(value['a'], context) ** UIClient.resolve_int(value['b'], context)
             elif value['type'] == 'sqrt':
-                return UIClient._resolve_int(value['a'], context) ** 0.5
+                return UIClient.resolve_int(value['a'], context) ** 0.5
             elif value['type'] == 'sin':
-                return math.sin(UIClient._resolve_int(value['a'], context))
+                return math.sin(UIClient.resolve_int(value['a'], context))
             elif value['type'] == 'cos':
-                return math.cos(UIClient._resolve_int(value['a'], context))
+                return math.cos(UIClient.resolve_int(value['a'], context))
             elif value['type'] == 'tan':
-                return math.tan(UIClient._resolve_int(value['a'], context))
+                return math.tan(UIClient.resolve_int(value['a'], context))
             elif value['type'] == 'neg':
-                return -UIClient._resolve_int(value['a'], context)
+                return -UIClient.resolve_int(value['a'], context)
             elif value['type'] == 'abs':
-                return abs(UIClient._resolve_int(value['a'], context))
+                return abs(UIClient.resolve_int(value['a'], context))
             elif value['type'] == 'min':
-                return min(UIClient._resolve_int(value['a'], context), UIClient._resolve_int(value['b'], context))
+                return min(UIClient.resolve_int(value['a'], context), UIClient.resolve_int(value['b'], context))
             elif value['type'] == 'max':
-                return max(UIClient._resolve_int(value['a'], context), UIClient._resolve_int(value['b'], context))
+                return max(UIClient.resolve_int(value['a'], context), UIClient.resolve_int(value['b'], context))
             elif value['type'] == 'eq':
-                return UIClient._resolve_int(value['a'], context) == UIClient._resolve_int(value['b'], context)
+                return UIClient.resolve_int(value['a'], context) == UIClient.resolve_int(value['b'], context)
             elif value['type'] == 'ne':
-                return UIClient._resolve_int(value['a'], context) != UIClient._resolve_int(value['b'], context)
+                return UIClient.resolve_int(value['a'], context) != UIClient.resolve_int(value['b'], context)
             elif value['type'] == 'lt':
-                return UIClient._resolve_int(value['a'], context) < UIClient._resolve_int(value['b'], context)
+                return UIClient.resolve_int(value['a'], context) < UIClient.resolve_int(value['b'], context)
             elif value['type'] == 'le':
-                return UIClient._resolve_int(value['a'], context) <= UIClient._resolve_int(value['b'], context)
+                return UIClient.resolve_int(value['a'], context) <= UIClient.resolve_int(value['b'], context)
             elif value['type'] == 'gt':
-                return UIClient._resolve_int(value['a'], context) > UIClient._resolve_int(value['b'], context)
+                return UIClient.resolve_int(value['a'], context) > UIClient.resolve_int(value['b'], context)
             elif value['type'] == 'ge':
-                return UIClient._resolve_int(value['a'], context) >= UIClient._resolve_int(value['b'], context)
+                return UIClient.resolve_int(value['a'], context) >= UIClient.resolve_int(value['b'], context)
             elif value['type'] == 'b_and':
-                return UIClient._resolve_int(value['a'], context) & UIClient._resolve_int(value['b'], context)
+                return UIClient.resolve_int(value['a'], context) & UIClient.resolve_int(value['b'], context)
             elif value['type'] == 'b_or':
-                return UIClient._resolve_int(value['a'], context) | UIClient._resolve_int(value['b'], context)
+                return UIClient.resolve_int(value['a'], context) | UIClient.resolve_int(value['b'], context)
             elif value['type'] == 'b_xor':
-                return UIClient._resolve_int(value['a'], context) ^ UIClient._resolve_int(value['b'], context)
+                return UIClient.resolve_int(value['a'], context) ^ UIClient.resolve_int(value['b'], context)
             elif value['type'] == 'b_invert':
-                return ~UIClient._resolve_int(value['a'], context)
+                return ~UIClient.resolve_int(value['a'], context)
             elif value['type'] == 'shl':
-                return UIClient._resolve_int(value['a'], context) << UIClient._resolve_int(value['b'], context)
+                return UIClient.resolve_int(value['a'], context) << UIClient.resolve_int(value['b'], context)
             elif value['type'] == 'shr':
-                return UIClient._resolve_int(value['a'], context) >> UIClient._resolve_int(value['b'], context)
+                return UIClient.resolve_int(value['a'], context) >> UIClient.resolve_int(value['b'], context)
             elif value['type'] == 'if':
-                if UIClient._resolve_int(value['cond'], context):
-                    return UIClient._resolve_int(value['then'], context)
+                if UIClient.resolve_int(value['cond'], context):
+                    return UIClient.resolve_int(value['then'], context)
                 else:
-                    return UIClient._resolve_int(value['else'], context)
+                    return UIClient.resolve_int(value['else'], context)
             elif value['type'] == 'var':
                 return context.get(value['name'], 0)
             else:
@@ -175,22 +185,22 @@ class UIClient:
                 canvas.clear(item['color'])
             elif item['type'] == 'rect':
                 canvas.drawRect(skia.Rect(
-                    UIClient._resolve_int(item['rect'][0], context),
-                    UIClient._resolve_int(item['rect'][1], context),
-                    UIClient._resolve_int(item['rect'][2], context),
-                    UIClient._resolve_int(item['rect'][3], context)
-                ), self._paint_from_int_color(UIClient._resolve_int(item['color'], context)))
+                    UIClient.resolve_int(item['rect'][0], context),
+                    UIClient.resolve_int(item['rect'][1], context),
+                    UIClient.resolve_int(item['rect'][2], context),
+                    UIClient.resolve_int(item['rect'][3], context)
+                ), self._paint_from_int_color(UIClient.resolve_int(item['color'], context)))
             elif item['type'] == 'text':
-                paint = self._paint_from_int_color(UIClient._resolve_int(item['color'], context))
-                font_size = UIClient._resolve_int(item['fontSize'], context)
+                paint = self._paint_from_int_color(UIClient.resolve_int(item['color'], context))
+                font_size = UIClient.resolve_int(item['fontSize'], context)
                 font = skia.Font(None, font_size)
-                text = UIClient._resolve_str(item['text'], context)
+                text = UIClient.resolve_str(item['text'], context)
                 measurement = font.measureText(text, skia.TextEncoding.kUTF8, None, paint)
 
                 canvas.drawString(
                     text,
-                    UIClient._resolve_int(item['x'], context) - measurement // 2,
-                    UIClient._resolve_int(item['y'], context) + font_size // 2,
+                    UIClient.resolve_int(item['x'], context) - measurement // 2,
+                    UIClient.resolve_int(item['y'], context) + font_size // 2,
                     font,
                     paint
                 )
@@ -210,17 +220,17 @@ class UIClient:
             MOUSE_DOWN_EVT = 1 << 0
             if item['type'] == 'evt_hnd' and item['events'] & MOUSE_DOWN_EVT:
                 rect = (
-                    UIClient._resolve_int(item['rect'][0], context),
-                    UIClient._resolve_int(item['rect'][1], context),
-                    UIClient._resolve_int(item['rect'][2], context),
-                    UIClient._resolve_int(item['rect'][3], context)
+                    UIClient.resolve_int(item['rect'][0], context),
+                    UIClient.resolve_int(item['rect'][1], context),
+                    UIClient.resolve_int(item['rect'][2], context),
+                    UIClient.resolve_int(item['rect'][3], context)
                 )
                 if rect[0] <= x <= rect[2] and rect[1] <= y <= rect[3]:
                     for handler in item['handler']:
                         if handler['type'] == 'reply':
                             formatted_data = handler['id'].to_bytes(4, 'big')
                             for data in handler['data']:
-                                val = UIClient._resolve_int(data, context)
+                                val = UIClient.resolve_int(data, context)
 
                                 if isinstance(val, int):
                                     formatted_data += b'\x00'
@@ -232,7 +242,7 @@ class UIClient:
                                     raise ValueError('Invalid reply data type: {}'.format(type(val)))
                             replies.append(formatted_data)
                         elif handler['type'] == 'set_var':
-                            self.persistent_context[handler['name']] = UIClient._resolve_int(handler['value'], context)
+                            self.persistent_context[handler['name']] = UIClient.resolve_int(handler['value'], context)
 
         if replies:
             self.protocol.send_packet(

@@ -74,5 +74,6 @@ if __name__ == '__main__':
             color = random.randint(0x000000, 0xffffff)
             server.scene = make_scene(0xff000000 | color)
 
-    server = ProtocolServer("/tmp/boldui.hello_world.sock", make_scene(0xffc08080), handle_reply)
+    server = ProtocolServer("/tmp/boldui.hello_world.sock", handle_reply)
+    server.scene = make_scene(0xffc08080)
     server.serve()
