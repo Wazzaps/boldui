@@ -333,7 +333,7 @@ class ProtocolServer:
                 while reply_data:
                     item_type = reply_data[0]
                     if item_type == 0:
-                        data_array.append(int.from_bytes(reply_data[1:9], 'big'))
+                        data_array.append(int.from_bytes(reply_data[1:9], 'big', signed=True))
                         reply_data = reply_data[9:]
                     elif item_type == 1:
                         data_array.append(struct.unpack('>d', reply_data[1:9])[0])

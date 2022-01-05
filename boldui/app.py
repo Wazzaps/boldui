@@ -29,8 +29,12 @@ class App:
         self._reply_handlers = {}
 
     def rebuild(self):
-        txn = self.durable_store.begin(write=True)
-        model_instance = self.durable_model(txn, 'd')
+        if self.durable_store is not None:
+            txn = self.durable_store.begin(write=True)
+            model_instance = self.durable_model(txn, 'd')
+        else:
+            txn = None
+            model_instance = None
 
         try:
             with export('_app', self):
@@ -45,18 +49,21 @@ class App:
                         child=self._scene_instance,
                     ).build()
 
-                    _read_items = set(model_instance._read_items)
-                    for path in model_instance._bound_items:
-                        item = model_instance._items_by_path[path]
-                        _key = f'{item.model_name}#{item.id}'
-                        _var_key = f'{model_instance._prefix}:{_key}'
-                        model_instance._update_client(_var_key, item.type, model_instance._get_item(path))
+                    if self.durable_store is not None:
+                        _read_items = set(model_instance._read_items)
+                        for path in model_instance._bound_items:
+                            item = model_instance._items_by_path[path]
+                            _key = f'{item.model_name}#{item.id}'
+                            _var_key = f'{model_instance._prefix}:{_key}'
+                            model_instance._update_client(_var_key, item.type, model_instance._get_item(path))
 
-            txn.commit()
-            # print(f'bound_items: {model_instance._bound_items}')
-            # print(f'read_items: {model_instance._read_items}')
+            if self.durable_store is not None:
+                txn.commit()
+                # print(f'bound_items: {model_instance._bound_items}')
+                # print(f'read_items: {model_instance._read_items}')
         except BaseException:
-            txn.abort()
+            if self.durable_store is not None:
+                txn.abort()
             raise
 
         size = built_scene.layout(Expr(0), Expr(0), Expr.var('width'), Expr.var('height'))
@@ -72,14 +79,19 @@ class App:
         self.server.serve()
 
     def _reply_handler(self, reply_id, data_array):
-        txn = self.durable_store.begin(write=True)
-        self.durable_model(txn, 'd')
+        if self.durable_store is not None:
+            txn = self.durable_store.begin(write=True)
+            self.durable_model(txn, 'd')
+        else:
+            txn = None
 
         try:
             with export('_app', self):
                 with export('_reply_handlers', self._reply_handlers):
                     self._reply_handlers[reply_id](data_array)
-            txn.commit()
+            if self.durable_store is not None:
+                txn.commit()
         except BaseException:
-            txn.abort()
+            if self.durable_store is not None:
+                txn.abort()
             raise

@@ -41,6 +41,11 @@ def main_loop(state):
                             break
                         elif event.type == sdl2.SDL_MOUSEBUTTONDOWN:
                             state.handle_mouse_down(event.button.x, event.button.y, (surface.width(), surface.height()))
+                        elif event.type == sdl2.SDL_MOUSEWHEEL:
+                            x = ctypes.c_int()
+                            y = ctypes.c_int()
+                            sdl2.SDL_GetMouseState(x, y)
+                            state.handle_scroll(x.value, y.value, event.wheel.x, event.wheel.y, (surface.width(), surface.height()))
                         elif event.type == sdl2.SDL_WINDOWEVENT:
                             if event.window.event == sdl2.SDL_WINDOWEVENT_RESIZED:
                                 # w, h = event.window.data1, event.window.data2

@@ -222,7 +222,6 @@ class Padding(Widget):
     def __init__(self, child, left=0, top=0, right=0, bottom=0, horizontal=None, vertical=None, all=None):
         self.child = child
         self._built_child = None
-        super(Padding, self).__init__()
 
         if all is not None:
             self.left = Expr(all)
@@ -241,16 +240,24 @@ class Padding(Widget):
             self.top = Expr(vertical)
             self.bottom = Expr(vertical)
 
+        super(Padding, self).__init__()
+
     def __repr__(self):
         return 'Padding(left={}, top={}, right={}, bottom={}, child={})'.format(
             self.left, self.top, self.right, self.bottom, repr(self.child)
         )
 
     def get_flex_x(self) -> float:
-        return self.child.get_flex_x()
+        if self._built_child:
+            return self._built_child.get_flex_x()
+        else:
+            return 0
 
     def get_flex_y(self) -> float:
-        return self.child.get_flex_y()
+        if self._built_child:
+            return self._built_child.get_flex_y()
+        else:
+            return 0
 
     def build(self) -> Widget:
         self._built_child = self.child.build()
@@ -267,6 +274,43 @@ class Padding(Widget):
 
     def render(self, left, top, right, bottom):
         return self._built_child.render(left + self.left, top + self.top, right - self.right, bottom - self.bottom)
+
+
+class PositionOffset(Widget):
+    def __init__(self, child, x=0, y=0):
+        self.child = child
+        self._built_child = None
+        self.x = Expr(x)
+        self.y = Expr(y)
+
+        super(PositionOffset).__init__()
+
+    def __repr__(self):
+        return 'PositionOffset(x={}, y={}, child={})'.format(
+            self.x, self.y, repr(self.child)
+        )
+
+    def get_flex_x(self) -> float:
+        if self._built_child:
+            return self._built_child.get_flex_x()
+        else:
+            return 0
+
+    def get_flex_y(self) -> float:
+        if self._built_child:
+            return self._built_child.get_flex_y()
+        else:
+            return 0
+
+    def build(self) -> Widget:
+        self._built_child = self.child.build()
+        return self
+
+    def layout(self, min_width, min_height, max_width, max_height):
+        return self._built_child.layout(min_width, min_height, max_width, max_height)
+
+    def render(self, left, top, right, bottom):
+        return self._built_child.render(left + self.x, top + self.y, right + self.x, bottom + self.y)
 
 
 class Center(Widget):
@@ -419,9 +463,13 @@ class Flexible(Widget):
 class EventHandler(Widget):
     COUNTER = 1
 
-    def __init__(self, child=None, on_mouse_down=None):
+    def __init__(self, child=None, on_mouse_down=None, on_scroll=None):
         self.child = child
         self.on_mouse_down = on_mouse_down
+        self.on_scroll = on_scroll
+
+        assert (self.on_mouse_down is None) != (self.on_scroll is None),\
+            'Either on_mouse_down or on_scroll must be specified'
 
         self._built_child = None
         self._id = EventHandler.COUNTER
@@ -434,18 +482,22 @@ class EventHandler(Widget):
 
     def get_flex_x(self) -> float:
         if self._built_child:
-            self._built_child.get_flex_x()
+            return self._built_child.get_flex_x()
         else:
             return 1
 
     def get_flex_y(self) -> float:
         if self._built_child:
-            self._built_child.get_flex_y()
+            return self._built_child.get_flex_y()
         else:
             return 1
 
     def build(self) -> Widget:
-        Context['_reply_handlers'][self._id] = self.on_mouse_down
+        if self.on_mouse_down:
+            Context['_reply_handlers'][self._id] = self.on_mouse_down
+        elif self.on_scroll:
+            Context['_reply_handlers'][self._id] = self.on_scroll
+
         if self.child:
             self._built_child = self.child.build()
         return self
@@ -458,14 +510,25 @@ class EventHandler(Widget):
 
     def render(self, left, top, right, bottom):
         events = 0
-        handlers = [
-            Ops.reply(self._id, [Expr.var('event_x'), Expr.var('event_y'), Expr.var('time')])
-        ]
+        handlers = None
 
         if self.on_mouse_down:
             events |= 1 << 0
             if isinstance(self.on_mouse_down, list):
                 handlers = self.on_mouse_down
+            else:
+                handlers = [
+                    Ops.reply(self._id, [Expr.var('event_x'), Expr.var('event_y'), Expr.var('time')])
+                ]
+
+        if self.on_scroll:
+            events |= 1 << 1
+            if isinstance(self.on_scroll, list):
+                handlers = self.on_scroll
+            else:
+                handlers = [
+                    Ops.reply(self._id, [Expr.var('event_x'), Expr.var('event_y'), Expr.var('scroll_x'), Expr.var('scroll_y'), Expr.var('time')])
+                ]
 
         handler = Ops.event_handler((left, top, right, bottom), events, handlers)
         if self._built_child:

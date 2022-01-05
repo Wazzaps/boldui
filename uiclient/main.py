@@ -6,7 +6,7 @@ import struct
 import sys
 import threading
 import time
-from typing import Tuple
+from typing import Tuple, Dict
 
 import skia
 
@@ -207,18 +207,29 @@ class UIClient:
         canvas.flush()
 
     def handle_mouse_down(self, x: int, y: int, scene_size: Tuple[int, int]):
+        MOUSE_DOWN_EVT = 1 << 0
+        self._handle_event_generic(x, y, {}, MOUSE_DOWN_EVT, scene_size)
+
+    def handle_scroll(self, x: int, y: int, scroll_x: int, scroll_y: int, scene_size: Tuple[int, int]):
+        MOUSE_SCROLL_EVT = 1 << 1
+        self._handle_event_generic(x, y, {
+            'scroll_x': scroll_x,
+            'scroll_y': scroll_y
+        }, MOUSE_SCROLL_EVT, scene_size)
+
+    def _handle_event_generic(self, x: int, y: int, extra_context: Dict, event_mask: int, scene_size: Tuple[int, int]):
         context = {
             **self.persistent_context,
             'width': scene_size[0],
             'height': scene_size[1],
             'event_x': x,
             'event_y': y,
-            'time': time.time()
+            'time': time.time(),
+            **extra_context,
         }
         replies = []
         for item in self.scene:
-            MOUSE_DOWN_EVT = 1 << 0
-            if item['type'] == 'evt_hnd' and item['events'] & MOUSE_DOWN_EVT:
+            if item['type'] == 'evt_hnd' and item['events'] & event_mask:
                 rect = (
                     UIClient.resolve_int(item['rect'][0], context),
                     UIClient.resolve_int(item['rect'][1], context),
@@ -234,7 +245,7 @@ class UIClient:
 
                                 if isinstance(val, int):
                                     formatted_data += b'\x00'
-                                    formatted_data += val.to_bytes(8, 'big')
+                                    formatted_data += val.to_bytes(8, 'big', signed=True)
                                 elif isinstance(val, float):
                                     formatted_data += b'\x01'
                                     formatted_data += struct.pack('>d', val)
