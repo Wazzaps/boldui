@@ -98,6 +98,63 @@ This "compiles" to the same scene-graph from above, because of the expression ab
 
 Special care is needed when writing complex layouts though, to keep expressions from exploding in size.
 
+### The data store
+
+Responsive static UIs are nice and all, but most apps deal with data.
+
+To guarantee data durability, we use a lightweight yet properly ACID key-value database ([LMDB](https://lmdb.readthedocs.io/en/release/)).
+
+It looks like this:
+
+```python
+class Model(BaseModel):
+    counter: int
+
+
+@widget
+def main_page():
+     def increment(_):
+         Model.counter += 1
+
+     return Stack([
+         # Background
+         Rectangle(color=0xff222222),
+
+         # Counter
+         Center(
+            EventHandler(
+               on_mouse_down=increment,
+               child=Text(text=Model.bind.counter.to_str(), font_size=24),
+            ),
+         ),
+     ])
+
+if __name__ == '__main__':
+   app = App(main_page, durable_store='/run/user/1000/example_app.db', durable_model=Model)
+   app.run()
+```
+
+We define a model, each field is given an ID (which becomes the key in the DB), and each field can either be read/modified (Like `Model.counter`) or be used to create a binding (Like `Model.bind.counter`).
+
+Bindings save a widget rebuild if the value changes, the app simply notifies the client the of new value and it redraws accordingly. 
+
+The model cannot contain lists (at least at the moment), just `int`s, `float`s, `str`s, and other subtypes of `BaseModel`.
+
+The model can only be read/modified in the `build` function and in event handlers (only on the main thread!).
+
+I plan to add sqlite support for relational / bulk data, hopefully with a nice API and DX like CoreData.
+
+Both databases will need migrations, since app updates will break the model key mappings.
+
+### Resource saving
+
+The apps use `systemd-socket-activate` to launch themselves only when a client connects to the app socket.
+
+(feature below is not implemented yet)
+
+The app will detect inactivity and turn itself off after notifying the client. This frees the RAM the app took, but still
+lets the client wake back the app if it becomes focused (with the socket activation feature).
+
 ### Running the example
 
 ```shell
