@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import abc
 import contextlib
-from typing import Tuple, Dict
+from typing import Tuple, Dict, List
 
 import lmdb
 
@@ -24,8 +24,7 @@ def export(name, value):
 
 
 class Widget:
-    def __init__(self):
-        self.build()
+    BUILDS_CHILDREN = False
 
     def layout(self, min_width: Expr, min_height: Expr, max_width: Expr, max_height: Expr) -> Tuple[Expr, Expr]:
         raise RuntimeError('This widget shouldn\'t be rendered directly')
@@ -37,6 +36,15 @@ class Widget:
     def build(self):
         pass
 
+    def build_recursively(self):
+        if self.BUILDS_CHILDREN:
+            return self.build()
+        else:
+            built = self.build()
+            while not type(built).BUILDS_CHILDREN:
+                built = built.build()
+            return built.build()
+
     def get_flex_x(self) -> float:
         return 0
 
@@ -45,6 +53,8 @@ class Widget:
 
 
 class Row(Widget):
+    BUILDS_CHILDREN = True
+
     def __init__(self, children, align='center'):
         self.children = children
         self.align = align
@@ -65,7 +75,7 @@ class Row(Widget):
     def build(self) -> Widget:
         self._built_children = []
         for child in self.children:
-            self._built_children.append(child.build())
+            self._built_children.append(child.build_recursively())
         return self
 
     def layout(self, min_width, min_height, max_width, max_height):
@@ -132,6 +142,8 @@ class Row(Widget):
 
 
 class Column(Widget):
+    BUILDS_CHILDREN = True
+
     def __init__(self, children, align='center'):
         self.children = children
         self.align = align
@@ -152,7 +164,7 @@ class Column(Widget):
     def build(self) -> Widget:
         self._built_children = []
         for child in self.children:
-            self._built_children.append(child.build())
+            self._built_children.append(child.build_recursively())
         return self
 
     def layout(self, min_width, min_height, max_width, max_height):
@@ -219,6 +231,8 @@ class Column(Widget):
 
 
 class Padding(Widget):
+    BUILDS_CHILDREN = True
+
     def __init__(self, child, left=0, top=0, right=0, bottom=0, horizontal=None, vertical=None, all=None):
         self.child = child
         self._built_child = None
@@ -260,7 +274,7 @@ class Padding(Widget):
             return 0
 
     def build(self) -> Widget:
-        self._built_child = self.child.build()
+        self._built_child = self.child.build_recursively()
         return self
 
     def layout(self, min_width, min_height, max_width, max_height):
@@ -277,6 +291,8 @@ class Padding(Widget):
 
 
 class PositionOffset(Widget):
+    BUILDS_CHILDREN = True
+
     def __init__(self, child, x=0, y=0):
         self.child = child
         self._built_child = None
@@ -303,7 +319,7 @@ class PositionOffset(Widget):
             return 0
 
     def build(self) -> Widget:
-        self._built_child = self.child.build()
+        self._built_child = self.child.build_recursively()
         return self
 
     def layout(self, min_width, min_height, max_width, max_height):
@@ -314,6 +330,8 @@ class PositionOffset(Widget):
 
 
 class Center(Widget):
+    BUILDS_CHILDREN = True
+
     def __init__(self, child):
         self.child = child
         self._built_child = None
@@ -329,7 +347,7 @@ class Center(Widget):
         return 1
 
     def build(self) -> Widget:
-        self._built_child = self.child.build()
+        self._built_child = self.child.build_recursively()
         return self
 
     def layout(self, min_width, min_height, max_width, max_height):
@@ -343,6 +361,8 @@ class Center(Widget):
 
 
 class SizedBox(Widget):
+    BUILDS_CHILDREN = True
+
     def __init__(self, child, width=None, height=None):
         self.child = child
         self._built_child = None
@@ -362,7 +382,7 @@ class SizedBox(Widget):
         return 1 if self.height is None else 0
 
     def build(self) -> Widget:
-        self._built_child = self.child.build()
+        self._built_child = self.child.build_recursively()
         return self
 
     def layout(self, min_width, min_height, max_width, max_height):
@@ -375,6 +395,8 @@ class SizedBox(Widget):
 
 
 class Rectangle(Widget):
+    BUILDS_CHILDREN = True
+
     def __init__(self, color):
         self.color = color
         super(Rectangle, self).__init__()
@@ -399,6 +421,8 @@ class Rectangle(Widget):
 
 
 class Text(Widget):
+    BUILDS_CHILDREN = True
+
     def __init__(self, text, font_size=14, color=0xffffffff):
         self.text = Expr.unwrap(text)
         self.font_size = font_size
@@ -427,6 +451,8 @@ class Text(Widget):
 
 
 class Flexible(Widget):
+    BUILDS_CHILDREN = True
+
     def __init__(self, child=None, flex_x=1, flex_y=1):
         self.child = child
         self._built_child = None
@@ -447,7 +473,7 @@ class Flexible(Widget):
 
     def build(self) -> Widget:
         if self.child:
-            self._built_child = self.child.build()
+            self._built_child = self.child.build_recursively()
         return self
 
     def layout(self, _min_width, _min_height, max_width, max_height):
@@ -461,6 +487,7 @@ class Flexible(Widget):
 
 
 class EventHandler(Widget):
+    BUILDS_CHILDREN = True
     COUNTER = 1
 
     def __init__(self, child=None, on_mouse_down=None, on_scroll=None):
@@ -499,7 +526,7 @@ class EventHandler(Widget):
             Context['_reply_handlers'][self._id] = self.on_scroll
 
         if self.child:
-            self._built_child = self.child.build()
+            self._built_child = self.child.build_recursively()
         return self
 
     def layout(self, min_width, min_height, max_width, max_height):
@@ -530,17 +557,95 @@ class EventHandler(Widget):
                     Ops.reply(self._id, [Expr.var('event_x'), Expr.var('event_y'), Expr.var('scroll_x'), Expr.var('scroll_y'), Expr.var('time')])
                 ]
 
-        handler = Ops.event_handler((left, top, right, bottom), events, handlers)
+        event_hnd_op = Ops.event_handler((left, top, right, bottom), events, handlers)
         if self._built_child:
             return [
-                handler,
+                event_hnd_op,
                 *self._built_child.render(left, top, right, bottom),
             ]
         else:
-            return [handler]
+            return [event_hnd_op]
+
+
+class WatchVar(Widget):
+    BUILDS_CHILDREN = True
+    ACK_ID_COUNTER = 1
+
+    def __init__(self, cond: Expr, data: List[Expr], handler=None, wait_for_roundtrip=True, child=None):
+        self.cond = cond
+        self.data = data
+        self.handler = handler
+        self.wait_for_roundtrip = wait_for_roundtrip
+        self.child = child
+
+        self._built_child = None
+        self._hnd_id = EventHandler.COUNTER
+        EventHandler.COUNTER += 1
+
+        self._ack_id = WatchVar.ACK_ID_COUNTER
+        WatchVar.ACK_ID_COUNTER += 1
+
+        super(WatchVar, self).__init__()
+
+    def __repr__(self):
+        return 'WatchVar(cond={}, data={}, handler={}, wait_for_roundtrip={}, child={})'.format(
+            repr(self.cond), repr(self.data), repr(self.handler), repr(self.wait_for_roundtrip), repr(self.child)
+        )
+
+    def get_flex_x(self) -> float:
+        if self._built_child:
+            return self._built_child.get_flex_x()
+        else:
+            return 1
+
+    def get_flex_y(self) -> float:
+        if self._built_child:
+            return self._built_child.get_flex_y()
+        else:
+            return 1
+
+    def build(self) -> Widget:
+        if self.handler and not isinstance(self.handler, list):
+            def handler(value):
+                self.handler(value)
+                if self.wait_for_roundtrip:
+                    Context['_app'].server.send_watch_ack(self._ack_id)
+            Context['_reply_handlers'][self._hnd_id] = handler
+
+        if self.child:
+            self._built_child = self.child.build_recursively()
+        return self
+
+    def layout(self, min_width, min_height, max_width, max_height):
+        if self._built_child:
+            return self._built_child.layout(min_width, min_height, max_width, max_height)
+        else:
+            return max_width, max_height
+
+    def render(self, left, top, right, bottom):
+        handlers = None
+
+        if self.handler:
+            if isinstance(self.handler, list):
+                handlers = self.handler
+            else:
+                handlers = [
+                    Ops.reply(self._hnd_id, self.data)
+                ]
+
+        watch_op = Ops.watch_var(self._ack_id, self.cond, self.wait_for_roundtrip, handlers)
+        if self._built_child:
+            return [
+                watch_op,
+                *self._built_child.render(left, top, right, bottom),
+            ]
+        else:
+            return [watch_op]
 
 
 class Clear(Widget):
+    BUILDS_CHILDREN = True
+
     def __init__(self, child, color):
         self.child = child
         self._built_child = None
@@ -557,7 +662,7 @@ class Clear(Widget):
         return 1
 
     def build(self) -> Widget:
-        self._built_child = self.child.build()
+        self._built_child = self.child.build_recursively()
         return self
 
     def layout(self, _min_width, _min_height, max_width, max_height):
@@ -571,6 +676,8 @@ class Clear(Widget):
 
 
 class Stack(Widget):
+    BUILDS_CHILDREN = True
+
     def __init__(self, children, align='center'):
         self.children = children
         self.align = align
@@ -591,7 +698,7 @@ class Stack(Widget):
     def build(self) -> Widget:
         self._built_children = []
         for child in self.children:
-            self._built_children.append(child.build())
+            self._built_children.append(child.build_recursively())
         return self
 
     def layout(self, min_width, min_height, max_width, max_height):

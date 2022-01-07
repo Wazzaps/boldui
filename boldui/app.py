@@ -1,3 +1,5 @@
+import contextlib
+
 import lmdb as lmdb
 
 from boldui import stringify_op, ProtocolServer, Expr
@@ -27,44 +29,19 @@ class App:
         self.durable_store = lmdb.Environment(durable_store) if durable_store else None
         self.durable_model = durable_model
         self._reply_handlers = {}
+        self._txn_active = False
 
     def rebuild(self):
-        if self.durable_store is not None:
-            txn = self.durable_store.begin(write=True)
-            model_instance = self.durable_model(txn, 'd')
-        else:
-            txn = None
-            model_instance = None
+        with self._build_context():
+            if self._scene_instance is None:
+                self._scene_instance = self.scene()
+            else:
+                self._scene_instance.build()
 
-        try:
-            with export('_app', self):
-                with export('_reply_handlers', self._reply_handlers):
-                    if self._scene_instance is None:
-                        self._scene_instance = self.scene()
-                    else:
-                        self._scene_instance.build()
-
-                    built_scene = Clear(
-                        color=0xff000000,
-                        child=self._scene_instance,
-                    ).build()
-
-                    if self.durable_store is not None:
-                        _read_items = set(model_instance._read_items)
-                        for path in model_instance._bound_items:
-                            item = model_instance._items_by_path[path]
-                            _key = f'{item.model_name}#{item.id}'
-                            _var_key = f'{model_instance._prefix}:{_key}'
-                            model_instance._update_client(_var_key, item.type, model_instance._get_item(path))
-
-            if self.durable_store is not None:
-                txn.commit()
-                # print(f'bound_items: {model_instance._bound_items}')
-                # print(f'read_items: {model_instance._read_items}')
-        except BaseException:
-            if self.durable_store is not None:
-                txn.abort()
-            raise
+            built_scene = Clear(
+                color=0xff000000,
+                child=self._scene_instance,
+            ).build_recursively()
 
         size = built_scene.layout(Expr(0), Expr(0), Expr.var('width'), Expr.var('height'))
         rendered_scene = built_scene.render(Expr(0), Expr(0), size[0], size[1])
@@ -78,20 +55,38 @@ class App:
         self.server.scene = self.rebuild()
         self.server.serve()
 
-    def _reply_handler(self, reply_id, data_array):
-        if self.durable_store is not None:
+    @contextlib.contextmanager
+    def _build_context(self):
+        if self.durable_store is not None and not self._txn_active:
             txn = self.durable_store.begin(write=True)
-            self.durable_model(txn, 'd')
+            model_instance = self.durable_model(txn, 'd')
+            self._txn_active = True
         else:
             txn = None
+            model_instance = None
 
         try:
             with export('_app', self):
                 with export('_reply_handlers', self._reply_handlers):
-                    self._reply_handlers[reply_id](data_array)
-            if self.durable_store is not None:
+                    yield
+
+                    if txn is not None:
+                        _read_items = set(model_instance._read_items)
+                        for path in model_instance._bound_items:
+                            item = model_instance._items_by_path[path]
+                            _key = f'{item.model_name}#{item.id}'
+                            _var_key = f'{model_instance._prefix}:{_key}'
+                            model_instance._update_client(_var_key, item.type, model_instance._get_item(path))
+            if txn is not None:
                 txn.commit()
         except BaseException:
-            if self.durable_store is not None:
+            if txn is not None:
                 txn.abort()
             raise
+
+        if txn is not None:
+            self._txn_active = False
+
+    def _reply_handler(self, reply_id, data_array):
+        with self._build_context():
+            self._reply_handlers[reply_id](data_array)

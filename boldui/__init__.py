@@ -13,6 +13,7 @@ class Actions:
     UPDATE_SCENE = 0
     HANDLER_REPLY = 1
     SET_VAR = 2
+    WATCH_ACK = 3
 
 
 def stringify_op(obj, indent=0):
@@ -29,10 +30,10 @@ def stringify_op(obj, indent=0):
         return result
     elif isinstance(obj, dict) and 'type' in obj:
         if obj['type'] in ('add', 'sub', 'mul', 'div', 'b_or', 'b_and', 'mod', 'abs', 'gt', 'lt', 'ge', 'le', 'eq',
-                           'ne', 'neg', 'b_and', 'b_or', 'b_invert', 'if', 'min', 'max'):
+                           'ne', 'neg', 'b_and', 'b_or', 'b_invert', 'if', 'min', 'max', 'var'):
             return str(Expr(obj))
 
-        if obj['type'] in ('clear', 'rect', 'text'):
+        if obj['type'] in ('clear', 'rect', 'reply', 'set_var', 'evt_hnd', 'watch', 'ack_watch', 'if', 'text'):
             result += 'Ops.' + obj['type'] + '('
             if len(obj.keys()) != 1:
                 result += '\n'
@@ -71,6 +72,23 @@ class Ops:
             'rect': list(map(Expr.unwrap, rect)),
             'events': events,
             'handler': handler
+        }
+
+    @staticmethod
+    def watch_var(id, cond, wait_for_roundtrip, handler):
+        return {
+            'type': 'watch',
+            'id': id,
+            'cond': Expr.unwrap(cond),
+            'waitForRoundtrip': wait_for_roundtrip,
+            'handler': handler
+        }
+
+    @staticmethod
+    def ack_watch(id):
+        return {
+            'type': 'ack_watch',
+            'id': id,
         }
 
     @staticmethod
@@ -146,7 +164,7 @@ class Expr:
         elif isinstance(other, (int, float)) and other == Expr.unwrap(0):
             return self
         elif isinstance(self.val, (int, float)) and self.val == 0:
-            return Expr(other)
+            return -Expr(other)
         elif isinstance(other, (int, float)) and self.val['type'] == 'add':
             new_val = Expr(self.val['b']) - other
             if new_val.val == 0:
@@ -353,7 +371,6 @@ class ProtocolServer:
                 if self.reply_handler:
                     # print(f'Reply: {hex(reply_id)} : {data_array}')
                     self.reply_handler(reply_id, data_array)
-
         else:
             print('Unknown packet type:', packet)
 
@@ -365,4 +382,8 @@ class ProtocolServer:
         self.pending_vars[name] = (val_type, value)
         if self.socket:
             self._send_packet(Actions.SET_VAR.to_bytes(4, 'big') + name.encode() + b'\x00' + val_type.encode()
-                              + b'\x00' + json.dumps(value).encode())
+                              + b'\x00' + json.dumps(Expr.unwrap(value)).encode())
+
+    def send_watch_ack(self, ack_id: int):
+        if self.socket:
+            self._send_packet(Actions.WATCH_ACK.to_bytes(4, 'big') + ack_id.to_bytes(8, 'big'))

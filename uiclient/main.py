@@ -17,6 +17,7 @@ class Actions:
     UPDATE_SCENE = 0
     HANDLER_REPLY = 1
     SET_VAR = 2
+    WATCH_ACK = 3
 
 
 class Protocol:
@@ -60,6 +61,9 @@ class Protocol:
 
         if packet_type == Actions.UPDATE_SCENE:
             self.ui_client.scene = json.loads(packet)
+            self.ui_client._blocked_watches.clear()
+            self.ui_client._should_update_watches = True
+            self.ui_client.update_watches(send=True)
             # print(self.ui_client.scene)
         elif packet_type == Actions.SET_VAR:
             var_name, var_type, var_value = packet.split(b'\x00')
@@ -70,17 +74,27 @@ class Protocol:
             else:
                 raise Exception('Unknown var type')
             self.ui_client.persistent_context[var_name.decode()] = new_value
+            self.ui_client._should_update_watches = True
+            self.ui_client.update_watches(send=True)
+        elif packet_type == Actions.WATCH_ACK:
+            ack_id = int.from_bytes(packet[:8], 'big')
+            # print(f'Watch ack #{ack_id}')
+            self.ui_client.ack_watch(ack_id)
         else:
             print('Unknown packet type:', packet)
 
 
 class UIClient:
+    WATCH_RECURSION = 3
+
     def __init__(self, address):
         self.scene = [
             {'type': 'clear', 'color': 0xff202020},
         ]
         self.protocol = Protocol(address, self)
         self.persistent_context = {}
+        self._should_update_watches = False
+        self._blocked_watches = set()
 
         self.protocol.connect()
 
@@ -208,7 +222,6 @@ class UIClient:
                     font,
                     paint
                 )
-        canvas.flush()
 
     def handle_mouse_down(self, x: int, y: int, scene_size: Tuple[int, int]):
         MOUSE_DOWN_EVT = 1 << 0
@@ -220,6 +233,37 @@ class UIClient:
             'scroll_x': scroll_x,
             'scroll_y': scroll_y
         }, MOUSE_SCROLL_EVT, scene_size)
+
+    def _eval_handlers(self, handlers, context):
+        replies = []
+        for handler in handlers:
+            if handler['type'] == 'reply':
+                formatted_data = handler['id'].to_bytes(4, 'big')
+                for data in handler['data']:
+                    val = UIClient.resolve_int(data, context)
+
+                    if isinstance(val, int):
+                        formatted_data += b'\x00'
+                        formatted_data += val.to_bytes(8, 'big', signed=True)
+                    elif isinstance(val, float):
+                        formatted_data += b'\x01'
+                        formatted_data += struct.pack('>d', val)
+                    else:
+                        raise ValueError('Invalid reply data type: {}'.format(type(val)))
+                replies.append(formatted_data)
+            elif handler['type'] == 'set_var':
+                self.persistent_context[handler['name']] = UIClient.resolve_int(handler['value'], context)
+                print(self.persistent_context[handler['name']])
+                self._should_update_watches = True
+                replies += self.update_watches()
+        return replies
+
+    def _send_replies(self, replies):
+        self.protocol.send_packet(
+            Actions.HANDLER_REPLY.to_bytes(4, 'big')
+            + len(replies).to_bytes(2, 'big')
+            + b''.join(((len(reply) - 4).to_bytes(2, 'big') + reply) for reply in replies)
+        )
 
     def _handle_event_generic(self, x: int, y: int, extra_context: Dict, event_mask: int, scene_size: Tuple[int, int]):
         context = {
@@ -241,30 +285,38 @@ class UIClient:
                     UIClient.resolve_int(item['rect'][3], context)
                 )
                 if rect[0] <= x <= rect[2] and rect[1] <= y <= rect[3]:
-                    for handler in item['handler']:
-                        if handler['type'] == 'reply':
-                            formatted_data = handler['id'].to_bytes(4, 'big')
-                            for data in handler['data']:
-                                val = UIClient.resolve_int(data, context)
+                    replies += self._eval_handlers(item['handler'], context)
 
-                                if isinstance(val, int):
-                                    formatted_data += b'\x00'
-                                    formatted_data += val.to_bytes(8, 'big', signed=True)
-                                elif isinstance(val, float):
-                                    formatted_data += b'\x01'
-                                    formatted_data += struct.pack('>d', val)
-                                else:
-                                    raise ValueError('Invalid reply data type: {}'.format(type(val)))
-                            replies.append(formatted_data)
-                        elif handler['type'] == 'set_var':
-                            self.persistent_context[handler['name']] = UIClient.resolve_int(handler['value'], context)
+        replies += self.update_watches()
 
         if replies:
-            self.protocol.send_packet(
-                Actions.HANDLER_REPLY.to_bytes(4, 'big')
-                + len(replies).to_bytes(2, 'big')
-                + b''.join(((len(reply) - 4).to_bytes(2, 'big') + reply) for reply in replies)
-            )
+            self._send_replies(replies)
+
+    def update_watches(self, send=False):
+        replies = []
+        context = self.persistent_context
+        for _ in range(UIClient.WATCH_RECURSION):
+            if self._should_update_watches:
+                self._should_update_watches = False
+                for op in self.scene:
+                    if op['type'] == 'watch':
+                        if op['id'] not in self._blocked_watches:
+                            if UIClient.resolve_int(op['cond'], context):
+                                replies += self._eval_handlers(op['handler'], context)
+                                if op['waitForRoundtrip']:
+                                    self._blocked_watches.add(op['id'])
+            else:
+                break
+
+        if send:
+            self._send_replies(replies)
+        else:
+            return replies
+
+    def ack_watch(self, ack_id: int):
+        if ack_id in self._blocked_watches:
+            self._blocked_watches.remove(ack_id)
+        self.update_watches(send=True)
 
 
 if __name__ == '__main__':

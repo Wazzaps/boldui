@@ -37,6 +37,7 @@ def main_loop(state):
 
     frame_times = 0.0
     frame_counter = 0
+    fps_str = ''
 
     while running:
         with skia_surface(window) as surface:  # type: skia.Surface
@@ -63,14 +64,25 @@ def main_loop(state):
                     if not resized:
                         start = time.time()
                         state.draw(canvas, (surface.width(), surface.height()))
+
+                        # Draw FPS meter
+                        fps_paint = skia.Paint(skia.Color(255, 255, 255, 255))
+                        fps_font = skia.Font(None, 12)
+                        fps_text = fps_str
+                        canvas.drawString(fps_text, 6, 16, fps_font, fps_paint)
+
+                        canvas.flush()
+
                         frame_times += time.time() - start
 
                         frame_counter += 1
                         fps_counter += 1
 
                         elapsed = time.time() - last_measurement
-                        if elapsed > 3.0:
-                            print(f"FPS: {fps_counter / elapsed}\tFT: {frame_times / frame_counter * 1000}ms")
+                        if elapsed > 0.5:
+                            fps = fps_counter / elapsed
+                            ft = frame_times / frame_counter * 1000
+                            fps_str = f'FPS: {fps:.01f}  FT: {ft:.02f}ms'
                             fps_counter = 0
                             last_measurement = time.time()
 

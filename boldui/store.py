@@ -107,6 +107,7 @@ class ModelItemDescriptor:
             return value
 
     def __set__(self, instance, value):
+        # TODO: Implement this for no-roundtrip updates (Model.bind.x += y)
         if self._is_bind:
             raise AttributeError('Cannot modify binding')
         else:
