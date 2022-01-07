@@ -27,12 +27,16 @@ def main_loop(state):
         return -1
 
     context = sdl2.SDL_GL_CreateContext(window)
+    # sdl2.SDL_GL_SetSwapInterval(0)
 
     event = sdl2.SDL_Event()
     running = True
 
     last_measurement = time.time()
-    counter = 0
+    fps_counter = 0
+
+    frame_times = 0.0
+    frame_counter = 0
 
     while running:
         with skia_surface(window) as surface:  # type: skia.Surface
@@ -57,16 +61,21 @@ def main_loop(state):
                                 resized = True
 
                     if not resized:
+                        start = time.time()
                         state.draw(canvas, (surface.width(), surface.height()))
-                        counter += 1
+                        frame_times += time.time() - start
+
+                        frame_counter += 1
+                        fps_counter += 1
+
                         elapsed = time.time() - last_measurement
                         if elapsed > 3.0:
-                            print(f"FPS: {counter / elapsed}")
-                            counter = 0
+                            print(f"FPS: {fps_counter / elapsed}\tFT: {frame_times / frame_counter * 1000}ms")
+                            fps_counter = 0
                             last_measurement = time.time()
 
                         sdl2.SDL_GL_SwapWindow(window)
-                        sdl2.SDL_Delay(1)
+                        sdl2.SDL_Delay(16)
 
     sdl2.SDL_GL_DeleteContext(context)
     sdl2.SDL_DestroyWindow(window)

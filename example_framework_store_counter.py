@@ -36,7 +36,7 @@ class MainPage(Widget):
                     ),
                     SizedBox(
                         width=130, height=80,
-                        child=Text(text=(Model.bind.counter * 2).to_str(), font_size=24)
+                        child=Text(text=Model.bind.counter.to_str(), font_size=24)
                     ),
                     SizedBox(
                         width=80, height=80,
