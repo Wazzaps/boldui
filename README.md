@@ -2,6 +2,8 @@
 
 UI Framework based on a client-server scene-graph model.
 
+This is not a Javascript framework, it is language-independent networking protocol with a Python implementation.
+
 ## What?
 
 The framework is split into a client and a server.
@@ -25,6 +27,7 @@ This lets the client render high-framerate graphics even in bad network conditio
 4. **Fast startup:** A cached scene-graph can be shown while a heavy app server is loading (such as Python or Java)
 5. **Instant response over remote desktop:** The client knows how to draw the UI when resizing, etc.
 6. **Flexible programming style:** Multiple ways of making a scene graph can be tested (Flutter / React / HTML / etc.) without reinventing the renderer.
+7. **Simple to implement:** Should be easy to port to other runtime environments, even using other drawing libraries.
 
 ## How?
 
