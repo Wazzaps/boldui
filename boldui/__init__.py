@@ -33,7 +33,8 @@ def stringify_op(obj, indent=0):
                            'ne', 'neg', 'b_and', 'b_or', 'b_invert', 'if', 'min', 'max', 'var'):
             return str(Expr(obj))
 
-        if obj['type'] in ('clear', 'rect', 'reply', 'set_var', 'evt_hnd', 'watch', 'ack_watch', 'if', 'text'):
+        if obj['type'] in ('clear', 'rect', 'reply', 'set_var', 'evt_hnd', 'watch', 'ack_watch', 'if', 'text', 'save',
+                           'restore', 'clipRect'):
             result += 'Ops.' + obj['type'] + '('
             if len(obj.keys()) != 1:
                 result += '\n'
@@ -105,6 +106,18 @@ class Ops:
     @staticmethod
     def if_(cond, t, f):
         return {'type': 'if', 'cond': Expr.unwrap(cond), 'then': Expr.unwrap(t), 'else': Expr.unwrap(f)}
+
+    @staticmethod
+    def save():
+        return {'type': 'save'}
+
+    @staticmethod
+    def restore():
+        return {'type': 'restore'}
+
+    @staticmethod
+    def clip_rect(rect):
+        return {'type': 'clipRect', 'rect': list(map(Expr.unwrap, rect))}
 
 
 class Expr:
@@ -344,8 +357,7 @@ class ProtocolServer:
 
     def _send_packet(self, packet):
         # print('Sending packet:', packet)
-        self.socket.send(len(packet).to_bytes(4, 'big'))
-        self.socket.send(packet)
+        self.socket.send(len(packet).to_bytes(4, 'big') + packet)
 
     def _handle_packet(self, packet):
         action = int.from_bytes(packet[:4], 'big')
@@ -372,7 +384,7 @@ class ProtocolServer:
                     # print(f'Reply: {hex(reply_id)} : {data_array}')
                     self.reply_handler(reply_id, data_array)
         else:
-            print('Unknown packet type:', packet)
+            print('[app] Unknown packet type:', packet)
 
     def send_scene(self):
         if self.socket:

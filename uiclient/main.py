@@ -81,7 +81,7 @@ class Protocol:
             # print(f'Watch ack #{ack_id}')
             self.ui_client.ack_watch(ack_id)
         else:
-            print('Unknown packet type:', packet)
+            print('[client] Unknown packet type:', packet)
 
 
 class UIClient:
@@ -198,6 +198,8 @@ class UIClient:
             'height': scene_size[1],
             'time': time.time()
         }
+        canvas.save()
+        canvas.clear(0xff000000)
         for item in self.scene:
             if item['type'] == 'clear':
                 canvas.clear(item['color'])
@@ -208,6 +210,17 @@ class UIClient:
                     UIClient.resolve_int(item['rect'][2], context),
                     UIClient.resolve_int(item['rect'][3], context)
                 ), self._paint_from_int_color(UIClient.resolve_int(item['color'], context)))
+            elif item['type'] == 'save':
+                canvas.save()
+            elif item['type'] == 'restore':
+                canvas.restore()
+            elif item['type'] == 'clipRect':
+                canvas.clipRect(skia.Rect(
+                    UIClient.resolve_int(item['rect'][0], context),
+                    UIClient.resolve_int(item['rect'][1], context),
+                    UIClient.resolve_int(item['rect'][2], context),
+                    UIClient.resolve_int(item['rect'][3], context)
+                ))
             elif item['type'] == 'text':
                 paint = self._paint_from_int_color(UIClient.resolve_int(item['color'], context))
                 font_size = UIClient.resolve_int(item['fontSize'], context)
@@ -222,6 +235,7 @@ class UIClient:
                     font,
                     paint
                 )
+        canvas.restore()
 
     def handle_mouse_down(self, x: int, y: int, scene_size: Tuple[int, int]):
         MOUSE_DOWN_EVT = 1 << 0
@@ -253,7 +267,6 @@ class UIClient:
                 replies.append(formatted_data)
             elif handler['type'] == 'set_var':
                 self.persistent_context[handler['name']] = UIClient.resolve_int(handler['value'], context)
-                print(self.persistent_context[handler['name']])
                 self._should_update_watches = True
                 replies += self.update_watches()
         return replies

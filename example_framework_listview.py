@@ -2,7 +2,7 @@
 from boldui import Ops, Expr
 from boldui.app import App, update_widget
 from boldui.framework import Rectangle, SizedBox, Text, Stack, EventHandler, Widget, Column, PositionOffset, WatchVar, \
-    Context
+    Context, Padding, Clip
 from boldui.store import BaseModel
 
 
@@ -12,7 +12,7 @@ class Model(BaseModel):
 
 
 class ListView(Widget):
-    HEIGHT_SLACK = 128
+    HEIGHT_SLACK = 64
     ITEM_HEIGHT = 32
 
     def build(self):
@@ -69,7 +69,15 @@ class MainPage(Widget):
             Rectangle(color=0xff222222),
 
             # List
-            ListView(),
+            Padding(
+                Clip(
+                    Stack([
+                        Rectangle(color=0xff422222),
+                        ListView(),
+                    ]),
+                ),
+                all=150,
+            ),
         ])
 
 

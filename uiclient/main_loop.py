@@ -87,7 +87,7 @@ def main_loop(state):
                             last_measurement = time.time()
 
                         sdl2.SDL_GL_SwapWindow(window)
-                        sdl2.SDL_Delay(16)
+                        sdl2.SDL_Delay(1)
 
     sdl2.SDL_GL_DeleteContext(context)
     sdl2.SDL_DestroyWindow(window)

@@ -675,6 +675,39 @@ class Clear(Widget):
         ]
 
 
+class Clip(Widget):
+    BUILDS_CHILDREN = True
+
+    def __init__(self, child):
+        self.child = child
+        self._built_child = None
+        super().__init__()
+
+    def __repr__(self):
+        return 'Clip(child={})'.format(repr(self.child))
+
+    def get_flex_x(self) -> float:
+        return self._built_child.get_flex_x()
+
+    def get_flex_y(self) -> float:
+        return self._built_child.get_flex_y()
+
+    def build(self) -> Widget:
+        self._built_child = self.child.build_recursively()
+        return self
+
+    def layout(self, min_width, min_height, max_width, max_height):
+        return self._built_child.layout(min_width, min_height, max_width, max_height)
+
+    def render(self, left, top, right, bottom):
+        return [
+            Ops.save(),
+            Ops.clip_rect((left, top, right, bottom)),
+            *self._built_child.render(left, top, right, bottom),
+            Ops.restore(),
+        ]
+
+
 class Stack(Widget):
     BUILDS_CHILDREN = True
 
