@@ -108,7 +108,9 @@ class UIClient:
 
     @staticmethod
     def resolve_str(value, context):
-        if isinstance(value, str):
+        if value is None:
+            return ''
+        elif isinstance(value, str):
             return value
         elif isinstance(value, dict):
             if value['type'] == 'to_str':
@@ -120,7 +122,9 @@ class UIClient:
 
     @staticmethod
     def resolve_int(value, context):
-        if isinstance(value, (int, float)):
+        if value is None:
+            return 0
+        elif isinstance(value, (int, float)):
             return value
         elif isinstance(value, dict):
             if value['type'] == 'add':

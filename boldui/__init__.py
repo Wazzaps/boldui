@@ -59,7 +59,7 @@ class Ops:
         return {'type': 'rect', 'rect': list(map(Expr.unwrap, rect)), 'color': Expr.unwrap(color)}
 
     @staticmethod
-    def reply(ident: int, data: List[Expr | int | float]):
+    def reply(ident: int, data: List[Expr | int | float | None]):
         return {'type': 'reply', 'id': ident, 'data': list(map(Expr.unwrap, data))}
 
     @staticmethod
@@ -129,7 +129,9 @@ class Expr:
 
     @staticmethod
     def unwrap(value: Expr | int | float | str):
-        if isinstance(value, (int, float, str)):
+        if value is None:
+            return None
+        elif isinstance(value, (int, float, str)):
             return value
         else:
             return value.val

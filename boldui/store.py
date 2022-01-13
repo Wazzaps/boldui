@@ -3,7 +3,6 @@ from dataclasses import dataclass
 import lmdb
 
 from boldui import Expr
-from boldui.framework import Context
 
 
 @dataclass
@@ -25,12 +24,12 @@ class BaseModel(metaclass=_MetaBaseModel):
         self.bind = None  # Fake variable for intellisense
         del self.bind
 
-        self._items_by_id = {}
-        self._items_by_path = {}
-        self._bound_items = set()
-        self._read_items = set()
-        self._txn = txn
-        self._prefix = prefix
+        type(self)._items_by_id = {}
+        type(self)._items_by_path = {}
+        type(self)._bound_items = set()
+        type(self)._read_items = set()
+        type(self)._txn = txn
+        type(self)._prefix = prefix
 
         ctr = 0
 
@@ -79,6 +78,8 @@ class BaseModel(metaclass=_MetaBaseModel):
         self._update_client(_var_key, item.type, value)
 
     def _update_client(self, key: str, val_type: type, value):
+        from boldui.framework import Context
+
         if val_type in (int, float):
             Context['_app'].server.set_remote_var(key, 'n', value)
         elif val_type is str:
