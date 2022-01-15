@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import socket
@@ -124,13 +125,15 @@ class Expr:
     def __init__(self, val):
         if isinstance(val, Expr):
             self.val = val.val
+        elif val is None:
+            self.val = 0
         else:
             self.val = val
 
     @staticmethod
     def unwrap(value: Expr | int | float | str):
         if value is None:
-            return None
+            return 0
         elif isinstance(value, (int, float, str)):
             return value
         else:
@@ -309,6 +312,10 @@ class ProtocolServer:
         self.server = socket.fromfd(SYSTEMD_SOCK_FD, socket.AF_UNIX, socket.SOCK_STREAM)
         self.socket = None
 
+        self._is_batch = False
+        self._batch_scene_updated = False
+        self._batch_vars = None
+
     @property
     def scene(self):
         return self._scene
@@ -316,7 +323,29 @@ class ProtocolServer:
     @scene.setter
     def scene(self, value):
         self._scene = value
-        self.send_scene()
+        if self._is_batch:
+            self._batch_scene_updated = True
+        else:
+            self._send_scene()
+
+    @contextlib.contextmanager
+    def batch_update(self):
+        assert not self._is_batch
+
+        self._is_batch = True
+        self._batch_scene_updated = False
+        self._batch_vars = {}
+
+        yield
+
+        for name, (val_type, val) in self._batch_vars.items():
+            self._send_remote_var(name, val_type, val)
+        if self._batch_scene_updated:
+            self._send_scene()
+
+        self._is_batch = False
+        self._batch_scene_updated = False
+        self._batch_vars = None
 
     def serve(self):
         while True:
@@ -335,7 +364,7 @@ class ProtocolServer:
 
             print("Handshake complete, sending initial scene")
             if self.scene:
-                self.send_scene()
+                self._send_scene()
             for var in self.pending_vars:
                 self.set_remote_var(var, self.pending_vars[var][0], self.pending_vars[var][1])
 
@@ -367,33 +396,40 @@ class ProtocolServer:
         if action == Actions.HANDLER_REPLY:
             reply_count = int.from_bytes(data[:2], 'big')
             data = data[2:]
-            for i in range(reply_count):
-                reply_len = int.from_bytes(data[:2], 'big')
-                reply_id = int.from_bytes(data[2:6], 'big')
-                reply_data = data[6:6+reply_len]
-                data_array = []
-                while reply_data:
-                    item_type = reply_data[0]
-                    if item_type == 0:
-                        data_array.append(int.from_bytes(reply_data[1:9], 'big', signed=True))
-                        reply_data = reply_data[9:]
-                    elif item_type == 1:
-                        data_array.append(struct.unpack('>d', reply_data[1:9])[0])
-                        reply_data = reply_data[9:]
-                    else:
-                        raise ValueError(f"Unknown item type {item_type}")
-                if self.reply_handler:
-                    # print(f'Reply: {hex(reply_id)} : {data_array}')
-                    self.reply_handler(reply_id, data_array)
+            with self.batch_update():
+                for i in range(reply_count):
+                    reply_len = int.from_bytes(data[:2], 'big')
+                    reply_id = int.from_bytes(data[2:6], 'big')
+                    reply_data = data[6:6+reply_len]
+                    data_array = []
+                    while reply_data:
+                        item_type = reply_data[0]
+                        if item_type == 0:
+                            data_array.append(int.from_bytes(reply_data[1:9], 'big', signed=True))
+                            reply_data = reply_data[9:]
+                        elif item_type == 1:
+                            data_array.append(struct.unpack('>d', reply_data[1:9])[0])
+                            reply_data = reply_data[9:]
+                        else:
+                            raise ValueError(f"Unknown item type {item_type}")
+                    if self.reply_handler:
+                        # print(f'Reply: {hex(reply_id)} : {data_array}')
+                        self.reply_handler(reply_id, data_array)
         else:
             print('[app] Unknown packet type:', packet)
 
-    def send_scene(self):
+    def _send_scene(self):
         if self.socket:
             self._send_packet(Actions.UPDATE_SCENE.to_bytes(4, 'big') + json.dumps(self._scene).encode())
 
     def set_remote_var(self, name, val_type, value):
         self.pending_vars[name] = (val_type, value)
+        if self._is_batch:
+            self._batch_vars[name] = (val_type, value)
+        else:
+            self._send_remote_var(name, val_type, value)
+
+    def _send_remote_var(self, name, val_type, value):
         if self.socket:
             self._send_packet(Actions.SET_VAR.to_bytes(4, 'big') + name.encode() + b'\x00' + val_type.encode()
                               + b'\x00' + json.dumps(Expr.unwrap(value)).encode())

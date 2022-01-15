@@ -668,7 +668,8 @@ class Clear(Widget):
         return self
 
     def layout(self, _min_width, _min_height, max_width, max_height):
-        return max_width, max_height
+        if self._built_child:
+            return self._built_child.layout(0, 0, max_width, max_height)
 
     def render(self, left, top, right, bottom):
         return [
@@ -745,9 +746,9 @@ class Stack(Widget):
         width = max_width
         height = max_height
 
+        children_sizes = [[Expr(0), Expr(0)] for _ in self._built_children]
         # One of the axis are not flexible, need to calculate actual size
         if total_flex_x == 0 or total_flex_y == 0:
-            children_sizes = [[Expr(0), Expr(0)] for _ in self._built_children]
             for i, (child, child_flex_x, child_flex_y) in enumerate(zip(self._built_children, children_flex_x, children_flex_y)):
                 if child_flex_x == 0 or child_flex_y == 0:
                     children_sizes[i] = list(child.layout(0, min_height, float('inf'), max_height))
@@ -765,6 +766,9 @@ class Stack(Widget):
                     height = max(height, child_size[1])
             elif not children_sizes:
                 height = Expr(0)
+        else:
+            for i, child in enumerate(self._built_children):
+                children_sizes[i] = list(child.layout(min_width, min_height, width, height))
 
         return width, height
 
@@ -795,12 +799,12 @@ class Stack(Widget):
 
 class ListViewInner(Widget):
     BUILDS_CHILDREN = True
-    INITIAL_CHILDREN = 10
-    HEIGHT_SLACK = 32
+    HEIGHT_SLACK = 16
     GEN = 0
 
     class State(BaseModel):
         item_offset: int
+        item_count: int
 
     def __init__(self, state: State, builder, offset):
         self.state = state
@@ -808,8 +812,15 @@ class ListViewInner(Widget):
         self.offset = Expr(offset)
         self._built_children = {}
         self._laid_out_children = {}
-        self._watch_var_del_top = None
+        self._watch_var_top = None
+        self._watch_var = None
         self._item_offset = None
+        self._item_count = None
+
+        self._above_top_widget_height = None
+        self._top_widget_height = None
+        self._bot_widget_height = None
+        self._total_height = None
         super().__init__()
 
     def __repr__(self):
@@ -822,77 +833,131 @@ class ListViewInner(Widget):
         return 1
 
     def build(self) -> Widget:
-        def del_top_widget(data):
-            from boldui.app import update_widget
-
-            top_widget_height, last_widget_height, lv_list_start, lv_scroll_pos, gen = data
-            print(f'lv_list_start={lv_list_start} lv_scroll_pos={lv_scroll_pos} gen={gen}')
-
-            if lv_scroll_pos - lv_list_start > top_widget_height + ListViewInner.HEIGHT_SLACK:
-                # Delete top widget
-                print('scroll down', top_widget_height, 'px')
-                Context['_app'].server.set_remote_var('lv_list_start', 'n', lv_list_start + top_widget_height)
-                self.state.item_offset += 1
-            else:
-                print('scroll up', last_widget_height, 'px')
-                Context['_app'].server.set_remote_var('lv_list_start', 'n', lv_list_start - last_widget_height)
-                self.state.item_offset -= 1
-
-            # FIXME: Remove once auto updates based on bindings work
-            update_widget()
-
         self._item_offset = self.state.item_offset
+        self._item_count = self.state.item_count
         self._built_children = {}
-        for i in range(max(self._item_offset - 1, 0), self._item_offset + self.INITIAL_CHILDREN):
+        for i in range(max(self._item_offset - 1, 0), self._item_offset + self._item_count):
             self._built_children[i] = self.builder(i).build_recursively()
 
         self._laid_out_children = {}
         y = self.offset
-        last_widget_height = None
-        top_widget_height = None
-        for i in range(max(self._item_offset - 1, 0), self._item_offset + self.INITIAL_CHILDREN):
+        self._above_top_widget_height = None
+        self._top_widget_height = None
+        self._bot_widget_height = None
+        for i in range(max(self._item_offset - 1, 0), self._item_offset + self._item_count):
             height = self._built_children[i].layout(0, 0, float('inf'), float('inf'))[1]
             if i == self._item_offset - 1:
-                last_widget_height = height
+                self._above_top_widget_height = height
             else:
                 if i == self._item_offset:
-                    top_widget_height = height
+                    self._top_widget_height = height
+                if i == self._item_offset + self._item_count - 1:
+                    self._bot_widget_height = height
 
                 self._laid_out_children[i] = (y, y + height)
                 y += height
+        self._total_height = y - self.offset
 
-        print(f'--------------------- top_widget_height={top_widget_height} last_widget_height={last_widget_height} gen={ListViewInner.GEN}')
-        self._watch_var_del_top = WatchVar(
-            cond=Expr(
-                (
-                    # Delete top widget
-                    (Expr.var('lv_scroll_pos') - Expr.var('lv_list_start')) > (top_widget_height + ListViewInner.HEIGHT_SLACK)
-                ) | (
-                    # Add top widget
-                    ((Expr.var('lv_scroll_pos') - Expr.var('lv_list_start')) < ListViewInner.HEIGHT_SLACK)
-                    & (Expr.var('lv_list_start') > 0)
-                )
-            ),
-            data=[top_widget_height, last_widget_height, Expr.var('lv_list_start'), Expr.var('lv_scroll_pos'), ListViewInner.GEN],
-            handler=del_top_widget,
-            wait_for_roundtrip=True,
-            wait_for_rebuild=True,
-        ).build_recursively()
+        print(f'--------------------- top_widget_height={self._top_widget_height} above_top_widget_height={self._above_top_widget_height} bot_widget_height={self._bot_widget_height} gen={ListViewInner.GEN}')
 
         ListViewInner.GEN += 1
 
         return self
 
     def layout(self, _min_width, _min_height, max_width, max_height):
+        max_height = max_height.max(0)
+
+        def update_bottom_widget(data):
+            from boldui.app import update_widget
+
+            total_height, above_top_widget_height, top_widget_height, bot_widget_height, max_height_val, lv_list_start, lv_scroll_pos, gen = data
+            print(f'lv_list_start={lv_list_start} lv_scroll_pos={lv_scroll_pos} gen={gen}')
+            if gen != ListViewInner.GEN:
+                return
+
+            if lv_scroll_pos - lv_list_start > top_widget_height + ListViewInner.HEIGHT_SLACK:
+                # Delete top widget
+                print('scroll down', top_widget_height, 'px')
+                Context['_app'].server.set_remote_var('lv_list_start', 'n', lv_list_start + top_widget_height)
+                self.state.item_offset += 1
+            elif lv_scroll_pos - lv_list_start < ListViewInner.HEIGHT_SLACK and lv_list_start > 0:
+                # Add top widget
+                print('scroll up', above_top_widget_height, 'px')
+                Context['_app'].server.set_remote_var('lv_list_start', 'n', lv_list_start - above_top_widget_height)
+                self.state.item_offset -= 1
+
+            if total_height - (lv_scroll_pos - lv_list_start) - ListViewInner.HEIGHT_SLACK - bot_widget_height > max_height_val:
+                # Delete bottom widget
+                print('delete bot widget')
+                self.state.item_count -= 1
+            elif total_height - (lv_scroll_pos - lv_list_start) - ListViewInner.HEIGHT_SLACK < max_height_val:
+                # Add bottom widget
+                print('add bot widget')
+                self.state.item_count += 1
+
+            update_widget()
+
+        # TODO: Add/Remove multiple widgets at a time
+        print(f'============= {max_height}')
+        self._watch_var = WatchVar(
+            cond=Expr(
+                (
+                    # Delete top widget
+                    (Expr.var('lv_scroll_pos') - Expr.var('lv_list_start')) > (Expr(self._top_widget_height) + ListViewInner.HEIGHT_SLACK)
+                ) | (
+                    # Add top widget
+                    ((Expr.var('lv_scroll_pos') - Expr.var('lv_list_start')) < ListViewInner.HEIGHT_SLACK)
+                    & (Expr.var('lv_list_start') > 0)
+                ) | (
+                    # Delete bottom widget
+                    (self._total_height - (Expr.var('lv_scroll_pos') - Expr.var('lv_list_start')) - ListViewInner.HEIGHT_SLACK - self._bot_widget_height) > max_height
+                ) | (
+                    # Add bottom widget
+                    (self._total_height - (Expr.var('lv_scroll_pos') - Expr.var('lv_list_start')) - ListViewInner.HEIGHT_SLACK) < max_height
+                )
+            ),
+            data=[self._total_height, self._above_top_widget_height, self._top_widget_height, self._bot_widget_height, max_height, Expr.var('lv_list_start'), Expr.var('lv_scroll_pos'), ListViewInner.GEN],
+            handler=update_bottom_widget,
+            wait_for_roundtrip=True,
+            wait_for_rebuild=True,
+        ).build_recursively()
+
         return max_width, max_height
 
     def render(self, left, top, right, bottom):
         result = []
 
-        for i in range(self._item_offset, self._item_offset + self.INITIAL_CHILDREN):
+        for i in range(self._item_offset, self._item_offset + self._item_count):
             child_top, child_bottom = self._laid_out_children[i]
             result += self._built_children[i].render(left, top + child_top, right, top + child_bottom)
 
-        result += self._watch_var_del_top.render(left, top, right, bottom)
+        result += self._watch_var.render(left, top, right, bottom)
 
         return result
+
+
+class ListView(Widget):
+    State = ListViewInner.State
+
+    def __init__(self, state, builder):
+        self.state = state
+        self.builder = builder
+        super().__init__()
+
+    def build(self):
+        return EventHandler(
+            Clip(
+                ListViewInner(
+                    state=self.state,
+                    builder=self.builder,
+                    offset=Expr.var('lv_list_start') - Expr.var('lv_scroll_pos'),
+                ),
+            ),
+
+            on_scroll=[
+                Ops.set_var(
+                    'lv_scroll_pos',
+                    (Expr.var('lv_scroll_pos') - Expr.var('scroll_y') * 10).max(0)
+                ),
+            ],
+        )

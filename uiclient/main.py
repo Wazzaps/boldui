@@ -51,9 +51,8 @@ class Protocol:
             self._handle_packet(packet)
 
     def send_packet(self, packet):
-        print('Sending packet:', packet)
-        self.socket.send(len(packet).to_bytes(4, 'big'))
-        self.socket.send(packet)
+        # print('Sending packet:', packet)
+        self.socket.send(len(packet).to_bytes(4, 'big') + packet)
 
     def _handle_packet(self, packet):
         packet_type = int.from_bytes(packet[:4], 'big')
@@ -68,9 +67,9 @@ class Protocol:
         elif packet_type == Actions.SET_VAR:
             var_name, var_type, var_value = packet.split(b'\x00')
             if var_type == b'n':
-                new_value = UIClient.resolve_int(json.loads(var_value), self.ui_client.persistent_context)
+                new_value = UIClient.resolve_int(json.loads(var_value), self.ui_client.context)
             elif var_type == b's':
-                new_value = UIClient.resolve_str(json.loads(var_value), self.ui_client.persistent_context)
+                new_value = UIClient.resolve_str(json.loads(var_value), self.ui_client.context)
             else:
                 raise Exception('Unknown var type')
             self.ui_client.persistent_context[var_name.decode()] = new_value
@@ -95,6 +94,8 @@ class UIClient:
         self.persistent_context = {}
         self._should_update_watches = False
         self._blocked_watches = set()
+        self.width = 0
+        self.height = 0
 
         self.protocol.connect()
 
@@ -195,13 +196,23 @@ class UIClient:
         else:
             raise ValueError('Unknown type: {}'.format(value))
 
-    def draw(self, canvas: skia.Canvas, scene_size: Tuple[int, int]) -> None:
-        context = {
+    @property
+    def context(self):
+        return {
             **self.persistent_context,
-            'width': scene_size[0],
-            'height': scene_size[1],
+            'width': self.width,
+            'height': self.height,
             'time': time.time()
         }
+
+    def resize(self, width, height):
+        self.width = width
+        self.height = height
+        self._should_update_watches = True
+        self.update_watches(send=True)
+
+    def draw(self, canvas: skia.Canvas) -> None:
+        context = self.context
         canvas.save()
         canvas.clear(0xff000000)
         for item in self.scene:
@@ -241,16 +252,16 @@ class UIClient:
                 )
         canvas.restore()
 
-    def handle_mouse_down(self, x: int, y: int, scene_size: Tuple[int, int]):
+    def handle_mouse_down(self, x: int, y: int):
         MOUSE_DOWN_EVT = 1 << 0
-        self._handle_event_generic(x, y, {}, MOUSE_DOWN_EVT, scene_size)
+        self._handle_event_generic(x, y, {}, MOUSE_DOWN_EVT)
 
-    def handle_scroll(self, x: int, y: int, scroll_x: int, scroll_y: int, scene_size: Tuple[int, int]):
+    def handle_scroll(self, x: int, y: int, scroll_x: int, scroll_y: int):
         MOUSE_SCROLL_EVT = 1 << 1
         self._handle_event_generic(x, y, {
             'scroll_x': scroll_x,
             'scroll_y': scroll_y
-        }, MOUSE_SCROLL_EVT, scene_size)
+        }, MOUSE_SCROLL_EVT)
 
     def _eval_handlers(self, handlers, context):
         replies = []
@@ -282,14 +293,11 @@ class UIClient:
             + b''.join(((len(reply) - 4).to_bytes(2, 'big') + reply) for reply in replies)
         )
 
-    def _handle_event_generic(self, x: int, y: int, extra_context: Dict, event_mask: int, scene_size: Tuple[int, int]):
+    def _handle_event_generic(self, x: int, y: int, extra_context: Dict, event_mask: int):
         context = {
-            **self.persistent_context,
-            'width': scene_size[0],
-            'height': scene_size[1],
+            **self.context,
             'event_x': x,
             'event_y': y,
-            'time': time.time(),
             **extra_context,
         }
         replies = []
@@ -311,7 +319,7 @@ class UIClient:
 
     def update_watches(self, send=False):
         replies = []
-        context = self.persistent_context
+        context = self.context
         for _ in range(UIClient.WATCH_RECURSION):
             if self._should_update_watches:
                 self._should_update_watches = False

@@ -43,7 +43,7 @@ class App:
                 child=self._scene_instance,
             ).build_recursively()
 
-        size = built_scene.layout(Expr(0), Expr(0), Expr.var('width'), Expr.var('height'))
+            size = built_scene.layout(Expr(0), Expr(0), Expr.var('width'), Expr.var('height'))
         rendered_scene = built_scene.render(Expr(0), Expr(0), size[0], size[1])
         # for op in rendered_scene:
         #     print(stringify_op(op))

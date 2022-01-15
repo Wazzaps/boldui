@@ -42,6 +42,7 @@ def main_loop(state):
     while running:
         with skia_surface(window) as surface:  # type: skia.Surface
             resized = False
+            state.resize(surface.width(), surface.height())
             with surface as canvas:  # type: skia.Canvas
                 while running and not resized:
                     while sdl2.SDL_PollEvent(ctypes.byref(event)) != 0:
@@ -49,21 +50,22 @@ def main_loop(state):
                             running = False
                             break
                         elif event.type == sdl2.SDL_MOUSEBUTTONDOWN:
-                            state.handle_mouse_down(event.button.x, event.button.y, (surface.width(), surface.height()))
+                            state.handle_mouse_down(event.button.x, event.button.y)
                         elif event.type == sdl2.SDL_MOUSEWHEEL:
                             x = ctypes.c_int()
                             y = ctypes.c_int()
                             sdl2.SDL_GetMouseState(x, y)
-                            state.handle_scroll(x.value, y.value, event.wheel.x, event.wheel.y, (surface.width(), surface.height()))
+                            state.handle_scroll(x.value, y.value, event.wheel.x, event.wheel.y)
                         elif event.type == sdl2.SDL_WINDOWEVENT:
                             if event.window.event == sdl2.SDL_WINDOWEVENT_RESIZED:
                                 # w, h = event.window.data1, event.window.data2
                                 # print(f"Resized to {w} x {h}")
+                                # state.resize(event.window.data1, event.window.data2)
                                 resized = True
 
                     if not resized:
                         start = time.time()
-                        state.draw(canvas, (surface.width(), surface.height()))
+                        state.draw(canvas)
 
                         # Draw FPS meter
                         fps_paint = skia.Paint(skia.Color(255, 255, 255, 255))
