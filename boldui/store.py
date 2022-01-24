@@ -4,6 +4,8 @@ import lmdb
 
 from boldui import Expr
 
+DEBUG = False
+
 
 @dataclass
 class ModelItem:
@@ -104,7 +106,8 @@ class ModelItemDescriptor:
             return Expr.var(self._var_key)
         else:
             value = self._base_model._get_item(self._path)
-            print(f'GET: {type(self._base_model).__name__}{self._path}')
+            if DEBUG:
+                print(f'GET: {type(self._base_model).__name__}{self._path}')
             return value
 
     def __set__(self, instance, value):
@@ -114,7 +117,8 @@ class ModelItemDescriptor:
         else:
             if not isinstance(value, self._item_type):
                 raise TypeError(f'Invalid type for field {type(self._base_model).__name__}{self._path}')
-            print(f'SET: {type(self._base_model).__name__}{self._path} = {value}')
+            if DEBUG:
+                print(f'SET: {type(self._base_model).__name__}{self._path} = {value}')
             self._base_model._set_item(self._path, value)
 
 
@@ -140,10 +144,12 @@ def make_model_proxy():
             for field_name, field_type in submodel.__annotations__.items():
                 new_path = f'{path}.{field_name}'
                 if issubclass(field_type, BaseModel):
-                    print(f'bind proxy: {field_name}')
+                    if DEBUG:
+                        print(f'bind proxy: {field_name}')
                     setattr(type(self), field_name, ModelProxyDescriptor(base_model, field_type, new_path, is_bind=is_bind))
                 else:
-                    print(f'bind item: {field_name}')
+                    if DEBUG:
+                        print(f'bind item: {field_name}')
                     setattr(type(self), field_name, ModelItemDescriptor(base_model, field_type, new_path, is_bind=is_bind))
 
         def __getattr__(self, item):

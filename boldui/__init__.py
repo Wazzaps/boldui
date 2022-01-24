@@ -34,7 +34,7 @@ def stringify_op(obj, indent=0):
                            'ne', 'neg', 'b_and', 'b_or', 'b_invert', 'if', 'min', 'max', 'var'):
             return str(Expr(obj))
 
-        if obj['type'] in ('clear', 'rect', 'reply', 'set_var', 'evt_hnd', 'watch', 'ack_watch', 'if', 'text', 'save',
+        if obj['type'] in ('clear', 'rect', 'rrect', 'reply', 'set_var', 'evt_hnd', 'watch', 'ack_watch', 'if', 'text', 'save',
                            'restore', 'clipRect'):
             result += 'Ops.' + obj['type'] + '('
             if len(obj.keys()) != 1:
@@ -58,6 +58,10 @@ class Ops:
     @staticmethod
     def rect(rect, color):
         return {'type': 'rect', 'rect': list(map(Expr.unwrap, rect)), 'color': Expr.unwrap(color)}
+
+    @staticmethod
+    def rrect(rect, color, radius):
+        return {'type': 'rrect', 'rect': list(map(Expr.unwrap, rect)), 'color': Expr.unwrap(color), 'radius': Expr.unwrap(radius)}
 
     @staticmethod
     def reply(ident: int, data: List[Expr | int | float | None]):
@@ -338,8 +342,8 @@ class ProtocolServer:
 
         yield
 
-        for name, (val_type, val) in self._batch_vars.items():
-            self._send_remote_var(name, val_type, val)
+        if self._batch_vars:
+            self._send_remote_var([(name, val_type, val) for name, (val_type, val) in self._batch_vars.items()])
         if self._batch_scene_updated:
             self._send_scene()
 
@@ -427,12 +431,14 @@ class ProtocolServer:
         if self._is_batch:
             self._batch_vars[name] = (val_type, value)
         else:
-            self._send_remote_var(name, val_type, value)
+            self._send_remote_var([(name, val_type, value)])
 
-    def _send_remote_var(self, name, val_type, value):
+    def _send_remote_var(self, set_vars):
         if self.socket:
-            self._send_packet(Actions.SET_VAR.to_bytes(4, 'big') + name.encode() + b'\x00' + val_type.encode()
-                              + b'\x00' + json.dumps(Expr.unwrap(value)).encode())
+            parts = []
+            for name, val_type, value in set_vars:
+                parts.append(name.encode() + b'\x00' + val_type.encode() + b'\x00' + json.dumps(Expr.unwrap(value)).encode())
+            self._send_packet(Actions.SET_VAR.to_bytes(4, 'big') + b'\x00'.join(parts))
 
     def send_watch_ack(self, ack_id: int):
         if self.socket:

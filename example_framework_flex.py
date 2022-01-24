@@ -22,5 +22,5 @@ def main_page():
 
 
 if __name__ == '__main__':
-    app = App(main_page(), durable_store='/home/david/.local/example_app.db')
+    app = App(main_page)
     app.run()

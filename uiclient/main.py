@@ -65,16 +65,21 @@ class Protocol:
             self.ui_client.update_watches(send=True)
             # print(self.ui_client.scene)
         elif packet_type == Actions.SET_VAR:
-            var_name, var_type, var_value = packet.split(b'\x00')
-            if var_type == b'n':
-                new_value = UIClient.resolve_int(json.loads(var_value), self.ui_client.context)
-            elif var_type == b's':
-                new_value = UIClient.resolve_str(json.loads(var_value), self.ui_client.context)
-            else:
-                raise Exception('Unknown var type')
-            self.ui_client.persistent_context[var_name.decode()] = new_value
-            self.ui_client._should_update_watches = True
-            self.ui_client.update_watches(send=True)
+            if packet:
+                parts = packet.split(b'\x00')
+                while parts:
+                    var_name, var_type, var_value = parts[:3]
+                    parts = parts[3:]
+                    if var_type == b'n':
+                        new_value = UIClient.resolve_int(json.loads(var_value), self.ui_client.context)
+                    elif var_type == b's':
+                        new_value = UIClient.resolve_str(json.loads(var_value), self.ui_client.context)
+                    else:
+                        raise Exception('Unknown var type')
+                    print(f'{var_name}:{var_type} = {var_value}')
+                    self.ui_client.persistent_context[var_name.decode()] = new_value
+                self.ui_client._should_update_watches = True
+                self.ui_client.update_watches(send=True)
         elif packet_type == Actions.WATCH_ACK:
             ack_id = int.from_bytes(packet[:8], 'big')
             # print(f'Watch ack #{ack_id}')
@@ -224,6 +229,17 @@ class UIClient:
                     UIClient.resolve_int(item['rect'][1], context),
                     UIClient.resolve_int(item['rect'][2], context),
                     UIClient.resolve_int(item['rect'][3], context)
+                ), self._paint_from_int_color(UIClient.resolve_int(item['color'], context)))
+            elif item['type'] == 'rrect':
+                canvas.drawRRect(skia.RRect(
+                    skia.Rect(
+                        UIClient.resolve_int(item['rect'][0], context),
+                        UIClient.resolve_int(item['rect'][1], context),
+                        UIClient.resolve_int(item['rect'][2], context),
+                        UIClient.resolve_int(item['rect'][3], context),
+                    ),
+                    UIClient.resolve_int(item['radius'], context),
+                    UIClient.resolve_int(item['radius'], context),
                 ), self._paint_from_int_color(UIClient.resolve_int(item['color'], context)))
             elif item['type'] == 'save':
                 canvas.save()
