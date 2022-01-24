@@ -427,6 +427,32 @@ class Rectangle(Widget):
         return [Ops.rect((left, top, right, bottom), self.color)]
 
 
+class Image(Widget):
+    BUILDS_CHILDREN = True
+
+    def __init__(self, uri):
+        self.uri = Expr.unwrap(uri)
+        super().__init__()
+
+    def __repr__(self):
+        return 'Image(uri={})'.format(repr(self.uri))
+
+    def get_flex_x(self) -> float:
+        return 1
+
+    def get_flex_y(self) -> float:
+        return 1
+
+    def build(self) -> Widget:
+        return self
+
+    def layout(self, _min_width, _min_height, max_width, max_height):
+        return max_width, max_height
+
+    def render(self, left, top, right, bottom):
+        return [Ops.image(self.uri, (left, top, right, bottom))]
+
+
 class RoundRect(Widget):
     BUILDS_CHILDREN = True
 

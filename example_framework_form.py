@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from boldui.adwaita import TextButton
 from boldui.app import App, widget
-from boldui.framework import Row, Rectangle, SizedBox, Padding, Stack
+from boldui.framework import Row, Rectangle, SizedBox, Padding, Stack, Image
 
 
 @widget
@@ -35,7 +35,8 @@ def main_page():
     # Buttons
     return Stack([
         # Background
-        Rectangle(color=0xff242424),
+        # Rectangle(color=0xff242424),
+        Image(uri='/home/david/Pictures/Wallpapers/void_4k_desktop.jpg'),
 
         Padding(
             all=17,

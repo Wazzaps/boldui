@@ -101,6 +101,7 @@ class UIClient:
         self._blocked_watches = set()
         self.width = 0
         self.height = 0
+        self.image_cache = {}
 
         self.protocol.connect()
 
@@ -265,6 +266,25 @@ class UIClient:
                     UIClient.resolve_int(item['y'], context) + font_size // 2,
                     font,
                     paint
+                )
+            elif item['type'] == 'image':
+                rect = (
+                    UIClient.resolve_int(item['rect'][0], context),
+                    UIClient.resolve_int(item['rect'][1], context),
+                    UIClient.resolve_int(item['rect'][2], context),
+                    UIClient.resolve_int(item['rect'][3], context),
+                )
+                # width, height = rect[2] - rect[0], rect[3] - rect[1]
+                if item['uri'] not in self.image_cache:
+                    image = skia.Image.open(item['uri'])
+                    # image = image.resize(width, height)
+                    image = image.convert(alphaType=skia.kUnpremul_AlphaType)
+                    self.image_cache[item['uri']] = image
+
+                canvas.drawImageRect(
+                    image=self.image_cache[item['uri']],
+                    dst=skia.Rect(rect[0], rect[1], rect[2], rect[3]),
+                    # paint=skia.Paint(ImageFilter=skia.ImageFilters.Blur(64.0, 64.0, tileMode=skia.TileMode.kClamp)),
                 )
         canvas.restore()
 

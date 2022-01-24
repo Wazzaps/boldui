@@ -35,7 +35,7 @@ def stringify_op(obj, indent=0):
             return str(Expr(obj))
 
         if obj['type'] in ('clear', 'rect', 'rrect', 'reply', 'set_var', 'evt_hnd', 'watch', 'ack_watch', 'if', 'text', 'save',
-                           'restore', 'clipRect'):
+                           'restore', 'clipRect', 'image'):
             result += 'Ops.' + obj['type'] + '('
             if len(obj.keys()) != 1:
                 result += '\n'
@@ -123,6 +123,10 @@ class Ops:
     @staticmethod
     def clip_rect(rect):
         return {'type': 'clipRect', 'rect': list(map(Expr.unwrap, rect))}
+
+    @staticmethod
+    def image(uri, rect):
+        return {'type': 'image', 'uri': uri, 'rect': list(map(Expr.unwrap, rect))}
 
 
 class Expr:
