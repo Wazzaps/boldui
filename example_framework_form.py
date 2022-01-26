@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from boldui.adwaita import TextButton
 from boldui.app import App, widget
-from boldui.framework import Row, Rectangle, SizedBox, Padding, Stack, Image
+from boldui.framework import Row, Rectangle, SizedBox, Padding, Stack, Image, Column
 
 
 @widget
@@ -35,19 +35,23 @@ def main_page():
     # Buttons
     return Stack([
         # Background
-        # Rectangle(color=0xff242424),
-        Image(uri='/home/david/Pictures/Wallpapers/void_4k_desktop.jpg'),
+        Rectangle(color=0xff242424),
+        # Image(uri='/home/david/Pictures/Wallpapers/void_4k_desktop.jpg'),
 
         Padding(
             all=17,
-            child=SizedBox(
-                height=34,
-                child=Row([
+            child=Column([
+                Row([
                     TextButton('Hello', on_mouse_down=lambda _: None),
                     SizedBox(child=None, width=4),
                     TextButton('World', on_mouse_down=lambda _: None),
                 ]),
-            )
+                Row([
+                    TextButton('Label', on_mouse_down=lambda _: None),
+                    SizedBox(child=None, width=4),
+                    TextButton('Foo', on_mouse_down=lambda _: None),
+                ]),
+            ]),
         ),
     ])
 

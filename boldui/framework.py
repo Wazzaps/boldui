@@ -495,16 +495,19 @@ class Text(Widget):
         )
 
     def get_flex_x(self) -> float:
-        return 1
+        return 0
 
     def get_flex_y(self) -> float:
-        return 1
+        return 0
 
     def build(self) -> Widget:
         return self
 
-    def layout(self, _min_width, _min_height, max_width, max_height):
-        return max_width, max_height
+    def layout(self, min_width, min_height, max_width, max_height):
+        return (
+            Expr.measure_text_x(self.text, self.font_size).min(max_width).max(min_width),
+            Expr.measure_text_y(self.text, self.font_size).min(max_height).max(min_height)
+        )
 
     def render(self, left, top, right, bottom):
         return [Ops.text(self.text, (left + right) // 2, (bottom + top) // 2, self.font_size, self.color)]
@@ -773,22 +776,33 @@ class Clip(Widget):
 class Stack(Widget):
     BUILDS_CHILDREN = True
 
-    def __init__(self, children, align='center'):
+    def __init__(self, children, align='center', fit='expand'):
         self.children = children
         self.align = align
+        self.fit = fit
         self._built_children = []
         super(Stack, self).__init__()
 
     def __repr__(self):
-        return 'Stack(align={}, children={})'.format(self.align, repr(self.children))
+        return 'Stack(align={}, fit={}, children={})'.format(self.align, self.fit, repr(self.children))
 
     def get_flex_x(self) -> float:
-        total_flex = sum(child.get_flex_x() for child in self._built_children)
-        return 1 if total_flex else 0
+        if self.fit == 'expand':
+            total_flex = sum(child.get_flex_x() for child in self._built_children)
+            return 1 if total_flex else 0
+        elif self.fit == 'tight':
+            return 0
+        else:
+            assert False
 
     def get_flex_y(self) -> float:
-        total_flex = sum(child.get_flex_y() for child in self._built_children)
-        return 1 if total_flex else 0
+        if self.fit == 'expand':
+            total_flex = sum(child.get_flex_y() for child in self._built_children)
+            return 1 if total_flex else 0
+        elif self.fit == 'tight':
+            return 0
+        else:
+            assert False
 
     def build(self) -> Widget:
         self._built_children = []
@@ -802,24 +816,30 @@ class Stack(Widget):
         total_flex_x = sum(children_flex_x)
         total_flex_y = sum(children_flex_y)
 
-        width = max_width
-        height = max_height
+        if self.fit == 'expand':
+            width = max_width
+            height = max_height
+        elif self.fit == 'tight':
+            width = Expr(0)
+            height = Expr(0)
+        else:
+            assert False
 
         children_sizes = [[Expr(0), Expr(0)] for _ in self._built_children]
         # One of the axis are not flexible, need to calculate actual size
-        if total_flex_x == 0 or total_flex_y == 0:
+        if total_flex_x == 0 or total_flex_y == 0 or self.fit == 'tight':
             for i, (child, child_flex_x, child_flex_y) in enumerate(zip(self._built_children, children_flex_x, children_flex_y)):
                 if child_flex_x == 0 or child_flex_y == 0:
-                    children_sizes[i] = list(child.layout(0, min_height, float('inf'), max_height))
+                    children_sizes[i] = list(child.layout(0, 0, float('inf'), float('inf')))
 
-            if children_sizes and total_flex_x == 0:
+            if children_sizes and (total_flex_x == 0 or self.fit == 'tight'):
                 width = children_sizes[0][0]
                 for child_size in children_sizes:
                     width = max(width, child_size[0])
             elif not children_sizes:
                 width = Expr(0)
 
-            if children_sizes and total_flex_y == 0:
+            if children_sizes and (total_flex_y == 0 or self.fit == 'tight'):
                 height = children_sizes[0][1]
                 for child_size in children_sizes:
                     height = max(height, child_size[1])
@@ -1032,3 +1052,20 @@ class ListView(Widget):
                 ),
             ],
         )
+
+
+class DBGHighlight(Widget):
+
+    def __init__(self, child, color=0xffff0000):
+        self.child = child
+        self.color = color
+        super().__init__()
+
+    def __repr__(self):
+        return f'DBGHighlight(color={hex(self.color)}, child={self.child})'
+
+    def build(self) -> Widget:
+        return Stack([
+            Rectangle(self.color),
+            self.child,
+        ], fit='tight')

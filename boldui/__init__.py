@@ -251,9 +251,19 @@ class Expr:
     def __abs__(self):
         return Expr({'type': 'abs', 'a': self.val})
 
+    @staticmethod
+    def measure_text_x(text, font_size):
+        return Expr({'type': 'measure_text_x', 'text': Expr.unwrap(text), 'fontSize': Expr.unwrap(font_size)})
+
+    @staticmethod
+    def measure_text_y(text, font_size):
+        return Expr({'type': 'measure_text_y', 'text': Expr.unwrap(text), 'fontSize': Expr.unwrap(font_size)})
+
     def __str__(self):
         if isinstance(self.val, (int, float)):
             return str(self.val)
+        elif isinstance(self.val, str):
+            return repr(self.val)
         elif self.val['type'] == 'var':
             return self.val['name']
         elif self.val['type'] == 'add':
@@ -300,6 +310,10 @@ class Expr:
             return f'~{Expr(self.val["a"])}'
         elif self.val['type'] == 'if':
             return f'if {Expr(self.val["cond"])} {{ {Expr(self.val["then"])} }} else {{ {Expr(self.val["else"])} }}'
+        elif self.val['type'] == 'measure_text_x':
+            return f'measure_text_x({Expr(self.val["text"])}, fontSize={Expr(self.val["fontSize"])})'
+        elif self.val['type'] == 'measure_text_y':
+            return f'measure_text_y({Expr(self.val["text"])}, fontSize={Expr(self.val["fontSize"])})'
         else:
             return json.dumps(self.val)
 

@@ -90,6 +90,8 @@ class Protocol:
 
 class UIClient:
     WATCH_RECURSION = 3
+    _text_measurement_cache = {}
+    _font_cache = {}
 
     def __init__(self, address):
         self.scene = [
@@ -107,11 +109,42 @@ class UIClient:
 
     @staticmethod
     def _paint_from_int_color(color):
-        return skia.Paint(skia.Color(
-            (color >> 16) & 0xff,
-            (color >> 8) & 0xff,
-            color & 0xff,
-            (color >> 24) & 0xff))
+        return skia.Paint(
+            Color=skia.Color(
+                (color >> 16) & 0xff,
+                (color >> 8) & 0xff,
+                color & 0xff,
+                (color >> 24) & 0xff
+            ),
+            AntiAlias=True,
+        )
+
+    @staticmethod
+    def measure_text(text, font_size) -> (float, float):
+        font_name = 'Cantarell'
+        key = f'{font_name}:{font_size}:{text}'
+
+        if key in UIClient._text_measurement_cache:
+            return UIClient._text_measurement_cache[key]
+
+        paint = UIClient._paint_from_int_color(0xffffffff)
+        font = UIClient.get_font(font_name, font_size)
+        bounds = skia.Rect()
+        font.measureText(text, skia.TextEncoding.kUTF8, bounds, paint)
+        UIClient._text_measurement_cache[key] = (bounds.width(), font_size)
+
+        return UIClient._text_measurement_cache[key]
+
+    @staticmethod
+    def get_font(font_name, font_size):
+        key = f'{font_name}:{font_size}'
+
+        if key in UIClient._font_cache:
+            return UIClient._font_cache[key]
+
+        UIClient._font_cache[key] = skia.Font(skia.Typeface(font_name), font_size)
+        return UIClient._font_cache[key]
+
 
     @staticmethod
     def resolve_str(value, context):
@@ -190,6 +223,14 @@ class UIClient:
                 return min(UIClient.resolve_int(value['a'], context), UIClient.resolve_int(value['b'], context))
             elif value['type'] == 'max':
                 return max(UIClient.resolve_int(value['a'], context), UIClient.resolve_int(value['b'], context))
+            elif value['type'] == 'measure_text_x':
+                font_size = UIClient.resolve_int(value['fontSize'], context)
+                text = UIClient.resolve_str(value['text'], context)
+                return UIClient.measure_text(text, font_size)[0]
+            elif value['type'] == 'measure_text_y':
+                font_size = UIClient.resolve_int(value['fontSize'], context)
+                text = UIClient.resolve_str(value['text'], context)
+                return UIClient.measure_text(text, font_size)[1]
             elif value['type'] == 'if':
                 if UIClient.resolve_int(value['cond'], context):
                     return UIClient.resolve_int(value['then'], context)
@@ -256,7 +297,7 @@ class UIClient:
             elif item['type'] == 'text':
                 paint = self._paint_from_int_color(UIClient.resolve_int(item['color'], context))
                 font_size = UIClient.resolve_int(item['fontSize'], context)
-                font = skia.Font(None, font_size)
+                font = UIClient.get_font('Cantarell', font_size)
                 text = UIClient.resolve_str(item['text'], context)
                 measurement = font.measureText(text, skia.TextEncoding.kUTF8, None, paint)
 
@@ -284,7 +325,6 @@ class UIClient:
                 canvas.drawImageRect(
                     image=self.image_cache[item['uri']],
                     dst=skia.Rect(rect[0], rect[1], rect[2], rect[3]),
-                    # paint=skia.Paint(ImageFilter=skia.ImageFilters.Blur(64.0, 64.0, tileMode=skia.TileMode.kClamp)),
                 )
         canvas.restore()
 

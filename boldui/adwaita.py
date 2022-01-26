@@ -1,5 +1,5 @@
 from boldui import Expr
-from boldui.framework import Widget, RoundRect, EventHandler, Stack, Text
+from boldui.framework import Widget, RoundRect, EventHandler, Stack, Text, Padding
 
 
 class Button(Widget):
@@ -16,8 +16,8 @@ class Button(Widget):
             on_mouse_down=self.on_mouse_down,
             child=Stack([
                 RoundRect(color=0xff3a3a3a, radius=5.0),
-                self.child,
-            ]),
+                Padding(self.child, vertical=11, horizontal=18),
+            ], fit='tight'),
         )
 
 
