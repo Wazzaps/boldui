@@ -7,6 +7,7 @@ from boldui.framework import Widget, Clear, export, Context
 
 
 def update_widget():
+    print('update_widget')
     Context['_app'].server.scene = Context['_app'].rebuild()
 
 

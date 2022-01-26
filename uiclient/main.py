@@ -326,6 +326,13 @@ class UIClient:
                     image=self.image_cache[item['uri']],
                     dst=skia.Rect(rect[0], rect[1], rect[2], rect[3]),
                 )
+                # canvas.drawRect(
+                #     rect=skia.Rect(rect[0] + 100, rect[1] + 100, rect[2] - 100, rect[3] - 100),
+                #     paint=skia.Paint(
+                #         Color=0xa0000000,
+                #         ImageFilter=skia.ImageFilters.Blur(32.0, 32.0, tileMode=skia.TileMode.kClamp),
+                #     ),
+                # )
         canvas.restore()
 
     def handle_mouse_down(self, x: int, y: int):

@@ -75,7 +75,7 @@ def main_loop(state):
                     compute_frame_times += time.time() - start
 
                     # Draw FPS meter
-                    fps_paint = skia.Paint(skia.Color(255, 255, 255, 255))
+                    fps_paint = skia.Paint(skia.Color(255, 255, 255, 60))
                     if fps_font is None:
                         fps_font = skia.Font(skia.Typeface('Cantarell'), 12)
                     canvas.drawString(fps_str, 6, 16, fps_font, fps_paint)

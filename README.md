@@ -4,6 +4,45 @@ UI Framework based on a client-server scene-graph model.
 
 This is not a Javascript framework, it is language-independent networking protocol with a Python implementation.
 
+Here's an example snippet (Work in progress):
+
+```python
+@widget
+def main_page():
+    def clicked(_):
+        print('Clicked!')
+
+    return Stack([
+       # Background
+       Rectangle(color=0xff242424),
+
+       # Contents
+       Padding(
+          all=32,
+          child=Column([
+             # A big title
+             Text('Hello World!', font_size=32),
+
+             # Make some space
+             # FIXME: Add space distribution parameter to `Column`
+             Flexible(flex_y=10),
+
+             # A row of buttons
+             Row([
+                Flexible(),  # FIXME: Add alignment parameter to `Row`
+                TextButton('Cancel', on_mouse_down=clicked),
+                SizedBox(child=None, width=4),
+                TextButton('OK', on_mouse_down=clicked),
+             ]),
+          ]),
+       ),
+    ])
+```
+
+Which looks like:
+
+![A screenshot for the result of the above code](./docs/screenshots/form_example.png)
+
 ## What?
 
 The framework is split into a client and a server.
@@ -100,6 +139,12 @@ scene = Clear(
 This "compiles" to the same scene-graph from above, because of the expression abstraction from before.
 
 Special care is needed when writing complex layouts though, to keep expressions from exploding in size.
+
+### The built-in widget library
+
+I intend to implement the GNOME HIG (Adwaita) as a module inside the library (strictly optional, of course), to provide
+a basic widget set that is written with expression efficiency in mind. Currently only `Button` and `TextButton` are
+implemented, and have no animations yet.
 
 ### The data store
 
