@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import math
 import os
 import socket
 import struct
@@ -30,11 +31,11 @@ def stringify_op(obj, indent=0):
         result += ']'
         return result
     elif isinstance(obj, dict) and 'type' in obj:
-        if obj['type'] in ('add', 'sub', 'mul', 'div', 'b_or', 'b_and', 'mod', 'abs', 'gt', 'lt', 'ge', 'le', 'eq',
-                           'ne', 'neg', 'b_and', 'b_or', 'b_invert', 'if', 'min', 'max', 'var'):
+        if obj['type'] in ('add', 'sub', 'mul', 'div', 'bOr', 'bAnd', 'mod', 'abs', 'gt', 'lt', 'ge', 'le', 'eq',
+                           'ne', 'neg', 'bAnd', 'bOr', 'bInvert', 'if', 'min', 'max', 'var'):
             return str(Expr(obj))
 
-        if obj['type'] in ('clear', 'rect', 'rrect', 'reply', 'set_var', 'evt_hnd', 'watch', 'ack_watch', 'if', 'text', 'save',
+        if obj['type'] in ('clear', 'rect', 'rrect', 'reply', 'setVar', 'evtHnd', 'watch', 'ackWatch', 'if', 'text', 'save',
                            'restore', 'clipRect', 'image'):
             result += 'Ops.' + obj['type'] + '('
             if len(obj.keys()) != 1:
@@ -69,12 +70,12 @@ class Ops:
 
     @staticmethod
     def set_var(name: str, value: Expr):
-        return {'type': 'set_var', 'name': name, 'value': Expr.unwrap(value)}
+        return {'type': 'setVar', 'name': name, 'value': Expr.unwrap(value)}
 
     @staticmethod
     def event_handler(rect, events, handler):
         return {
-            'type': 'evt_hnd',
+            'type': 'evtHnd',
             'rect': list(map(Expr.unwrap, rect)),
             'events': events,
             'handler': handler
@@ -93,7 +94,7 @@ class Ops:
     @staticmethod
     def ack_watch(id):
         return {
-            'type': 'ack_watch',
+            'type': 'ackWatch',
             'id': id,
         }
 
@@ -135,6 +136,12 @@ class Expr:
             self.val = val.val
         elif val is None:
             self.val = 0
+        elif val == float('inf'):
+            self.val = {'type': 'inf'}
+        elif val == float('-inf'):
+            self.val = {'type': 'negInf'}
+        elif isinstance(val, float) and math.isnan(val):
+            raise ValueError('Cannot encode NaN values')
         else:
             self.val = val
 
@@ -152,7 +159,7 @@ class Expr:
         return Expr({'type': 'var', 'name': name})
 
     def to_str(self):
-        return Expr({'type': 'to_str', 'a': self.val})
+        return Expr({'type': 'toStr', 'a': self.val})
 
     def min(self, other):
         return Expr({'type': 'min', 'a': self.val, 'b': Expr.unwrap(other)})
@@ -216,10 +223,10 @@ class Expr:
         return Expr({'type': 'div', 'a': self.val, 'b': Expr.unwrap(other)})
 
     def __or__(self, other):
-        return Expr({'type': 'b_or', 'a': self.val, 'b': Expr.unwrap(other)})
+        return Expr({'type': 'bOr', 'a': self.val, 'b': Expr.unwrap(other)})
 
     def __and__(self, other):
-        return Expr({'type': 'b_and', 'a': self.val, 'b': Expr.unwrap(other)})
+        return Expr({'type': 'bAnd', 'a': self.val, 'b': Expr.unwrap(other)})
 
     def sqrt(self):
         return Expr({'type': 'sqrt', 'a': self.val})
@@ -246,18 +253,18 @@ class Expr:
         return Expr({'type': 'neg', 'a': self.val})
 
     def __invert__(self):
-        return Expr({'type': 'b_invert', 'a': self.val})
+        return Expr({'type': 'bInvert', 'a': self.val})
 
     def __abs__(self):
         return Expr({'type': 'abs', 'a': self.val})
 
     @staticmethod
     def measure_text_x(text, font_size):
-        return Expr({'type': 'measure_text_x', 'text': Expr.unwrap(text), 'fontSize': Expr.unwrap(font_size)})
+        return Expr({'type': 'measureTextX', 'text': Expr.unwrap(text), 'fontSize': Expr.unwrap(font_size)})
 
     @staticmethod
     def measure_text_y(text, font_size):
-        return Expr({'type': 'measure_text_y', 'text': Expr.unwrap(text), 'fontSize': Expr.unwrap(font_size)})
+        return Expr({'type': 'measureTextY', 'text': Expr.unwrap(text), 'fontSize': Expr.unwrap(font_size)})
 
     def __str__(self):
         if isinstance(self.val, (int, float)):
@@ -278,9 +285,9 @@ class Expr:
             return f'({Expr(self.val["a"])} * {Expr(self.val["b"])})'
         elif self.val['type'] == 'div':
             return f'({Expr(self.val["a"])} // {Expr(self.val["b"])})'
-        elif self.val['type'] == 'b_or':
+        elif self.val['type'] == 'bOr':
             return f'({Expr(self.val["a"])} | {Expr(self.val["b"])})'
-        elif self.val['type'] == 'b_and':
+        elif self.val['type'] == 'bAnd':
             return f'({Expr(self.val["a"])} & {Expr(self.val["b"])})'
         elif self.val['type'] == 'mod':
             return f'({Expr(self.val["a"])} % {Expr(self.val["b"])})'
@@ -302,17 +309,17 @@ class Expr:
             return f'({Expr(self.val["a"])} != {Expr(self.val["b"])})'
         elif self.val['type'] == 'neg':
             return f'-{Expr(self.val["a"])}'
-        elif self.val['type'] == 'b_and':
+        elif self.val['type'] == 'bAnd':
             return f'({Expr(self.val["a"])} & {Expr(self.val["b"])})'
-        elif self.val['type'] == 'b_or':
+        elif self.val['type'] == 'bOr':
             return f'({Expr(self.val["a"])} | {Expr(self.val["b"])})'
-        elif self.val['type'] == 'b_invert':
+        elif self.val['type'] == 'bInvert':
             return f'~{Expr(self.val["a"])}'
         elif self.val['type'] == 'if':
             return f'if {Expr(self.val["cond"])} {{ {Expr(self.val["then"])} }} else {{ {Expr(self.val["else"])} }}'
-        elif self.val['type'] == 'measure_text_x':
+        elif self.val['type'] == 'measureTextX':
             return f'measure_text_x({Expr(self.val["text"])}, fontSize={Expr(self.val["fontSize"])})'
-        elif self.val['type'] == 'measure_text_y':
+        elif self.val['type'] == 'measureTextY':
             return f'measure_text_y({Expr(self.val["text"])}, fontSize={Expr(self.val["fontSize"])})'
         else:
             return json.dumps(self.val)

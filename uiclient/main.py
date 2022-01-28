@@ -153,7 +153,7 @@ class UIClient:
         elif isinstance(value, str):
             return value
         elif isinstance(value, dict):
-            if value['type'] == 'to_str':
+            if value['type'] == 'toStr':
                 return str(UIClient.resolve_int(value['a'], context))
             else:
                 raise ValueError('Unknown str operation: {}'.format(value['type']))
@@ -207,13 +207,13 @@ class UIClient:
                 return UIClient.resolve_int(value['a'], context) > UIClient.resolve_int(value['b'], context)
             elif value['type'] == 'ge':
                 return UIClient.resolve_int(value['a'], context) >= UIClient.resolve_int(value['b'], context)
-            elif value['type'] == 'b_and':
+            elif value['type'] == 'bAnd':
                 return UIClient.resolve_int(value['a'], context) & UIClient.resolve_int(value['b'], context)
-            elif value['type'] == 'b_or':
+            elif value['type'] == 'bOr':
                 return UIClient.resolve_int(value['a'], context) | UIClient.resolve_int(value['b'], context)
-            elif value['type'] == 'b_xor':
+            elif value['type'] == 'bXor':
                 return UIClient.resolve_int(value['a'], context) ^ UIClient.resolve_int(value['b'], context)
-            elif value['type'] == 'b_invert':
+            elif value['type'] == 'bInvert':
                 return ~UIClient.resolve_int(value['a'], context)
             elif value['type'] == 'shl':
                 return UIClient.resolve_int(value['a'], context) << UIClient.resolve_int(value['b'], context)
@@ -223,11 +223,15 @@ class UIClient:
                 return min(UIClient.resolve_int(value['a'], context), UIClient.resolve_int(value['b'], context))
             elif value['type'] == 'max':
                 return max(UIClient.resolve_int(value['a'], context), UIClient.resolve_int(value['b'], context))
-            elif value['type'] == 'measure_text_x':
+            elif value['type'] == 'inf':
+                return float('inf')
+            elif value['type'] == 'negInf':
+                return float('-inf')
+            elif value['type'] == 'measureTextX':
                 font_size = UIClient.resolve_int(value['fontSize'], context)
                 text = UIClient.resolve_str(value['text'], context)
                 return UIClient.measure_text(text, font_size)[0]
-            elif value['type'] == 'measure_text_y':
+            elif value['type'] == 'measureTextY':
                 font_size = UIClient.resolve_int(value['fontSize'], context)
                 text = UIClient.resolve_str(value['text'], context)
                 return UIClient.measure_text(text, font_size)[1]
@@ -303,6 +307,7 @@ class UIClient:
 
                 canvas.drawString(
                     text,
+                    # TODO: Add alignment parameter
                     UIClient.resolve_int(item['x'], context) - measurement // 2,
                     UIClient.resolve_int(item['y'], context) + font_size // 2,
                     font,
@@ -363,7 +368,7 @@ class UIClient:
                     else:
                         raise ValueError('Invalid reply data type: {}'.format(type(val)))
                 replies.append(formatted_data)
-            elif handler['type'] == 'set_var':
+            elif handler['type'] == 'setVar':
                 self.persistent_context[handler['name']] = UIClient.resolve_int(handler['value'], context)
                 self._should_update_watches = True
                 replies += self.update_watches()
@@ -385,7 +390,7 @@ class UIClient:
         }
         replies = []
         for item in self.scene:
-            if item['type'] == 'evt_hnd' and item['events'] & event_mask:
+            if item['type'] == 'evtHnd' and item['events'] & event_mask:
                 rect = (
                     UIClient.resolve_int(item['rect'][0], context),
                     UIClient.resolve_int(item['rect'][1], context),
