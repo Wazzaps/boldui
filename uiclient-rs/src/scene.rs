@@ -1,9 +1,6 @@
-use serde::de::{EnumAccess, Error, MapAccess, SeqAccess};
-use serde::{de, Deserialize, Deserializer};
-use skia_safe::{Color4f, FontStyle, Rect, TextBlob};
+use serde::Deserialize;
+use skia_safe::{Color4f, Rect};
 use std::collections::HashMap;
-use std::convert::{TryFrom, TryInto};
-use std::fmt;
 use std::fs::File;
 use std::io::BufReader;
 
@@ -102,7 +99,7 @@ pub enum ExprOp {
 
 pub type EvalContext = HashMap<String, VarVal>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum VarVal {
     Int(i64),
     Float(f64),
@@ -129,6 +126,7 @@ impl ExprPart {
                 ExprOp::Var { name } => match ctx.get(name) {
                     Some(VarVal::Int(i)) => Ok(*i as f64),
                     Some(VarVal::Float(f)) => Ok(*f),
+                    None => panic!("Missing variable '{}'", name),
                     _ => panic!("Invalid variable type of '{}'", name),
                 },
                 ExprOp::Add { a, b } => Ok(a.as_f64(ctx)? + b.as_f64(ctx)?),
@@ -159,7 +157,7 @@ impl ExprPart {
 
                     Ok(measurement.0 as f64)
                 }
-                ExprOp::MeasureTextY { text, font_size } => Ok(font_size.as_f64(ctx)?),
+                ExprOp::MeasureTextY { font_size, .. } => Ok(font_size.as_f64(ctx)?),
             },
             ExprPart::StringLiteral(_) => unimplemented!(),
         }
@@ -175,6 +173,7 @@ impl ExprPart {
                 ExprOp::Var { name } => match ctx.get(name) {
                     Some(VarVal::Int(i)) => Ok(*i),
                     Some(VarVal::Float(f)) => Ok(*f as i64),
+                    None => panic!("Missing variable '{}'", name),
                     _ => panic!("Invalid variable type"),
                 },
                 ExprOp::Add { a, b } => Ok(a.as_i64(ctx)? + b.as_i64(ctx)?),
@@ -213,6 +212,7 @@ impl ExprPart {
             ExprPart::Operation(op) => match op {
                 ExprOp::Var { name } => match ctx.get(name) {
                     Some(VarVal::String(s)) => Ok(s.clone()),
+                    None => panic!("Missing variable '{}'", name),
                     _ => panic!("Invalid variable type"),
                 },
                 ExprOp::ToStr { a } => Ok(format!("{}", a.as_f64(ctx)?)),
@@ -317,7 +317,14 @@ impl From<(Box<ExprPart>, Box<ExprPart>, Box<ExprPart>, Box<ExprPart>)> for Expr
 }
 
 pub fn load_example_scene() -> Vec<TopLevelOpcode> {
-    let scene_file = File::open("../scene.json").unwrap();
+    let mut args = std::env::args().skip(1);
+    if args.len() != 1 {
+        println!("Usage: uiclient <filename>");
+        std::process::exit(1);
+    }
+
+    let filename = args.next().unwrap();
+    let scene_file = File::open(filename).unwrap();
     let scene_reader = BufReader::new(scene_file);
     let scene: Vec<TopLevelOpcode> =
         serde_json::from_reader(scene_reader).expect("Failed to parse scene file");

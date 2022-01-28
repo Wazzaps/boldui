@@ -2,8 +2,8 @@ pub(crate) mod render;
 pub(crate) mod scene;
 
 use crate::render::UIClient;
-use skia_safe::paint::Style;
-use skia_safe::{Paint, PaintStyle, Rect};
+use glutin::dpi::PhysicalPosition;
+use glutin::event::ElementState;
 
 fn main() {
     use gl::types::*;
@@ -16,7 +16,7 @@ fn main() {
     };
     use skia_safe::{
         gpu::{gl::FramebufferInfo, BackendRenderTarget, SurfaceOrigin},
-        Color, ColorType, Surface,
+        ColorType, Surface,
     };
     use std::convert::TryInto;
 
@@ -117,7 +117,8 @@ fn main() {
         windowed_context,
     };
 
-    let state = UIClient::new();
+    let mut uiclient = UIClient::new();
+    let mut current_mouse_pos = PhysicalPosition::default();
 
     el.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
@@ -146,8 +147,17 @@ fn main() {
                             *control_flow = ControlFlow::Exit;
                         }
                     }
-                    // frame += 1;
                     env.windowed_context.window().request_redraw();
+                }
+                WindowEvent::MouseInput { state, .. } => {
+                    if state == ElementState::Pressed {
+                        uiclient.handle_mouse_down(current_mouse_pos, || {
+                            env.windowed_context.window().request_redraw();
+                        });
+                    }
+                }
+                WindowEvent::CursorMoved { position, .. } => {
+                    current_mouse_pos = position;
                 }
                 _ => (),
             },
@@ -159,7 +169,7 @@ fn main() {
                     let dimensions = (env.surface.width(), env.surface.height());
                     let canvas = env.surface.canvas();
 
-                    state.draw(canvas, dimensions.0, dimensions.1);
+                    uiclient.draw(canvas, dimensions.0, dimensions.1);
 
                     // canvas.clear(Color::DARK_GRAY);
 

@@ -1,8 +1,9 @@
-use crate::scene::{load_example_scene, EvalContext, TopLevelOpcode, VarVal};
+use crate::scene::{load_example_scene, EvalContext, HandlerOpcode, TopLevelOpcode, VarVal};
+use glutin::dpi::PhysicalPosition;
 use lazy_static::lazy_static;
-use skia_safe::{Canvas, Color, Color4f, FontStyle, Paint, Point, RRect, Rect, TextBlob};
+use skia_safe::{Canvas, Color, Color4f, Contains, FontStyle, Paint, Point, RRect, TextBlob};
 use std::collections::HashMap;
-use std::convert::TryInto;
+
 use std::sync::{Arc, Mutex};
 
 #[derive(PartialEq, Eq, Hash, Debug)]
@@ -56,6 +57,8 @@ pub fn get_font(family_name: &str, font_size: f32) -> Arc<skia_safe::Font> {
 
 pub struct UIClient {
     scene: Vec<TopLevelOpcode>,
+    last_size: (i32, i32),
+    variables: EvalContext,
 }
 
 fn make_paint(color: Color4f) -> Paint {
@@ -67,16 +70,26 @@ fn make_paint(color: Color4f) -> Paint {
 
 impl UIClient {
     pub fn new() -> UIClient {
+        let mut ctx = EvalContext::new();
+        ctx.insert("counter".to_string(), VarVal::Int(0));
+        ctx.insert(
+            "__client_version".to_string(),
+            VarVal::String(concat!("BoldUI Client v", env!("CARGO_PKG_VERSION")).to_string()),
+        );
+
         UIClient {
             scene: load_example_scene(),
+            last_size: (0, 0),
+            variables: ctx,
         }
     }
 
-    pub fn draw(&self, canvas: &mut Canvas, width: i32, height: i32) {
-        let mut ctx = EvalContext::new();
+    pub fn draw(&mut self, canvas: &mut Canvas, width: i32, height: i32) {
+        self.last_size = (width, height);
+
+        let mut ctx = self.variables.clone();
         ctx.insert("width".to_string(), VarVal::Int(width as i64));
         ctx.insert("height".to_string(), VarVal::Int(height as i64));
-        ctx.insert("counter".to_string(), VarVal::Int(1234));
 
         canvas.clear(Color::BLACK);
         for opcode in &self.scene {
@@ -129,6 +142,53 @@ impl UIClient {
                 }
             }
         }
-        // canvas.draw_text(0, 0, "Hello, world!");
+    }
+
+    fn _eval_handlers(
+        variables: &mut EvalContext,
+        handlers: &[HandlerOpcode],
+        ctx: &mut HashMap<String, VarVal>,
+    ) {
+        for handler in handlers {
+            match handler {
+                HandlerOpcode::SetVar { name, value } => {
+                    println!("Setting var {} to {}", name, value.as_i64(ctx).unwrap());
+                    variables.insert(name.to_string(), VarVal::Int(value.as_i64(ctx).unwrap()));
+                }
+            }
+        }
+    }
+
+    pub fn handle_mouse_down<F>(&mut self, position: PhysicalPosition<f64>, redraw_cb: F)
+    where
+        F: Fn(),
+    {
+        println!("mouse down at {} {}", position.x, position.y);
+        let mut redraw = false;
+        for opcode in &self.scene {
+            if let TopLevelOpcode::EventHandler {
+                rect,
+                events,
+                handler,
+            } = opcode
+            {
+                if events & (1 << 0) != 0 {
+                    let mut ctx = self.variables.clone();
+                    ctx.insert("width".to_string(), VarVal::Int(self.last_size.0 as i64));
+                    ctx.insert("height".to_string(), VarVal::Int(self.last_size.1 as i64));
+                    ctx.insert("event_x".to_string(), VarVal::Float(position.x));
+                    ctx.insert("event_y".to_string(), VarVal::Float(position.y));
+
+                    let rect = rect.as_rect(&mut ctx).unwrap();
+                    if rect.contains(Point::new(position.x as f32, position.y as f32)) {
+                        UIClient::_eval_handlers(&mut self.variables, handler, &mut ctx);
+                        redraw = true;
+                    }
+                }
+            }
+        }
+        if redraw {
+            redraw_cb();
+        }
     }
 }
