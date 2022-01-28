@@ -1,3 +1,5 @@
 /venv/
 /.idea/
+/uiclient-rs/target
+/scene.json
 __pycache__

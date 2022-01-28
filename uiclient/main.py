@@ -59,6 +59,7 @@ class Protocol:
         packet = packet[4:]
 
         if packet_type == Actions.UPDATE_SCENE:
+            open('scene.json', 'wb').write(packet)
             self.ui_client.scene = json.loads(packet)
             self.ui_client._blocked_watches.clear()
             self.ui_client._should_update_watches = True
