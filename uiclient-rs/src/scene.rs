@@ -58,11 +58,11 @@ pub enum ExprOp {
         a: Box<ExprPart>,
         b: Box<ExprPart>,
     },
-    And {
+    BAnd {
         a: Box<ExprPart>,
         b: Box<ExprPart>,
     },
-    Or {
+    BOr {
         a: Box<ExprPart>,
         b: Box<ExprPart>,
     },
@@ -72,6 +72,9 @@ pub enum ExprOp {
     Neg {
         a: Box<ExprPart>,
     },
+    BInvert {
+        a: Box<ExprPart>,
+    },
     Min {
         a: Box<ExprPart>,
         b: Box<ExprPart>,
@@ -79,6 +82,9 @@ pub enum ExprOp {
     Max {
         a: Box<ExprPart>,
         b: Box<ExprPart>,
+    },
+    Abs {
+        a: Box<ExprPart>,
     },
     Inf,
     NegInf,
@@ -141,12 +147,14 @@ impl ExprPart {
                 ExprOp::Lte { .. } => unimplemented!(),
                 ExprOp::Gt { .. } => unimplemented!(),
                 ExprOp::Gte { .. } => unimplemented!(),
-                ExprOp::And { .. } => unimplemented!(),
-                ExprOp::Or { .. } => unimplemented!(),
+                ExprOp::BAnd { .. } => unimplemented!(),
+                ExprOp::BOr { .. } => unimplemented!(),
+                ExprOp::BInvert { .. } => unimplemented!(),
                 ExprOp::Not { .. } => unimplemented!(),
                 ExprOp::Neg { .. } => unimplemented!(),
                 ExprOp::Min { a, b } => Ok(a.as_f64(ctx)?.min(b.as_f64(ctx)?)),
                 ExprOp::Max { a, b } => Ok(a.as_f64(ctx)?.max(b.as_f64(ctx)?)),
+                ExprOp::Abs { a } => Ok(a.as_f64(ctx)?.abs()),
                 ExprOp::ToStr { .. } => unimplemented!(),
                 ExprOp::MeasureTextX { text, font_size } => {
                     let text = text.as_string(ctx).unwrap();
@@ -188,12 +196,14 @@ impl ExprPart {
                 ExprOp::Lte { .. } => unimplemented!(),
                 ExprOp::Gt { .. } => unimplemented!(),
                 ExprOp::Gte { .. } => unimplemented!(),
-                ExprOp::And { .. } => unimplemented!(),
-                ExprOp::Or { .. } => unimplemented!(),
+                ExprOp::BAnd { a, b } => Ok(a.as_i64(ctx)? & b.as_i64(ctx)?),
+                ExprOp::BOr { a, b } => Ok(a.as_i64(ctx)? | b.as_i64(ctx)?),
+                ExprOp::BInvert { .. } => unimplemented!(),
                 ExprOp::Not { .. } => unimplemented!(),
                 ExprOp::Neg { .. } => unimplemented!(),
                 ExprOp::Min { .. } => unimplemented!(),
                 ExprOp::Max { .. } => unimplemented!(),
+                ExprOp::Abs { a } => Ok(a.as_i64(ctx)?.abs()),
                 ExprOp::ToStr { .. } => unimplemented!(),
                 ExprOp::MeasureTextX { .. } => unimplemented!(),
                 ExprOp::MeasureTextY { .. } => unimplemented!(),
@@ -228,12 +238,14 @@ impl ExprPart {
                 ExprOp::Lte { .. } => unimplemented!(),
                 ExprOp::Gt { .. } => unimplemented!(),
                 ExprOp::Gte { .. } => unimplemented!(),
-                ExprOp::And { .. } => unimplemented!(),
-                ExprOp::Or { .. } => unimplemented!(),
+                ExprOp::BAnd { .. } => unimplemented!(),
+                ExprOp::BInvert { .. } => unimplemented!(),
+                ExprOp::BOr { .. } => unimplemented!(),
                 ExprOp::Not { .. } => unimplemented!(),
                 ExprOp::Neg { .. } => unimplemented!(),
                 ExprOp::Min { .. } => unimplemented!(),
                 ExprOp::Max { .. } => unimplemented!(),
+                ExprOp::Abs { .. } => unimplemented!(),
                 ExprOp::Inf => unimplemented!(),
                 ExprOp::NegInf => unimplemented!(),
                 ExprOp::MeasureTextX { .. } => unimplemented!(),
@@ -249,6 +261,7 @@ impl ExprPart {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum HandlerOpcode {
     SetVar { name: String, value: Box<ExprPart> },
+    Reply { id: u64, data: Vec<Box<ExprPart>> },
 }
 
 #[derive(Deserialize, Debug)]
@@ -300,6 +313,18 @@ pub enum TopLevelOpcode {
         y: Box<ExprPart>,
         font_size: Box<ExprPart>,
         color: Box<ExprPart>,
+    },
+    Save {},
+    Restore {},
+    ClipRect {
+        rect: ExprRect,
+    },
+    #[serde(rename_all = "camelCase")]
+    Watch {
+        id: u64,
+        cond: Box<ExprPart>,
+        wait_for_roundtrip: bool,
+        handler: Vec<HandlerOpcode>,
     },
 }
 

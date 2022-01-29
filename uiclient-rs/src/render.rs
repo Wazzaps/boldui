@@ -114,7 +114,6 @@ impl UIClient {
                         &make_paint(color.as_color4f(&mut ctx).unwrap()),
                     );
                 }
-                TopLevelOpcode::EventHandler { .. } => {}
                 TopLevelOpcode::Text {
                     text,
                     x,
@@ -140,6 +139,11 @@ impl UIClient {
                         &make_paint(color),
                     );
                 }
+                TopLevelOpcode::Save { .. } => {}
+                TopLevelOpcode::Restore { .. } => {}
+                TopLevelOpcode::ClipRect { .. } => {}
+                TopLevelOpcode::Watch { .. } => {}
+                TopLevelOpcode::EventHandler { .. } => {}
             }
         }
     }
@@ -155,6 +159,7 @@ impl UIClient {
                     println!("Setting var {} to {}", name, value.as_i64(ctx).unwrap());
                     variables.insert(name.to_string(), VarVal::Int(value.as_i64(ctx).unwrap()));
                 }
+                HandlerOpcode::Reply { .. } => unimplemented!(),
             }
         }
     }
