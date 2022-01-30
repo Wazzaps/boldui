@@ -881,9 +881,11 @@ class Stack(Widget):
 
         for i, (child, child_size) in enumerate(zip(self._built_children, children_sizes)):
             if self.align == 'center':
-                child_left = left + (right - left - child_size[0]) // 2
-                child_top = top + (bottom - top - child_size[1]) // 2
-                result += child.render(child_left, child_top, child_left + child_size[0], child_top + child_size[1])
+                child_left = (right + left - child_size[0]) // 2
+                child_top = (bottom + top - child_size[1]) // 2
+                child_right = (right + left + child_size[0]) // 2
+                child_bottom = (bottom + top + child_size[1]) // 2
+                result += child.render(child_left, child_top, child_right, child_bottom)
             elif self.align == 'topleft':
                 result += child.render(left, top, left + child_size[0], top + child_size[1])
 
