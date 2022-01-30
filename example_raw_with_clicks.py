@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import random
 
-from boldui import Ops, Expr, ProtocolServer
+from boldui import Ops, Expr, var, ProtocolServer
 
 if __name__ == '__main__':
     def make_scene(rect_color):
@@ -13,8 +13,8 @@ if __name__ == '__main__':
                 (
                     20,
                     20,
-                    Expr.var('width') // 2 - 10,
-                    Expr.var('height') - 20,
+                    var('width') // 2 - 10,
+                    var('height') - 20,
                 ),
                 0xffa0a0a0
             ),
@@ -22,10 +22,10 @@ if __name__ == '__main__':
             # Right rectangle
             Ops.rect(
                 (
-                    Expr.var('width') // 2 + 10,
+                    var('width') // 2 + 10,
                     20,
-                    Expr.var('width') - 20,
-                    Expr.var('height') - 20,
+                    var('width') - 20,
+                    var('height') - 20,
                 ),
                 0xffa0a0a0
             ),
@@ -33,10 +33,10 @@ if __name__ == '__main__':
             # Rect in the middle (border)
             Ops.rect(
                 (
-                    (Expr.var('width') // 2) - 70,
-                    (Expr.var('height') // 2) - 70,
-                    (Expr.var('width') // 2) + 70,
-                    (Expr.var('height') // 2) + 70,
+                    (var('width') // 2) - 70,
+                    (var('height') // 2) - 70,
+                    (var('width') // 2) + 70,
+                    (var('height') // 2) + 70,
                 ),
                 0xff202030,
             ),
@@ -44,10 +44,10 @@ if __name__ == '__main__':
             # Rect in the middle
             Ops.rect(
                 (
-                    (Expr.var('width') // 2) - 50,
-                    (Expr.var('height') // 2) - 50,
-                    (Expr.var('width') // 2) + 50,
-                    (Expr.var('height') // 2) + 50,
+                    (var('width') // 2) - 50,
+                    (var('height') // 2) - 50,
+                    (var('width') // 2) + 50,
+                    (var('height') // 2) + 50,
                 ),
                 rect_color,
             ),
@@ -55,14 +55,14 @@ if __name__ == '__main__':
             # On click handler for middle rect
             Ops.event_handler(
                 rect=(
-                    (Expr.var('width') // 2) - 50,
-                    (Expr.var('height') // 2) - 50,
-                    (Expr.var('width') // 2) + 50,
-                    (Expr.var('height') // 2) + 50,
+                    (var('width') // 2) - 50,
+                    (var('height') // 2) - 50,
+                    (var('width') // 2) + 50,
+                    (var('height') // 2) + 50,
                 ),
                 events=0x1,
                 handler=[
-                    Ops.reply(0x123, [Expr.var('event_x'), Expr.var('event_y'), Expr.var('time')]),
+                    Ops.reply(0x123, [var('event_x'), var('event_y'), var('time')]),
                 ],
             ),
         ]

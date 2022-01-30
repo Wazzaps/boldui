@@ -91,7 +91,6 @@ pub enum ExprOp {
         a: Box<ExprPart>,
     },
     Inf,
-    NegInf,
     ToStr {
         a: Box<ExprPart>,
     },
@@ -132,7 +131,6 @@ impl ExprPart {
             ExprPart::FloatLiteral(f) => Ok(*f),
             ExprPart::Operation(op) => match op {
                 ExprOp::Inf => Ok(f64::INFINITY),
-                ExprOp::NegInf => Ok(f64::NEG_INFINITY),
                 ExprOp::Var { name } => match ctx.get(name) {
                     Some(VarVal::Int(i)) => Ok(*i as f64),
                     Some(VarVal::Float(f)) => Ok(*f),
@@ -182,7 +180,6 @@ impl ExprPart {
             ExprPart::FloatLiteral(f) => Ok(*f as i64),
             ExprPart::Operation(op) => match op {
                 ExprOp::Inf => panic!("Cannot convert infinity to integer"),
-                ExprOp::NegInf => panic!("Cannot convert -infinity to integer"),
                 ExprOp::Var { name } => match ctx.get(name) {
                     Some(VarVal::Int(i)) => Ok(*i),
                     Some(VarVal::Float(f)) => Ok(*f as i64),
@@ -254,7 +251,6 @@ impl ExprPart {
                 ExprOp::Max { .. } => unimplemented!(),
                 ExprOp::Abs { .. } => unimplemented!(),
                 ExprOp::Inf => unimplemented!(),
-                ExprOp::NegInf => unimplemented!(),
                 ExprOp::MeasureTextX { .. } => unimplemented!(),
                 ExprOp::MeasureTextY { .. } => unimplemented!(),
             },

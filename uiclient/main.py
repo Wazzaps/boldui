@@ -227,8 +227,6 @@ class UIClient:
                 return max(UIClient.resolve_int(value['a'], context), UIClient.resolve_int(value['b'], context))
             elif value['type'] == 'inf':
                 return float('inf')
-            elif value['type'] == 'negInf':
-                return float('-inf')
             elif value['type'] == 'measureTextX':
                 font_size = UIClient.resolve_int(value['fontSize'], context)
                 text = UIClient.resolve_str(value['text'], context)

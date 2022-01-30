@@ -19,18 +19,18 @@ class MainPage(Widget):
                         width=80, height=80,
                         child=Button(
                             Text(text='-', font_size=24),
-                            on_mouse_down=[Ops.set_var('counter', Expr.var('counter') - 1)],
+                            on_mouse_down=[Ops.set_var('counter', var('counter') - 1)],
                         ),
                     ),
                     SizedBox(
                         width=130, height=80,
-                        child=Text(text=Expr.var('counter').to_str(), font_size=24)
+                        child=Text(text=var('counter').to_str(), font_size=24)
                     ),
                     SizedBox(
                         width=80, height=80,
                         child=Button(
                             Text(text='+', font_size=24),
-                            on_mouse_down=[Ops.set_var('counter', Expr.var('counter') + 1)],
+                            on_mouse_down=[Ops.set_var('counter', var('counter') + 1)],
                         ),
                     ),
                 ]),

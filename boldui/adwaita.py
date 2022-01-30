@@ -23,7 +23,7 @@ class Button(Widget):
 
 class TextButton(Widget):
     def __init__(self, text, on_mouse_down=None):
-        self.text = Expr.unwrap(text)
+        self.text = Expr(text)
         self.on_mouse_down = on_mouse_down
         super().__init__()
 

@@ -103,7 +103,7 @@ class ModelItemDescriptor:
 
         if self._is_bind:
             self._base_model._bind_item(self._path)
-            return Expr.var(self._var_key)
+            return var(self._var_key)
         else:
             value = self._base_model._get_item(self._path)
             if DEBUG:

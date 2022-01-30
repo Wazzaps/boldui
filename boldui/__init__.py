@@ -3,11 +3,10 @@ from __future__ import annotations
 
 import contextlib
 import json
-import math
 import os
 import socket
 import struct
-import subprocess
+from simplexp import Expr, var
 from typing import List
 
 
@@ -31,10 +30,6 @@ def stringify_op(obj, indent=0):
         result += ']'
         return result
     elif isinstance(obj, dict) and 'type' in obj:
-        if obj['type'] in ('add', 'sub', 'mul', 'fdiv', 'div', 'bOr', 'bAnd', 'mod', 'abs', 'gt', 'lt', 'ge', 'le',
-                           'eq', 'ne', 'neg', 'bAnd', 'bOr', 'bInvert', 'if', 'min', 'max', 'var'):
-            return str(Expr(obj))
-
         if obj['type'] in ('clear', 'rect', 'rrect', 'reply', 'setVar', 'evtHnd', 'watch', 'ackWatch', 'if', 'text', 'save',
                            'restore', 'clipRect', 'image'):
             result += 'Ops.' + obj['type'] + '('
@@ -54,29 +49,29 @@ def stringify_op(obj, indent=0):
 class Ops:
     @staticmethod
     def clear(color):
-        return {'type': 'clear', 'color': Expr.unwrap(color)}
+        return {'type': 'clear', 'color': Expr.to_dict(color)}
 
     @staticmethod
     def rect(rect, color):
-        return {'type': 'rect', 'rect': list(map(Expr.unwrap, rect)), 'color': Expr.unwrap(color)}
+        return {'type': 'rect', 'rect': list(map(Expr.to_dict, rect)), 'color': Expr.to_dict(color)}
 
     @staticmethod
     def rrect(rect, color, radius):
-        return {'type': 'rrect', 'rect': list(map(Expr.unwrap, rect)), 'color': Expr.unwrap(color), 'radius': Expr.unwrap(radius)}
+        return {'type': 'rrect', 'rect': list(map(Expr.to_dict, rect)), 'color': Expr.to_dict(color), 'radius': Expr.to_dict(radius)}
 
     @staticmethod
     def reply(ident: int, data: List[Expr | int | float | None]):
-        return {'type': 'reply', 'id': ident, 'data': list(map(Expr.unwrap, data))}
+        return {'type': 'reply', 'id': ident, 'data': list(map(Expr.to_dict, data))}
 
     @staticmethod
     def set_var(name: str, value: Expr):
-        return {'type': 'setVar', 'name': name, 'value': Expr.unwrap(value)}
+        return {'type': 'setVar', 'name': name, 'value': Expr.to_dict(value)}
 
     @staticmethod
     def event_handler(rect, events, handler):
         return {
             'type': 'evtHnd',
-            'rect': list(map(Expr.unwrap, rect)),
+            'rect': list(map(Expr.to_dict, rect)),
             'events': events,
             'handler': handler
         }
@@ -86,7 +81,7 @@ class Ops:
         return {
             'type': 'watch',
             'id': id,
-            'cond': Expr.unwrap(cond),
+            'cond': Expr.to_dict(cond),
             'waitForRoundtrip': wait_for_roundtrip,
             'handler': handler
         }
@@ -102,16 +97,16 @@ class Ops:
     def text(text, x, y, font_size, color):
         return {
             'type': 'text',
-            'text': text,
-            'x': Expr.unwrap(x),
-            'y': Expr.unwrap(y),
-            'fontSize': Expr.unwrap(font_size),
-            'color': Expr.unwrap(color),
+            'text': Expr.to_dict(text),
+            'x': Expr.to_dict(x),
+            'y': Expr.to_dict(y),
+            'fontSize': Expr.to_dict(font_size),
+            'color': Expr.to_dict(color),
         }
 
     @staticmethod
     def if_(cond, t, f):
-        return {'type': 'if', 'cond': Expr.unwrap(cond), 'then': Expr.unwrap(t), 'else': Expr.unwrap(f)}
+        return {'type': 'if', 'cond': Expr.to_dict(cond), 'then': Expr.to_dict(t), 'else': Expr.to_dict(f)}
 
     @staticmethod
     def save():
@@ -123,214 +118,11 @@ class Ops:
 
     @staticmethod
     def clip_rect(rect):
-        return {'type': 'clipRect', 'rect': list(map(Expr.unwrap, rect))}
+        return {'type': 'clipRect', 'rect': list(map(Expr.to_dict, rect))}
 
     @staticmethod
     def image(uri, rect):
-        return {'type': 'image', 'uri': uri, 'rect': list(map(Expr.unwrap, rect))}
-
-
-class Expr:
-    def __init__(self, val):
-        if isinstance(val, Expr):
-            self.val = val.val
-        elif val is None:
-            self.val = 0
-        elif val == float('inf'):
-            self.val = {'type': 'inf'}
-        elif val == float('-inf'):
-            self.val = {'type': 'negInf'}
-        elif isinstance(val, float) and math.isnan(val):
-            raise ValueError('Cannot encode NaN values')
-        else:
-            self.val = val
-
-    @staticmethod
-    def unwrap(value: Expr | int | float | str):
-        if value is None:
-            return 0
-        elif isinstance(value, (int, float, str)):
-            return value
-        else:
-            return value.val
-
-    @staticmethod
-    def var(name):
-        return Expr({'type': 'var', 'name': name})
-
-    def to_str(self):
-        return Expr({'type': 'toStr', 'a': self.val})
-
-    def min(self, other):
-        return Expr({'type': 'min', 'a': self.val, 'b': Expr.unwrap(other)})
-
-    def max(self, other):
-        return Expr({'type': 'max', 'a': self.val, 'b': Expr.unwrap(other)})
-
-    def __add__(self, other):
-        other = Expr.unwrap(other)
-        if isinstance(other, (int, float)) and isinstance(self.val, (int, float)):
-            return Expr(self.val + other)
-        elif isinstance(other, (int, float)) and other == Expr.unwrap(0):
-            return self
-        elif isinstance(self.val, (int, float)) and self.val == 0:
-            return Expr(other)
-        elif isinstance(other, (int, float)) and self.val['type'] == 'add':
-            new_val = Expr(self.val['b']) + other
-            if new_val.val == 0:
-                return Expr(self.val['a'])
-            else:
-                return Expr({'type': 'add', 'a': self.val['a'], 'b': new_val.val})
-        elif isinstance(other, (int, float)) and self.val['type'] == 'sub':
-            new_val = Expr(self.val['b']) - other
-            if new_val.val == 0:
-                return Expr(self.val['a'])
-            else:
-                return Expr({'type': 'sub', 'a': self.val['a'], 'b': new_val.val})
-        else:
-            return Expr({'type': 'add', 'a': self.val, 'b': other})
-
-    def __sub__(self, other):
-        other = Expr.unwrap(other)
-        if isinstance(other, (int, float)) and isinstance(self.val, (int, float)):
-            return Expr(self.val - other)
-        elif isinstance(other, (int, float)) and other == Expr.unwrap(0):
-            return self
-        elif isinstance(self.val, (int, float)) and self.val == 0:
-            return -Expr(other)
-        elif isinstance(other, (int, float)) and self.val['type'] == 'add':
-            new_val = Expr(self.val['b']) - other
-            if new_val.val == 0:
-                return Expr(self.val['a'])
-            else:
-                return Expr({'type': 'add', 'a': self.val['a'], 'b': new_val.val})
-        elif isinstance(other, (int, float)) and self.val['type'] == 'sub':
-            new_val = Expr(self.val['b']) + other
-            if new_val.val == 0:
-                return Expr(self.val['a'])
-            else:
-                return Expr({'type': 'sub', 'a': self.val['a'], 'b': new_val.val})
-        else:
-            return Expr({'type': 'sub', 'a': self.val, 'b': other})
-
-    def __mul__(self, other):
-        return Expr({'type': 'mul', 'a': self.val, 'b': Expr.unwrap(other)})
-
-    def __mod__(self, other):
-        return Expr({'type': 'mod', 'a': self.val, 'b': Expr.unwrap(other)})
-
-    def __truediv__(self, other):
-        return Expr({'type': 'div', 'a': self.val, 'b': Expr.unwrap(other)})
-
-    def __floordiv__(self, other):
-        return Expr({'type': 'fdiv', 'a': self.val, 'b': Expr.unwrap(other)})
-
-    def __or__(self, other):
-        return Expr({'type': 'bOr', 'a': self.val, 'b': Expr.unwrap(other)})
-
-    def __and__(self, other):
-        return Expr({'type': 'bAnd', 'a': self.val, 'b': Expr.unwrap(other)})
-
-    def sqrt(self):
-        return Expr({'type': 'sqrt', 'a': self.val})
-
-    def __gt__(self, other):
-        return Expr({'type': 'gt', 'a': self.val, 'b': Expr.unwrap(other)})
-
-    def __lt__(self, other):
-        return Expr({'type': 'lt', 'a': self.val, 'b': Expr.unwrap(other)})
-
-    def __ge__(self, other):
-        return Expr({'type': 'ge', 'a': self.val, 'b': Expr.unwrap(other)})
-
-    def __le__(self, other):
-        return Expr({'type': 'le', 'a': self.val, 'b': Expr.unwrap(other)})
-
-    def __eq__(self, other):
-        return Expr({'type': 'eq', 'a': self.val, 'b': Expr.unwrap(other)})
-
-    def __ne__(self, other):
-        return Expr({'type': 'ne', 'a': self.val, 'b': Expr.unwrap(other)})
-
-    def __neg__(self):
-        return Expr({'type': 'neg', 'a': self.val})
-
-    def __invert__(self):
-        return Expr({'type': 'bInvert', 'a': self.val})
-
-    def __abs__(self):
-        return Expr({'type': 'abs', 'a': self.val})
-
-    @staticmethod
-    def measure_text_x(text, font_size):
-        return Expr({'type': 'measureTextX', 'text': Expr.unwrap(text), 'fontSize': Expr.unwrap(font_size)})
-
-    @staticmethod
-    def measure_text_y(text, font_size):
-        return Expr({'type': 'measureTextY', 'text': Expr.unwrap(text), 'fontSize': Expr.unwrap(font_size)})
-
-    def __str__(self):
-        if isinstance(self.val, (int, float)):
-            return str(self.val)
-        elif isinstance(self.val, str):
-            return repr(self.val)
-        elif self.val['type'] == 'var':
-            return self.val['name']
-        elif self.val['type'] == 'add':
-            return f'({Expr(self.val["a"])} + {Expr(self.val["b"])})'
-        elif self.val['type'] == 'min':
-            return f'min({Expr(self.val["a"])}, {Expr(self.val["b"])})'
-        elif self.val['type'] == 'max':
-            return f'max({Expr(self.val["a"])}, {Expr(self.val["b"])})'
-        elif self.val['type'] == 'sub':
-            return f'({Expr(self.val["a"])} - {Expr(self.val["b"])})'
-        elif self.val['type'] == 'mul':
-            return f'({Expr(self.val["a"])} * {Expr(self.val["b"])})'
-        elif self.val['type'] == 'div':
-            return f'({Expr(self.val["a"])} / {Expr(self.val["b"])})'
-        elif self.val['type'] == 'fdiv':
-            return f'({Expr(self.val["a"])} // {Expr(self.val["b"])})'
-        elif self.val['type'] == 'bOr':
-            return f'({Expr(self.val["a"])} | {Expr(self.val["b"])})'
-        elif self.val['type'] == 'bAnd':
-            return f'({Expr(self.val["a"])} & {Expr(self.val["b"])})'
-        elif self.val['type'] == 'mod':
-            return f'({Expr(self.val["a"])} % {Expr(self.val["b"])})'
-        elif self.val['type'] == 'abs':
-            return f'abs({Expr(self.val["a"])})'
-        elif self.val['type'] == 'sqrt':
-            return f'sqrt({Expr(self.val["a"])})'
-        elif self.val['type'] == 'gt':
-            return f'({Expr(self.val["a"])} > {Expr(self.val["b"])})'
-        elif self.val['type'] == 'lt':
-            return f'({Expr(self.val["a"])} < {Expr(self.val["b"])})'
-        elif self.val['type'] == 'ge':
-            return f'({Expr(self.val["a"])} >= {Expr(self.val["b"])})'
-        elif self.val['type'] == 'le':
-            return f'({Expr(self.val["a"])} <= {Expr(self.val["b"])})'
-        elif self.val['type'] == 'eq':
-            return f'({Expr(self.val["a"])} == {Expr(self.val["b"])})'
-        elif self.val['type'] == 'ne':
-            return f'({Expr(self.val["a"])} != {Expr(self.val["b"])})'
-        elif self.val['type'] == 'neg':
-            return f'-{Expr(self.val["a"])}'
-        elif self.val['type'] == 'bAnd':
-            return f'({Expr(self.val["a"])} & {Expr(self.val["b"])})'
-        elif self.val['type'] == 'bOr':
-            return f'({Expr(self.val["a"])} | {Expr(self.val["b"])})'
-        elif self.val['type'] == 'bInvert':
-            return f'~{Expr(self.val["a"])}'
-        elif self.val['type'] == 'if':
-            return f'if {Expr(self.val["cond"])} {{ {Expr(self.val["then"])} }} else {{ {Expr(self.val["else"])} }}'
-        elif self.val['type'] == 'measureTextX':
-            return f'measure_text_x({Expr(self.val["text"])}, fontSize={Expr(self.val["fontSize"])})'
-        elif self.val['type'] == 'measureTextY':
-            return f'measure_text_y({Expr(self.val["text"])}, fontSize={Expr(self.val["fontSize"])})'
-        else:
-            return json.dumps(self.val)
-
-    def __repr__(self):
-        return self.__str__()
+        return {'type': 'image', 'uri': uri, 'rect': list(map(Expr.to_dict, rect))}
 
 
 class ProtocolServer:
@@ -467,7 +259,7 @@ class ProtocolServer:
         if self.socket:
             parts = []
             for name, val_type, value in set_vars:
-                parts.append(name.encode() + b'\x00' + val_type.encode() + b'\x00' + json.dumps(Expr.unwrap(value)).encode())
+                parts.append(name.encode() + b'\x00' + val_type.encode() + b'\x00' + json.dumps(Expr.to_dict(value)).encode())
             self._send_packet(Actions.SET_VAR.to_bytes(4, 'big') + b'\x00'.join(parts))
 
     def send_watch_ack(self, ack_id: int):

@@ -2,10 +2,7 @@
 import abc
 import contextlib
 from typing import Tuple, Dict, List
-
-import lmdb
-
-from boldui import Ops, Expr
+from boldui import Ops, Expr, var
 from boldui.store import BaseModel
 
 Context = {}
@@ -431,7 +428,7 @@ class Image(Widget):
     BUILDS_CHILDREN = True
 
     def __init__(self, uri):
-        self.uri = Expr.unwrap(uri)
+        self.uri = Expr(uri)
         super().__init__()
 
     def __repr__(self):
@@ -484,7 +481,7 @@ class Text(Widget):
     BUILDS_CHILDREN = True
 
     def __init__(self, text, font_size=14, color=0xffffffff):
-        self.text = Expr.unwrap(text)
+        self.text = Expr(text)
         self.font_size = font_size
         self.color = color
         super(Text, self).__init__()
@@ -617,7 +614,7 @@ class EventHandler(Widget):
                 handlers = self.on_mouse_down
             else:
                 handlers = [
-                    Ops.reply(self._id, [Expr.var('event_x'), Expr.var('event_y'), Expr.var('time')])
+                    Ops.reply(self._id, [var('event_x'), var('event_y'), var('time')])
                 ]
 
         if self.on_scroll:
@@ -626,7 +623,7 @@ class EventHandler(Widget):
                 handlers = self.on_scroll
             else:
                 handlers = [
-                    Ops.reply(self._id, [Expr.var('event_x'), Expr.var('event_y'), Expr.var('scroll_x'), Expr.var('scroll_y'), Expr.var('time')])
+                    Ops.reply(self._id, [var('event_x'), var('event_y'), var('scroll_x'), var('scroll_y'), var('time')])
                 ]
 
         event_hnd_op = Ops.event_handler((left, top, right, bottom), events, handlers)
@@ -1008,20 +1005,20 @@ class ListViewInner(Widget):
             cond=Expr(
                 (
                     # Delete top widget
-                    (Expr.var(self.var_prefix + 'lv_scroll_pos') - Expr.var(self.var_prefix + 'lv_list_start')) > (Expr(self._top_widget_height) + self.height_slack)
+                    (var(self.var_prefix + 'lv_scroll_pos') - var(self.var_prefix + 'lv_list_start')) > (Expr(self._top_widget_height or 0) + self.height_slack)
                 ) | (
                     # Add top widget
-                    ((Expr.var(self.var_prefix + 'lv_scroll_pos') - Expr.var(self.var_prefix + 'lv_list_start')) < self.height_slack)
-                    & (Expr.var(self.var_prefix + 'lv_list_start') > 0)
+                    ((var(self.var_prefix + 'lv_scroll_pos') - var(self.var_prefix + 'lv_list_start')) < self.height_slack)
+                    & (var(self.var_prefix + 'lv_list_start') > 0)
                 ) | (
                     # Delete bottom widget
-                    (self._total_height - (Expr.var(self.var_prefix + 'lv_scroll_pos') - Expr.var(self.var_prefix + 'lv_list_start')) - self.height_slack - self._bot_widget_height) > max_height
+                    (self._total_height - (var(self.var_prefix + 'lv_scroll_pos') - var(self.var_prefix + 'lv_list_start')) - self.height_slack - (self._bot_widget_height or 0)) > max_height
                 ) | (
                     # Add bottom widget
-                    (self._total_height - (Expr.var(self.var_prefix + 'lv_scroll_pos') - Expr.var(self.var_prefix + 'lv_list_start')) - self.height_slack) < max_height
+                    (self._total_height - (var(self.var_prefix + 'lv_scroll_pos') - var(self.var_prefix + 'lv_list_start')) - self.height_slack) < max_height
                 )
             ),
-            data=[self._total_height, self._above_top_widget_height, self._top_widget_height, self._bot_widget_height, max_height, Expr.var(self.var_prefix + 'lv_list_start'), Expr.var(self.var_prefix + 'lv_scroll_pos'), self._gen],
+            data=[self._total_height, self._above_top_widget_height, self._top_widget_height, self._bot_widget_height, max_height, var(self.var_prefix + 'lv_list_start'), var(self.var_prefix + 'lv_scroll_pos'), self._gen],
             handler=update_bottom_widget,
             wait_for_roundtrip=True,
             wait_for_rebuild=True,
@@ -1056,7 +1053,7 @@ class ListView(Widget):
                 ListViewInner(
                     state=self.state,
                     builder=self.builder,
-                    offset=Expr.var(self.var_prefix + 'lv_list_start') - Expr.var(self.var_prefix + 'lv_scroll_pos'),
+                    offset=var(self.var_prefix + 'lv_list_start') - var(self.var_prefix + 'lv_scroll_pos'),
                     var_prefix=self.var_prefix,
                 ),
             ),
@@ -1064,7 +1061,7 @@ class ListView(Widget):
             on_scroll=[
                 Ops.set_var(
                     self.var_prefix + 'lv_scroll_pos',
-                    (Expr.var(self.var_prefix + 'lv_scroll_pos') - Expr.var('scroll_y') * 10).max(0)
+                    (var(self.var_prefix + 'lv_scroll_pos') - var('scroll_y') * 10).max(0)
                 ),
             ],
         )

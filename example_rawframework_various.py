@@ -19,22 +19,22 @@ def main():
                 Center(
                     SizedBox(
                         Rectangle(0xffa0a0a0),
-                        width=abs((Expr.var('time') % 1) - 0.5) * 50 + 100,
-                        height=abs(((Expr.var('time') + 0.5) % 1) - 0.5) * 50 + 100,
+                        width=abs((var('time') % 1) - 0.5) * 50 + 100,
+                        height=abs(((var('time') + 0.5) % 1) - 0.5) * 50 + 100,
                     ),
                 ),
                 all=10,
             ),
             Padding(
                 Rectangle(
-                    color=Expr(Ops.if_(Expr.var('height') > 600, 0xffa0a0a0, 0xff9090d0))
+                    color=Expr(Ops.if_(var('height') > 600, 0xffa0a0a0, 0xff9090d0))
                 ),
                 all=10
             ),
             Flexible(
                 Padding(
                     Rectangle(
-                        color=Expr(Ops.if_(Expr.var('width') > 800, 0xffa0a0a0, 0xffd09090))
+                        color=Expr(Ops.if_(var('width') > 800, 0xffa0a0a0, 0xffd09090))
                     ),
                     all=10
                 ),
@@ -44,7 +44,7 @@ def main():
     )
 
     built_root = root.build()
-    size = built_root.layout(Expr(0), Expr(0), Expr.var('width'), Expr.var('height'))
+    size = built_root.layout(Expr(0), Expr(0), var('width'), var('height'))
     scene = built_root.render(Expr(0), Expr(0), size[0], size[1])
     for op in scene:
         print(stringify_op(op))

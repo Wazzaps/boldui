@@ -108,8 +108,8 @@ scene = [
       rect=(
          10,
          10,
-         Expr.var('width') - 10,
-         Expr.var('height') - 10,
+         var('width') - 10,
+         var('height') - 10,
       ),
       color=0xffa0a0a0
    ),
