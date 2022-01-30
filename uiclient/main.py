@@ -146,7 +146,6 @@ class UIClient:
         UIClient._font_cache[key] = skia.Font(skia.Typeface(font_name), font_size)
         return UIClient._font_cache[key]
 
-
     @staticmethod
     def resolve_str(value, context):
         if value is None:
@@ -175,6 +174,8 @@ class UIClient:
             elif value['type'] == 'mul':
                 return UIClient.resolve_int(value['a'], context) * UIClient.resolve_int(value['b'], context)
             elif value['type'] == 'div':
+                return UIClient.resolve_int(value['a'], context) / UIClient.resolve_int(value['b'], context)
+            elif value['type'] == 'fdiv':
                 return UIClient.resolve_int(value['a'], context) // UIClient.resolve_int(value['b'], context)
             elif value['type'] == 'mod':
                 return UIClient.resolve_int(value['a'], context) % UIClient.resolve_int(value['b'], context)

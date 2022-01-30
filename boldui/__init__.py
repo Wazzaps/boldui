@@ -31,8 +31,8 @@ def stringify_op(obj, indent=0):
         result += ']'
         return result
     elif isinstance(obj, dict) and 'type' in obj:
-        if obj['type'] in ('add', 'sub', 'mul', 'div', 'bOr', 'bAnd', 'mod', 'abs', 'gt', 'lt', 'ge', 'le', 'eq',
-                           'ne', 'neg', 'bAnd', 'bOr', 'bInvert', 'if', 'min', 'max', 'var'):
+        if obj['type'] in ('add', 'sub', 'mul', 'fdiv', 'div', 'bOr', 'bAnd', 'mod', 'abs', 'gt', 'lt', 'ge', 'le',
+                           'eq', 'ne', 'neg', 'bAnd', 'bOr', 'bInvert', 'if', 'min', 'max', 'var'):
             return str(Expr(obj))
 
         if obj['type'] in ('clear', 'rect', 'rrect', 'reply', 'setVar', 'evtHnd', 'watch', 'ackWatch', 'if', 'text', 'save',
@@ -219,8 +219,11 @@ class Expr:
     def __mod__(self, other):
         return Expr({'type': 'mod', 'a': self.val, 'b': Expr.unwrap(other)})
 
-    def __floordiv__(self, other):
+    def __truediv__(self, other):
         return Expr({'type': 'div', 'a': self.val, 'b': Expr.unwrap(other)})
+
+    def __floordiv__(self, other):
+        return Expr({'type': 'fdiv', 'a': self.val, 'b': Expr.unwrap(other)})
 
     def __or__(self, other):
         return Expr({'type': 'bOr', 'a': self.val, 'b': Expr.unwrap(other)})
@@ -284,6 +287,8 @@ class Expr:
         elif self.val['type'] == 'mul':
             return f'({Expr(self.val["a"])} * {Expr(self.val["b"])})'
         elif self.val['type'] == 'div':
+            return f'({Expr(self.val["a"])} / {Expr(self.val["b"])})'
+        elif self.val['type'] == 'fdiv':
             return f'({Expr(self.val["a"])} // {Expr(self.val["b"])})'
         elif self.val['type'] == 'bOr':
             return f'({Expr(self.val["a"])} | {Expr(self.val["b"])})'
