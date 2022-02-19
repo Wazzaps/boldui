@@ -71,12 +71,16 @@ class Protocol:
                 while parts:
                     var_name, var_type, var_value = parts[:3]
                     parts = parts[3:]
+
+                    # FIXME: remove when variables get static types
+                    new_value = UIClient.resolve_oplist(json.loads(var_value), self.ui_client.context)[-1]
                     if var_type == b'n':
-                        new_value = UIClient.resolve_int(json.loads(var_value), self.ui_client.context)
+                        new_value = int(new_value)
                     elif var_type == b's':
-                        new_value = UIClient.resolve_str(json.loads(var_value), self.ui_client.context)
+                        new_value = str(new_value)
                     else:
                         raise Exception('Unknown var type')
+
                     print(f'{var_name}:{var_type} = {var_value}')
                     self.ui_client.persistent_context[var_name.decode()] = new_value
                 self.ui_client._should_update_watches = True
@@ -95,9 +99,12 @@ class UIClient:
     _font_cache = {}
 
     def __init__(self, address):
-        self.scene = [
-            {'type': 'clear', 'color': 0xff202020},
-        ]
+        self.scene = {
+            'oplist': [0xff202020],
+            'scene': [
+                {'type': 'clear', 'color': 0},
+            ]
+        }
         self.protocol = Protocol(address, self)
         self.persistent_context = {}
         self._should_update_watches = False
@@ -147,105 +154,100 @@ class UIClient:
         return UIClient._font_cache[key]
 
     @staticmethod
-    def resolve_str(value, context):
+    def resolve_op(value, op_results, context):
         if value is None:
-            return ''
-        elif isinstance(value, str):
+            return 0
+        elif isinstance(value, (int, float, str)):
             return value
         elif isinstance(value, dict):
-            if value['type'] == 'toStr':
-                return str(UIClient.resolve_int(value['a'], context))
+            if value['type'] == 'add':
+                return op_results[value['a']] + op_results[value['b']]
+            elif value['type'] == 'sub':
+                return op_results[value['a']] - op_results[value['b']]
+            elif value['type'] == 'mul':
+                return op_results[value['a']] * op_results[value['b']]
+            elif value['type'] == 'div':
+                return op_results[value['a']] / op_results[value['b']]
+            elif value['type'] == 'fdiv':
+                return op_results[value['a']] // op_results[value['b']]
+            elif value['type'] == 'mod':
+                return op_results[value['a']] % op_results[value['b']]
+            elif value['type'] == 'pow':
+                return op_results[value['a']] ** op_results[value['b']]
+            elif value['type'] == 'sqrt':
+                return op_results[value['a']] ** 0.5
+            elif value['type'] == 'sin':
+                return math.sin(op_results[value['a']])
+            elif value['type'] == 'cos':
+                return math.cos(op_results[value['a']])
+            elif value['type'] == 'tan':
+                return math.tan(op_results[value['a']])
+            elif value['type'] == 'neg':
+                return -op_results[value['a']]
+            elif value['type'] == 'abs':
+                return abs(op_results[value['a']])
+            elif value['type'] == 'min':
+                return min(op_results[value['a']], op_results[value['b']])
+            elif value['type'] == 'max':
+                return max(op_results[value['a']], op_results[value['b']])
+            elif value['type'] == 'eq':
+                return op_results[value['a']] == op_results[value['b']]
+            elif value['type'] == 'ne':
+                return op_results[value['a']] != op_results[value['b']]
+            elif value['type'] == 'lt':
+                return op_results[value['a']] < op_results[value['b']]
+            elif value['type'] == 'le':
+                return op_results[value['a']] <= op_results[value['b']]
+            elif value['type'] == 'gt':
+                return op_results[value['a']] > op_results[value['b']]
+            elif value['type'] == 'ge':
+                return op_results[value['a']] >= op_results[value['b']]
+            elif value['type'] == 'bAnd':
+                return op_results[value['a']] & op_results[value['b']]
+            elif value['type'] == 'bOr':
+                return op_results[value['a']] | op_results[value['b']]
+            elif value['type'] == 'bXor':
+                return op_results[value['a']] ^ op_results[value['b']]
+            elif value['type'] == 'bInvert':
+                return ~op_results[value['a']]
+            elif value['type'] == 'shl':
+                return op_results[value['a']] << op_results[value['b']]
+            elif value['type'] == 'shr':
+                return op_results[value['a']] >> op_results[value['b']]
+            elif value['type'] == 'min':
+                return min(op_results[value['a']], op_results[value['b']])
+            elif value['type'] == 'max':
+                return max(op_results[value['a']], op_results[value['b']])
+            elif value['type'] == 'inf':
+                return float('inf')
+            elif value['type'] == 'measureTextX':
+                font_size = op_results[value['fontSize']]
+                text = op_results[value['text']]
+                return UIClient.measure_text(text, font_size)[0]
+            elif value['type'] == 'measureTextY':
+                font_size = op_results[value['fontSize']]
+                text = op_results[value['text']]
+                return UIClient.measure_text(text, font_size)[1]
+            elif value['type'] == 'if':
+                if op_results[value['cond']]:
+                    return op_results[value['t']]
+                else:
+                    return op_results[value['f']]
+            elif value['type'] == 'toStr':
+                return str(op_results[value['a']])
+            elif value['type'] == 'var':
+                return context.get(value['name'], 0)
             else:
-                raise ValueError('Unknown str operation: {}'.format(value['type']))
+                raise ValueError('Unknown operation: {}'.format(value['type']))
         else:
             raise ValueError('Unknown type: {}'.format(value))
 
     @staticmethod
-    def resolve_int(value, context):
-        if value is None:
-            return 0
-        elif isinstance(value, (int, float)):
-            return value
-        elif isinstance(value, dict):
-            if value['type'] == 'add':
-                return UIClient.resolve_int(value['a'], context) + UIClient.resolve_int(value['b'], context)
-            elif value['type'] == 'sub':
-                return UIClient.resolve_int(value['a'], context) - UIClient.resolve_int(value['b'], context)
-            elif value['type'] == 'mul':
-                return UIClient.resolve_int(value['a'], context) * UIClient.resolve_int(value['b'], context)
-            elif value['type'] == 'div':
-                return UIClient.resolve_int(value['a'], context) / UIClient.resolve_int(value['b'], context)
-            elif value['type'] == 'fdiv':
-                return UIClient.resolve_int(value['a'], context) // UIClient.resolve_int(value['b'], context)
-            elif value['type'] == 'mod':
-                return UIClient.resolve_int(value['a'], context) % UIClient.resolve_int(value['b'], context)
-            elif value['type'] == 'pow':
-                return UIClient.resolve_int(value['a'], context) ** UIClient.resolve_int(value['b'], context)
-            elif value['type'] == 'sqrt':
-                return UIClient.resolve_int(value['a'], context) ** 0.5
-            elif value['type'] == 'sin':
-                return math.sin(UIClient.resolve_int(value['a'], context))
-            elif value['type'] == 'cos':
-                return math.cos(UIClient.resolve_int(value['a'], context))
-            elif value['type'] == 'tan':
-                return math.tan(UIClient.resolve_int(value['a'], context))
-            elif value['type'] == 'neg':
-                return -UIClient.resolve_int(value['a'], context)
-            elif value['type'] == 'abs':
-                return abs(UIClient.resolve_int(value['a'], context))
-            elif value['type'] == 'min':
-                return min(UIClient.resolve_int(value['a'], context), UIClient.resolve_int(value['b'], context))
-            elif value['type'] == 'max':
-                return max(UIClient.resolve_int(value['a'], context), UIClient.resolve_int(value['b'], context))
-            elif value['type'] == 'eq':
-                return UIClient.resolve_int(value['a'], context) == UIClient.resolve_int(value['b'], context)
-            elif value['type'] == 'ne':
-                return UIClient.resolve_int(value['a'], context) != UIClient.resolve_int(value['b'], context)
-            elif value['type'] == 'lt':
-                return UIClient.resolve_int(value['a'], context) < UIClient.resolve_int(value['b'], context)
-            elif value['type'] == 'le':
-                return UIClient.resolve_int(value['a'], context) <= UIClient.resolve_int(value['b'], context)
-            elif value['type'] == 'gt':
-                return UIClient.resolve_int(value['a'], context) > UIClient.resolve_int(value['b'], context)
-            elif value['type'] == 'ge':
-                return UIClient.resolve_int(value['a'], context) >= UIClient.resolve_int(value['b'], context)
-            elif value['type'] == 'bAnd':
-                return UIClient.resolve_int(value['a'], context) & UIClient.resolve_int(value['b'], context)
-            elif value['type'] == 'bOr':
-                return UIClient.resolve_int(value['a'], context) | UIClient.resolve_int(value['b'], context)
-            elif value['type'] == 'bXor':
-                return UIClient.resolve_int(value['a'], context) ^ UIClient.resolve_int(value['b'], context)
-            elif value['type'] == 'bInvert':
-                return ~UIClient.resolve_int(value['a'], context)
-            elif value['type'] == 'shl':
-                return UIClient.resolve_int(value['a'], context) << UIClient.resolve_int(value['b'], context)
-            elif value['type'] == 'shr':
-                return UIClient.resolve_int(value['a'], context) >> UIClient.resolve_int(value['b'], context)
-            elif value['type'] == 'min':
-                return min(UIClient.resolve_int(value['a'], context), UIClient.resolve_int(value['b'], context))
-            elif value['type'] == 'max':
-                return max(UIClient.resolve_int(value['a'], context), UIClient.resolve_int(value['b'], context))
-            elif value['type'] == 'inf':
-                return float('inf')
-            elif value['type'] == 'measureTextX':
-                font_size = UIClient.resolve_int(value['fontSize'], context)
-                text = UIClient.resolve_str(value['text'], context)
-                return UIClient.measure_text(text, font_size)[0]
-            elif value['type'] == 'measureTextY':
-                font_size = UIClient.resolve_int(value['fontSize'], context)
-                text = UIClient.resolve_str(value['text'], context)
-                return UIClient.measure_text(text, font_size)[1]
-            elif value['type'] == 'if':
-                if UIClient.resolve_int(value['cond'], context):
-                    return UIClient.resolve_int(value['then'], context)
-                else:
-                    return UIClient.resolve_int(value['else'], context)
-            elif value['type'] == 'var':
-                return context.get(value['name'], 0)
-            else:
-                raise ValueError('Unknown int operation: {}'.format(value['type']))
-        else:
-            raise ValueError('Unknown type: {}'.format(value))
+    def resolve_oplist(oplist, context):
+        op_results = []
+        for op in oplist:
+            op_results.append(UIClient.resolve_op(op, op_results, context))
+        return op_results
 
     @property
     def context(self):
@@ -266,59 +268,62 @@ class UIClient:
         context = self.context
         canvas.save()
         canvas.clear(0xff000000)
-        for item in self.scene:
+
+        op_results = UIClient.resolve_oplist(self.scene['oplist'], context)
+
+        for item in self.scene['scene']:
             if item['type'] == 'clear':
                 canvas.clear(item['color'])
             elif item['type'] == 'rect':
                 canvas.drawRect(skia.Rect(
-                    UIClient.resolve_int(item['rect'][0], context),
-                    UIClient.resolve_int(item['rect'][1], context),
-                    UIClient.resolve_int(item['rect'][2], context),
-                    UIClient.resolve_int(item['rect'][3], context)
-                ), self._paint_from_int_color(UIClient.resolve_int(item['color'], context)))
+                    op_results[item['rect'][0]],
+                    op_results[item['rect'][1]],
+                    op_results[item['rect'][2]],
+                    op_results[item['rect'][3]]
+                ), self._paint_from_int_color(op_results[item['color']]))
             elif item['type'] == 'rrect':
                 canvas.drawRRect(skia.RRect(
                     skia.Rect(
-                        UIClient.resolve_int(item['rect'][0], context),
-                        UIClient.resolve_int(item['rect'][1], context),
-                        UIClient.resolve_int(item['rect'][2], context),
-                        UIClient.resolve_int(item['rect'][3], context),
+                        op_results[item['rect'][0]],
+                        op_results[item['rect'][1]],
+                        op_results[item['rect'][2]],
+                        op_results[item['rect'][3]],
                     ),
-                    UIClient.resolve_int(item['radius'], context),
-                    UIClient.resolve_int(item['radius'], context),
-                ), self._paint_from_int_color(UIClient.resolve_int(item['color'], context)))
+                    op_results[item['radius']],
+                    op_results[item['radius']],
+                ), self._paint_from_int_color(op_results[item['color']]))
             elif item['type'] == 'save':
                 canvas.save()
             elif item['type'] == 'restore':
                 canvas.restore()
             elif item['type'] == 'clipRect':
                 canvas.clipRect(skia.Rect(
-                    UIClient.resolve_int(item['rect'][0], context),
-                    UIClient.resolve_int(item['rect'][1], context),
-                    UIClient.resolve_int(item['rect'][2], context),
-                    UIClient.resolve_int(item['rect'][3], context)
+                    op_results[item['rect'][0]],
+                    op_results[item['rect'][1]],
+                    op_results[item['rect'][2]],
+                    op_results[item['rect'][3]]
                 ))
             elif item['type'] == 'text':
-                paint = self._paint_from_int_color(UIClient.resolve_int(item['color'], context))
-                font_size = UIClient.resolve_int(item['fontSize'], context)
+                paint = self._paint_from_int_color(op_results[item['color']])
+                font_size = op_results[item['fontSize']]
                 font = UIClient.get_font('Cantarell', font_size)
-                text = UIClient.resolve_str(item['text'], context)
+                text = op_results[item['text']]
                 measurement = font.measureText(text, skia.TextEncoding.kUTF8, None, paint)
 
                 canvas.drawString(
                     text,
                     # TODO: Add alignment parameter
-                    UIClient.resolve_int(item['x'], context) - measurement // 2,
-                    UIClient.resolve_int(item['y'], context) + font_size // 2,
+                    op_results[item['x']] - measurement // 2,
+                    op_results[item['y']] + font_size // 2,
                     font,
                     paint
                 )
             elif item['type'] == 'image':
                 rect = (
-                    UIClient.resolve_int(item['rect'][0], context),
-                    UIClient.resolve_int(item['rect'][1], context),
-                    UIClient.resolve_int(item['rect'][2], context),
-                    UIClient.resolve_int(item['rect'][3], context),
+                    op_results[item['rect'][0]],
+                    op_results[item['rect'][1]],
+                    op_results[item['rect'][2]],
+                    op_results[item['rect'][3]],
                 )
                 # width, height = rect[2] - rect[0], rect[3] - rect[1]
                 if item['uri'] not in self.image_cache:
@@ -351,13 +356,13 @@ class UIClient:
             'scroll_y': scroll_y
         }, MOUSE_SCROLL_EVT)
 
-    def _eval_handlers(self, handlers, context):
+    def _eval_handlers(self, handlers, op_results):
         replies = []
         for handler in handlers:
             if handler['type'] == 'reply':
                 formatted_data = handler['id'].to_bytes(4, 'big')
                 for data in handler['data']:
-                    val = UIClient.resolve_int(data, context)
+                    val = op_results[data]
 
                     if isinstance(val, int):
                         formatted_data += b'\x00'
@@ -369,7 +374,7 @@ class UIClient:
                         raise ValueError('Invalid reply data type: {}'.format(type(val)))
                 replies.append(formatted_data)
             elif handler['type'] == 'setVar':
-                self.persistent_context[handler['name']] = UIClient.resolve_int(handler['value'], context)
+                self.persistent_context[handler['name']] = op_results[handler['value']]
                 self._should_update_watches = True
                 replies += self.update_watches()
         return replies
@@ -388,17 +393,18 @@ class UIClient:
             'event_y': y,
             **extra_context,
         }
+        op_results = UIClient.resolve_oplist(self.scene['oplist'], context)
         replies = []
-        for item in self.scene:
+        for item in self.scene['scene']:
             if item['type'] == 'evtHnd' and item['events'] & event_mask:
                 rect = (
-                    UIClient.resolve_int(item['rect'][0], context),
-                    UIClient.resolve_int(item['rect'][1], context),
-                    UIClient.resolve_int(item['rect'][2], context),
-                    UIClient.resolve_int(item['rect'][3], context)
+                    op_results[item['rect'][0]],
+                    op_results[item['rect'][1]],
+                    op_results[item['rect'][2]],
+                    op_results[item['rect'][3]],
                 )
                 if rect[0] <= x <= rect[2] and rect[1] <= y <= rect[3]:
-                    replies += self._eval_handlers(item['handler'], context)
+                    replies += self._eval_handlers(item['handler'], op_results)
 
         replies += self.update_watches()
 
@@ -411,11 +417,12 @@ class UIClient:
         for _ in range(UIClient.WATCH_RECURSION):
             if self._should_update_watches:
                 self._should_update_watches = False
-                for op in self.scene:
+                op_results = UIClient.resolve_oplist(self.scene['oplist'], context)
+                for op in self.scene['scene']:
                     if op['type'] == 'watch':
                         if op['id'] not in self._blocked_watches:
-                            if UIClient.resolve_int(op['cond'], context):
-                                replies += self._eval_handlers(op['handler'], context)
+                            if op_results[op['cond']]:
+                                replies += self._eval_handlers(op['handler'], op_results)
                                 if op['waitForRoundtrip']:
                                     self._blocked_watches.add(op['id'])
             else:

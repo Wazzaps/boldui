@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from boldui import Ops, Expr
+from boldui import Ops, Expr, var
 from boldui.adwaita import Button
 from boldui.app import App
 from boldui.framework import Row, Rectangle, SizedBox, Text, Center, Stack, Widget

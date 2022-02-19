@@ -6,7 +6,7 @@ import json
 import os
 import socket
 import struct
-from simplexp import Expr, var
+from simplexp import Expr, var, Oplist
 from typing import List
 
 
@@ -49,29 +49,29 @@ def stringify_op(obj, indent=0):
 class Ops:
     @staticmethod
     def clear(color):
-        return {'type': 'clear', 'color': Expr.to_dict(color)}
+        return {'type': 'clear', 'color': color}
 
     @staticmethod
     def rect(rect, color):
-        return {'type': 'rect', 'rect': list(map(Expr.to_dict, rect)), 'color': Expr.to_dict(color)}
+        return {'type': 'rect', 'rect': rect, 'color': color}
 
     @staticmethod
     def rrect(rect, color, radius):
-        return {'type': 'rrect', 'rect': list(map(Expr.to_dict, rect)), 'color': Expr.to_dict(color), 'radius': Expr.to_dict(radius)}
+        return {'type': 'rrect', 'rect': rect, 'color': color, 'radius': radius}
 
     @staticmethod
     def reply(ident: int, data: List[Expr | int | float | None]):
-        return {'type': 'reply', 'id': ident, 'data': list(map(Expr.to_dict, data))}
+        return {'type': 'reply', 'id': ident, 'data': data}
 
     @staticmethod
     def set_var(name: str, value: Expr):
-        return {'type': 'setVar', 'name': name, 'value': Expr.to_dict(value)}
+        return {'type': 'setVar', 'name': name, 'value': value}
 
     @staticmethod
     def event_handler(rect, events, handler):
         return {
             'type': 'evtHnd',
-            'rect': list(map(Expr.to_dict, rect)),
+            'rect': rect,
             'events': events,
             'handler': handler
         }
@@ -81,7 +81,7 @@ class Ops:
         return {
             'type': 'watch',
             'id': id,
-            'cond': Expr.to_dict(cond),
+            'cond': cond,
             'waitForRoundtrip': wait_for_roundtrip,
             'handler': handler
         }
@@ -97,16 +97,16 @@ class Ops:
     def text(text, x, y, font_size, color):
         return {
             'type': 'text',
-            'text': Expr.to_dict(text),
-            'x': Expr.to_dict(x),
-            'y': Expr.to_dict(y),
-            'fontSize': Expr.to_dict(font_size),
-            'color': Expr.to_dict(color),
+            'text': text,
+            'x': x,
+            'y': y,
+            'fontSize': font_size,
+            'color': color,
         }
 
     @staticmethod
     def if_(cond, t, f):
-        return {'type': 'if', 'cond': Expr.to_dict(cond), 'then': Expr.to_dict(t), 'else': Expr.to_dict(f)}
+        return {'type': 'if', 'cond': cond, 'then': t, 'else': f}
 
     @staticmethod
     def save():
@@ -118,11 +118,11 @@ class Ops:
 
     @staticmethod
     def clip_rect(rect):
-        return {'type': 'clipRect', 'rect': list(map(Expr.to_dict, rect))}
+        return {'type': 'clipRect', 'rect': rect}
 
     @staticmethod
     def image(uri, rect):
-        return {'type': 'image', 'uri': uri, 'rect': list(map(Expr.to_dict, rect))}
+        return {'type': 'image', 'uri': uri, 'rect': rect}
 
 
 class ProtocolServer:
@@ -259,7 +259,8 @@ class ProtocolServer:
         if self.socket:
             parts = []
             for name, val_type, value in set_vars:
-                parts.append(name.encode() + b'\x00' + val_type.encode() + b'\x00' + json.dumps(Expr.to_dict(value)).encode())
+                value = Oplist(Expr.to_dict(value)).to_list()
+                parts.append(name.encode() + b'\x00' + val_type.encode() + b'\x00' + json.dumps(value).encode())
             self._send_packet(Actions.SET_VAR.to_bytes(4, 'big') + b'\x00'.join(parts))
 
     def send_watch_ack(self, ack_id: int):

@@ -72,54 +72,65 @@ This lets the client render high-framerate graphics even in bad network conditio
 
 ### The scene-graph protocol
 
-Currently, it's a JSON list because I don't want to commit to a binary protocol yet.
+Currently, it's a JSON object because I don't want to commit to a binary protocol yet.
 
 Here's a small example:
 
-```json
-[
-   {"type": "clear", "color": 4280295472},
-   {
-      "type": "rect",
-      "rect": [
-         10,
-         10,
-         {"type": "sub", "a": {"type": "var", "name": "width"}, "b": 10},
-         {"type": "sub", "a": {"type": "var", "name": "height"}, "b": 10}
-      ],
-      "color": 4288716960
-   }
-]
+```json5
+{
+   "oplist": [
+      10,                                 // Expression #0
+      {"type": "var", "name": "width"},   // Expression #1
+      {"type": "sub", "a": 1, "b": 0},    // Expression #2 (uses results of expr #0 and #1)
+      {"type": "var", "name": "height"},  // Expression #3
+      {"type": "sub", "a": 3, "b": 0},    // Expression #4 (uses results of expr #0 and #3)
+      4288716960                          // Expression #5
+   ],
+   "scene": [
+      {
+         "type": "rect",
+         "rect": [
+            0,  // Use expression #0
+            0,  // Use expression #0
+            2,  // Use expression #2
+            4   // Use expression #4
+         ],
+         "color": 5 // Use expression #5
+      }
+   ]
+}
 ```
 
 The "width" and "height" variables correspond to the dimensions of the client window. Here we subtract 10 from both to
 determine the right and bottom coordinates of the rect.
 
-As you can see, after clearing the screen, this scene draws a rectangle with a 10px padding on all sides.
+As you can see, this scene draws a rectangle with a 10px padding on all sides.
 
 ### The low-level Python API
 
 Instead of manually writing the JSON scene-graph, here's the first abstraction:
 
 ```python
+oplist = Oplist()
 scene = [
-   Ops.clear(color=0xff202030),
    Ops.rect(
       rect=(
-         10,
-         10,
-         var('width') - 10,
-         var('height') - 10,
+         oplist.append(10),
+         oplist.append(10),
+         oplist.append(var('width') - 10),
+         oplist.append(var('height') - 10),
       ),
-      color=0xffa0a0a0
+      color=oplist.append(0xffa0a0a0)
    ),
 ]
+scene = {'oplist': oplist.to_list(), 'scene': scene} 
 ```
 
 This has two abstractions:
 
 - Builder functions for the JSON objects
 - Simple expression syntax (overloaded operation methods)
+- Automatic oplist builder with deduplication
 
 ### The high-level Python API
 
@@ -127,18 +138,16 @@ The API above isn't very scalable because all coordinates are relative to the gl
 use a flutter-like layout protocol to make the layout declaratively, like so:
 
 ```python
-scene = Clear(
-    color=0xff202030,
-    child=Padding(
-        child=Rectangle(0xffa0a0a0),
-        left=10, top=10, right=10, bottom=10
-    ),
-)
+scene = Padding(
+     child=Rectangle(0xffa0a0a0),
+     left=10, top=10, right=10, bottom=10
+ ),
 ```
 
 This "compiles" to the same scene-graph from above, because of the expression abstraction from before.
 
-Special care is needed when writing complex layouts though, to keep expressions from exploding in size.
+Special care is needed when writing complex layouts though, to keep expressions from exploding in size. The oplist has
+deduplication which should help with this.
 
 ### The built-in widget library
 

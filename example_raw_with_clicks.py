@@ -1,71 +1,77 @@
 #!/usr/bin/env python3
 import random
 
-from boldui import Ops, Expr, var, ProtocolServer
+from boldui import Ops, Oplist, Expr, var, ProtocolServer
 
 if __name__ == '__main__':
     def make_scene(rect_color):
-        return [
+        oplist = Oplist()
+        scene = [
             Ops.clear(0xff202030),
 
             # Left rectangle
             Ops.rect(
                 (
-                    20,
-                    20,
-                    var('width') // 2 - 10,
-                    var('height') - 20,
+                    oplist.append(20),
+                    oplist.append(20),
+                    oplist.append(var('width') // 2 - 10),
+                    oplist.append(var('height') - 20),
                 ),
-                0xffa0a0a0
+                oplist.append(0xffa0a0a0),
             ),
 
             # Right rectangle
             Ops.rect(
                 (
-                    var('width') // 2 + 10,
-                    20,
-                    var('width') - 20,
-                    var('height') - 20,
+                    oplist.append(var('width') // 2 + 10),
+                    oplist.append(20),
+                    oplist.append(var('width') - 20),
+                    oplist.append(var('height') - 20),
                 ),
-                0xffa0a0a0
+                oplist.append(0xffa0a0a0),
             ),
 
             # Rect in the middle (border)
             Ops.rect(
                 (
-                    (var('width') // 2) - 70,
-                    (var('height') // 2) - 70,
-                    (var('width') // 2) + 70,
-                    (var('height') // 2) + 70,
+                    oplist.append((var('width') // 2) - 70),
+                    oplist.append((var('height') // 2) - 70),
+                    oplist.append((var('width') // 2) + 70),
+                    oplist.append((var('height') // 2) + 70),
                 ),
-                0xff202030,
+                oplist.append(0xff202030),
             ),
 
             # Rect in the middle
             Ops.rect(
                 (
-                    (var('width') // 2) - 50,
-                    (var('height') // 2) - 50,
-                    (var('width') // 2) + 50,
-                    (var('height') // 2) + 50,
+                    oplist.append((var('width') // 2) - 50),
+                    oplist.append((var('height') // 2) - 50),
+                    oplist.append((var('width') // 2) + 50),
+                    oplist.append((var('height') // 2) + 50),
                 ),
-                rect_color,
+                oplist.append(rect_color),
             ),
 
             # On click handler for middle rect
             Ops.event_handler(
                 rect=(
-                    (var('width') // 2) - 50,
-                    (var('height') // 2) - 50,
-                    (var('width') // 2) + 50,
-                    (var('height') // 2) + 50,
+                    oplist.append((var('width') // 2) - 50),
+                    oplist.append((var('height') // 2) - 50),
+                    oplist.append((var('width') // 2) + 50),
+                    oplist.append((var('height') // 2) + 50),
                 ),
                 events=0x1,
                 handler=[
-                    Ops.reply(0x123, [var('event_x'), var('event_y'), var('time')]),
+                    Ops.reply(0x123, [
+                        oplist.append(var('event_x')),
+                        oplist.append(var('event_y')),
+                        oplist.append(var('time')),
+                    ]),
                 ],
             ),
         ]
+        return {'oplist': oplist.to_list(), 'scene': scene}
 
     def handle_reply(ident, data):
         if ident == 0x123:

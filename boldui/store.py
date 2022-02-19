@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 import lmdb
 
-from boldui import Expr
+from boldui import Expr, var
 
 DEBUG = False
 

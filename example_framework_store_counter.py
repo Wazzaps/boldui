@@ -53,5 +53,5 @@ class MainPage(Widget):
 
 
 if __name__ == '__main__':
-    app = App(MainPage, durable_store='/home/david/.local/example_app.db', durable_model=Model)
+    app = App(MainPage, durable_store='/run/user/1000/example_app.db', durable_model=Model)
     app.run()

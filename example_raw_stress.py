@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 import random
 
-from boldui import Ops, Expr, var, ProtocolServer
+from boldui import Ops, Oplist, Expr, var, ProtocolServer
 
 if __name__ == '__main__':
+    oplist = Oplist()
     scene = [Ops.clear(0xff000000)]
     for i in range(500):
         w = random.random()
@@ -13,14 +14,14 @@ if __name__ == '__main__':
         color = random.randint(0x000000, 0xffffff) | 0xff000000
         scene.append(Ops.rect(
             (
-                var('width') * x,
-                var('height') * y,
-                var('width') * (w + x),
-                var('height') * (h + y),
+                oplist.append(var('width') * x),
+                oplist.append(var('height') * y),
+                oplist.append(var('width') * (w + x)),
+                oplist.append(var('height') * (h + y)),
             ),
-            color
+            oplist.append(color)
         ))
 
     server = ProtocolServer("/tmp/boldui.hello_world.sock")
-    server.scene = scene
+    server.scene = {'oplist': oplist.to_list(), 'scene': scene}
     server.serve()

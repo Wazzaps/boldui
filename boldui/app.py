@@ -2,7 +2,7 @@ import contextlib
 
 import lmdb as lmdb
 
-from boldui import stringify_op, ProtocolServer, Expr, var
+from boldui import stringify_op, ProtocolServer, Oplist, Expr, var
 from boldui.framework import Widget, Clear, export, Context
 
 
@@ -45,11 +45,12 @@ class App:
             ).build_recursively()
 
             size = built_scene.layout(Expr(0), Expr(0), var('width'), var('height'))
-        rendered_scene = built_scene.render(Expr(0), Expr(0), size[0], size[1])
+        oplist = Oplist()
+        rendered_scene = built_scene.render(oplist, Expr(0), Expr(0), size[0], size[1])
         # for op in rendered_scene:
         #     print(stringify_op(op))
 
-        return rendered_scene
+        return {'oplist': oplist.to_list(), 'scene': rendered_scene}
 
     def run(self):
         self.server = ProtocolServer("/tmp/boldui.hello_world.sock", reply_handler=self._reply_handler)

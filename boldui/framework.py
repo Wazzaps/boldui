@@ -2,7 +2,7 @@
 import abc
 import contextlib
 from typing import Tuple, Dict, List
-from boldui import Ops, Expr, var
+from boldui import Ops, Oplist, Expr, var
 from boldui.store import BaseModel
 
 Context = {}
@@ -27,7 +27,7 @@ class Widget:
     def layout(self, min_width: Expr, min_height: Expr, max_width: Expr, max_height: Expr) -> Tuple[Expr, Expr]:
         raise RuntimeError('This widget shouldn\'t be rendered directly')
 
-    def render(self, left: Expr, top: Expr, right: Expr, bottom: Expr) -> Dict:
+    def render(self, oplist: Oplist, left: Expr, top: Expr, right: Expr, bottom: Expr) -> Dict:
         raise RuntimeError('This widget shouldn\'t be rendered directly')
 
     @abc.abstractmethod
@@ -101,7 +101,7 @@ class Row(Widget):
 
         return width, height
 
-    def render(self, left, top, right, bottom):
+    def render(self, oplist, left, top, right, bottom):
         result = []
         free_space = right - left
 
@@ -135,7 +135,7 @@ class Row(Widget):
                 item_bottom = top + child_size[1]
             else:
                 raise RuntimeError('Unknown alignment: {}'.format(self.align))
-            result += child.render(current_left_coord, item_top, current_left_coord + child_size[0], item_bottom)
+            result += child.render(oplist, current_left_coord, item_top, current_left_coord + child_size[0], item_bottom)
             current_left_coord += child_size[0]
 
         return result
@@ -190,7 +190,7 @@ class Column(Widget):
 
         return width, height
 
-    def render(self, left, top, right, bottom):
+    def render(self, oplist, left, top, right, bottom):
         result = []
         free_space = bottom - top
 
@@ -224,7 +224,7 @@ class Column(Widget):
                 item_right = left + child_size[0]
             else:
                 raise RuntimeError('Unknown alignment: {}'.format(self.align))
-            result += child.render(item_left, current_top_coord, item_right, current_top_coord + child_size[1])
+            result += child.render(oplist, item_left, current_top_coord, item_right, current_top_coord + child_size[1])
             current_top_coord += child_size[1]
 
         return result
@@ -286,8 +286,8 @@ class Padding(Widget):
                                                       child_max_width, child_max_height)
         return child_width + self.left + self.right, child_height + self.top + self.bottom
 
-    def render(self, left, top, right, bottom):
-        return self._built_child.render(left + self.left, top + self.top, right - self.right, bottom - self.bottom)
+    def render(self, oplist, left, top, right, bottom):
+        return self._built_child.render(oplist, left + self.left, top + self.top, right - self.right, bottom - self.bottom)
 
 
 class PositionOffset(Widget):
@@ -325,8 +325,8 @@ class PositionOffset(Widget):
     def layout(self, min_width, min_height, max_width, max_height):
         return self._built_child.layout(min_width, min_height, max_width, max_height)
 
-    def render(self, left, top, right, bottom):
-        return self._built_child.render(left + self.x, top + self.y, right + self.x, bottom + self.y)
+    def render(self, oplist, left, top, right, bottom):
+        return self._built_child.render(oplist, left + self.x, top + self.y, right + self.x, bottom + self.y)
 
 
 class Center(Widget):
@@ -353,11 +353,11 @@ class Center(Widget):
     def layout(self, min_width, min_height, max_width, max_height):
         return max_width, max_height
 
-    def render(self, left, top, right, bottom):
+    def render(self, oplist, left, top, right, bottom):
         child_width, child_height = self._built_child.layout(Expr(0), Expr(0), right - left, bottom - top)
         child_left = left + (right - left - child_width) // 2
         child_top = top + (bottom - top - child_height) // 2
-        return self._built_child.render(child_left, child_top, child_left + child_width, child_top + child_height)
+        return self._built_child.render(oplist, child_left, child_top, child_left + child_width, child_top + child_height)
 
 
 class SizedBox(Widget):
@@ -391,9 +391,9 @@ class SizedBox(Widget):
         height = self.height if self.height is not None else max_height
         return width, height
 
-    def render(self, left, top, right, bottom):
+    def render(self, oplist, left, top, right, bottom):
         if self._built_child:
-            return self._built_child.render(left, top, right, bottom)
+            return self._built_child.render(oplist, left, top, right, bottom)
         else:
             return []
 
@@ -420,8 +420,13 @@ class Rectangle(Widget):
     def layout(self, _min_width, _min_height, max_width, max_height):
         return max_width, max_height
 
-    def render(self, left, top, right, bottom):
-        return [Ops.rect((left, top, right, bottom), self.color)]
+    def render(self, oplist, left, top, right, bottom):
+        return [
+            Ops.rect(
+                (oplist.append(left), oplist.append(top), oplist.append(right), oplist.append(bottom)),
+                oplist.append(self.color)
+            )
+        ]
 
 
 class Image(Widget):
@@ -446,8 +451,13 @@ class Image(Widget):
     def layout(self, _min_width, _min_height, max_width, max_height):
         return max_width, max_height
 
-    def render(self, left, top, right, bottom):
-        return [Ops.image(self.uri, (left, top, right, bottom))]
+    def render(self, oplist, left, top, right, bottom):
+        return [
+            Ops.image(
+                self.uri,
+                (oplist.append(left), oplist.append(top), oplist.append(right), oplist.append(bottom))
+            )
+        ]
 
 
 class RoundRect(Widget):
@@ -473,8 +483,14 @@ class RoundRect(Widget):
     def layout(self, _min_width, _min_height, max_width, max_height):
         return max_width, max_height
 
-    def render(self, left, top, right, bottom):
-        return [Ops.rrect((left, top, right, bottom), self.color, self.radius)]
+    def render(self, oplist, left, top, right, bottom):
+        return [
+            Ops.rrect(
+                (oplist.append(left), oplist.append(top), oplist.append(right), oplist.append(bottom)),
+                oplist.append(self.color),
+                oplist.append(self.radius),
+            )
+        ]
 
 
 class Text(Widget):
@@ -506,9 +522,17 @@ class Text(Widget):
             Expr.measure_text_y(self.text, self.font_size).min(max_height).max(min_height)
         )
 
-    def render(self, left, top, right, bottom):
+    def render(self, oplist, left, top, right, bottom):
         # TODO: Add alignment parameter
-        return [Ops.text(self.text, (left + right) // 2, (bottom + top) // 2, self.font_size, self.color)]
+        return [
+            Ops.text(
+                oplist.append(self.text),
+                oplist.append((left + right) // 2),
+                oplist.append((bottom + top) // 2),
+                oplist.append(self.font_size),
+                oplist.append(self.color),
+            )
+        ]
 
 
 class Flexible(Widget):
@@ -548,9 +572,9 @@ class Flexible(Widget):
                 height = layout[1]
         return width, height
 
-    def render(self, left, top, right, bottom):
+    def render(self, oplist, left, top, right, bottom):
         if self._built_child:
-            return self._built_child.render(left, top, right, bottom)
+            return self._built_child.render(oplist, left, top, right, bottom)
         else:
             return []
 
@@ -572,6 +596,24 @@ class EventHandler(Widget):
         EventHandler.COUNTER += 1
 
         super(EventHandler, self).__init__()
+
+    @staticmethod
+    def fix_handler(oplist, handler):
+        if isinstance(handler, (Expr, int, float, str)):
+            return oplist.append(Expr.wrap(handler))
+        elif isinstance(handler, dict):
+            result = {}
+            for key, value in handler.items():
+                # FIXME: Too hardcoded, maybe add abstraction?
+                if key == 'type' or (handler.get('type', None) == 'setVar' and key == 'name'):
+                    result[key] = value
+                else:
+                    result[key] = EventHandler.fix_handler(oplist, value)
+            return result
+        elif isinstance(handler, list):
+            return [EventHandler.fix_handler(oplist, value) for value in handler]
+        else:
+            raise ValueError('Invalid handler: {}'.format(handler))
 
     def __repr__(self):
         return 'EventHandler(child={})'.format(repr(self.child))
@@ -604,33 +646,47 @@ class EventHandler(Widget):
         else:
             return max_width, max_height
 
-    def render(self, left, top, right, bottom):
+    def render(self, oplist, left, top, right, bottom):
         events = 0
         handlers = None
 
         if self.on_mouse_down:
             events |= 1 << 0
             if isinstance(self.on_mouse_down, list):
-                handlers = self.on_mouse_down
+                handlers = EventHandler.fix_handler(oplist, self.on_mouse_down)
             else:
                 handlers = [
-                    Ops.reply(self._id, [var('event_x'), var('event_y'), var('time')])
+                    Ops.reply(self._id, [
+                        oplist.append(var('event_x')),
+                        oplist.append(var('event_y')),
+                        oplist.append(var('time'))
+                    ])
                 ]
 
         if self.on_scroll:
             events |= 1 << 1
             if isinstance(self.on_scroll, list):
-                handlers = self.on_scroll
+                handlers = EventHandler.fix_handler(oplist, self.on_scroll)
             else:
                 handlers = [
-                    Ops.reply(self._id, [var('event_x'), var('event_y'), var('scroll_x'), var('scroll_y'), var('time')])
+                    Ops.reply(self._id, [
+                        oplist.append(var('event_x')),
+                        oplist.append(var('event_y')),
+                        oplist.append(var('scroll_x')),
+                        oplist.append(var('scroll_y')),
+                        oplist.append(var('time'))
+                    ])
                 ]
 
-        event_hnd_op = Ops.event_handler((left, top, right, bottom), events, handlers)
+        event_hnd_op = Ops.event_handler(
+            (oplist.append(left), oplist.append(top), oplist.append(right), oplist.append(bottom)),
+            events,
+            handlers
+        )
         if self._built_child:
             return [
                 event_hnd_op,
-                *self._built_child.render(left, top, right, bottom),
+                *self._built_child.render(oplist, left, top, right, bottom),
             ]
         else:
             return [event_hnd_op]
@@ -692,7 +748,7 @@ class WatchVar(Widget):
         else:
             return max_width, max_height
 
-    def render(self, left, top, right, bottom):
+    def render(self, oplist, left, top, right, bottom):
         handlers = None
 
         if self.handler:
@@ -700,14 +756,14 @@ class WatchVar(Widget):
                 handlers = self.handler
             else:
                 handlers = [
-                    Ops.reply(self._hnd_id, self.data)
+                    Ops.reply(self._hnd_id, [oplist.append(d) for d in self.data])
                 ]
 
-        watch_op = Ops.watch_var(self._ack_id, self.cond, self.wait_for_roundtrip, handlers)
+        watch_op = Ops.watch_var(self._ack_id, oplist.append(self.cond), self.wait_for_roundtrip, handlers)
         if self._built_child:
             return [
                 watch_op,
-                *self._built_child.render(left, top, right, bottom),
+                *self._built_child.render(oplist, left, top, right, bottom),
             ]
         else:
             return [watch_op]
@@ -739,10 +795,10 @@ class Clear(Widget):
         if self._built_child:
             return self._built_child.layout(Expr(0), Expr(0), max_width, max_height)
 
-    def render(self, left, top, right, bottom):
+    def render(self, oplist, left, top, right, bottom):
         return [
             Ops.clear(self.color),
-            *self._built_child.render(left, top, right, bottom)
+            *self._built_child.render(oplist, left, top, right, bottom)
         ]
 
 
@@ -770,11 +826,11 @@ class Clip(Widget):
     def layout(self, min_width, min_height, max_width, max_height):
         return self._built_child.layout(min_width, min_height, max_width, max_height)
 
-    def render(self, left, top, right, bottom):
+    def render(self, oplist, left, top, right, bottom):
         return [
             Ops.save(),
-            Ops.clip_rect((left, top, right, bottom)),
-            *self._built_child.render(left, top, right, bottom),
+            Ops.clip_rect((oplist.append(left), oplist.append(top), oplist.append(right), oplist.append(bottom))),
+            *self._built_child.render(oplist, left, top, right, bottom),
             Ops.restore(),
         ]
 
@@ -857,7 +913,7 @@ class Stack(Widget):
 
         return width, height
 
-    def render(self, left, top, right, bottom):
+    def render(self, oplist, left, top, right, bottom):
         result = []
 
         children_flex_x = [child.get_flex_x() for child in self._built_children]
@@ -882,9 +938,9 @@ class Stack(Widget):
                 child_top = (bottom + top - child_size[1]) // 2
                 child_right = (right + left + child_size[0]) // 2
                 child_bottom = (bottom + top + child_size[1]) // 2
-                result += child.render(child_left, child_top, child_right, child_bottom)
+                result += child.render(oplist, child_left, child_top, child_right, child_bottom)
             elif self.align == 'topleft':
-                result += child.render(left, top, left + child_size[0], top + child_size[1])
+                result += child.render(oplist, left, top, left + child_size[0], top + child_size[1])
 
         return result
 
@@ -1018,7 +1074,15 @@ class ListViewInner(Widget):
                     (self._total_height - (var(self.var_prefix + 'lv_scroll_pos') - var(self.var_prefix + 'lv_list_start')) - self.height_slack) < max_height
                 )
             ),
-            data=[self._total_height, self._above_top_widget_height, self._top_widget_height, self._bot_widget_height, max_height, var(self.var_prefix + 'lv_list_start'), var(self.var_prefix + 'lv_scroll_pos'), self._gen],
+            data=[
+                self._total_height or 0,
+                self._above_top_widget_height or 0,
+                self._top_widget_height or 0,
+                self._bot_widget_height or 0,
+                max_height or 0,
+                var(self.var_prefix + 'lv_list_start'), var(self.var_prefix + 'lv_scroll_pos'),
+                self._gen
+            ],
             handler=update_bottom_widget,
             wait_for_roundtrip=True,
             wait_for_rebuild=True,
@@ -1026,14 +1090,14 @@ class ListViewInner(Widget):
 
         return max_width, max_height
 
-    def render(self, left, top, right, bottom):
+    def render(self, oplist, left, top, right, bottom):
         result = []
 
         for i in range(self._item_offset, self._item_offset + self._item_count):
             child_top, child_bottom = self._laid_out_children[i]
-            result += self._built_children[i].render(left, top + child_top, right, top + child_bottom)
+            result += self._built_children[i].render(oplist, left, top + child_top, right, top + child_bottom)
 
-        result += self._watch_var.render(left, top, right, bottom)
+        result += self._watch_var.render(oplist, left, top, right, bottom)
 
         return result
 
@@ -1068,7 +1132,6 @@ class ListView(Widget):
 
 
 class DBGHighlight(Widget):
-
     def __init__(self, child, color=0xffff0000):
         self.child = child
         self.color = color

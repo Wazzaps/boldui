@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from boldui import Expr, Ops, stringify_op, ProtocolServer
+from boldui import Oplist, Expr, var, stringify_op, ProtocolServer
 from boldui.framework import Clear, Column, Padding, Center, SizedBox, Rectangle, Text, Flexible
 
 
@@ -27,14 +27,14 @@ def main():
             ),
             Padding(
                 Rectangle(
-                    color=Expr(Ops.if_(var('height') > 600, 0xffa0a0a0, 0xff9090d0))
+                    color=Expr.if_(var('height') > 600, 0xffa0a0a0, 0xff9090d0)
                 ),
                 all=10
             ),
             Flexible(
                 Padding(
                     Rectangle(
-                        color=Expr(Ops.if_(var('width') > 800, 0xffa0a0a0, 0xffd09090))
+                        color=Expr.if_(var('width') > 800, 0xffa0a0a0, 0xffd09090)
                     ),
                     all=10
                 ),
@@ -44,12 +44,13 @@ def main():
     )
 
     built_root = root.build()
+    oplist = Oplist()
     size = built_root.layout(Expr(0), Expr(0), var('width'), var('height'))
-    scene = built_root.render(Expr(0), Expr(0), size[0], size[1])
+    scene = built_root.render(oplist, Expr(0), Expr(0), size[0], size[1])
     for op in scene:
         print(stringify_op(op))
     server = ProtocolServer("/tmp/boldui.hello_world.sock")
-    server.scene = scene
+    server.scene = {'oplist': oplist.to_list(), 'scene': scene}
     server.serve()
 
 
