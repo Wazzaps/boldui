@@ -649,39 +649,41 @@ class EventHandler(Widget):
     def render(self, oplist, left, top, right, bottom):
         events = 0
         handlers = None
+        handler_oplist = Oplist()
 
         if self.on_mouse_down:
             events |= 1 << 0
             if isinstance(self.on_mouse_down, list):
-                handlers = EventHandler.fix_handler(oplist, self.on_mouse_down)
+                handlers = EventHandler.fix_handler(handler_oplist, self.on_mouse_down)
             else:
                 handlers = [
                     Ops.reply(self._id, [
-                        oplist.append(var('event_x')),
-                        oplist.append(var('event_y')),
-                        oplist.append(var('time'))
+                        handler_oplist.append(var('event_x')),
+                        handler_oplist.append(var('event_y')),
+                        handler_oplist.append(var('time'))
                     ])
                 ]
 
         if self.on_scroll:
             events |= 1 << 1
             if isinstance(self.on_scroll, list):
-                handlers = EventHandler.fix_handler(oplist, self.on_scroll)
+                handlers = EventHandler.fix_handler(handler_oplist, self.on_scroll)
             else:
                 handlers = [
                     Ops.reply(self._id, [
-                        oplist.append(var('event_x')),
-                        oplist.append(var('event_y')),
-                        oplist.append(var('scroll_x')),
-                        oplist.append(var('scroll_y')),
-                        oplist.append(var('time'))
+                        handler_oplist.append(var('event_x')),
+                        handler_oplist.append(var('event_y')),
+                        handler_oplist.append(var('scroll_x')),
+                        handler_oplist.append(var('scroll_y')),
+                        handler_oplist.append(var('time'))
                     ])
                 ]
 
         event_hnd_op = Ops.event_handler(
             (oplist.append(left), oplist.append(top), oplist.append(right), oplist.append(bottom)),
             events,
-            handlers
+            handlers,
+            handler_oplist,
         )
         if self._built_child:
             return [

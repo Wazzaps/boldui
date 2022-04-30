@@ -105,6 +105,7 @@ class UIClient:
                 {'type': 'clear', 'color': 0},
             ]
         }
+        self.event_handlers = []
         self.protocol = Protocol(address, self)
         self.persistent_context = {}
         self._should_update_watches = False
@@ -269,6 +270,8 @@ class UIClient:
         canvas.save()
         canvas.clear(0xff000000)
 
+        new_event_handlers = []
+
         op_results = UIClient.resolve_oplist(self.scene['oplist'], context)
 
         for item in self.scene['scene']:
@@ -343,6 +346,21 @@ class UIClient:
                 #         ImageFilter=skia.ImageFilters.Blur(32.0, 32.0, tileMode=skia.TileMode.kClamp),
                 #     ),
                 # )
+            elif item['type'] == 'evtHnd':
+                rect = (
+                    op_results[item['rect'][0]],
+                    op_results[item['rect'][1]],
+                    op_results[item['rect'][2]],
+                    op_results[item['rect'][3]],
+                )
+                new_event_handlers.append({
+                    'rect': rect,
+                    'events': item['events'],
+                    'handler': item['handler'],
+                    'oplist': item['oplist'],
+                })
+
+        self.event_handlers = new_event_handlers
         canvas.restore()
 
     def handle_mouse_down(self, x: int, y: int):
@@ -393,18 +411,12 @@ class UIClient:
             'event_y': y,
             **extra_context,
         }
-        op_results = UIClient.resolve_oplist(self.scene['oplist'], context)
         replies = []
-        for item in self.scene['scene']:
-            if item['type'] == 'evtHnd' and item['events'] & event_mask:
-                rect = (
-                    op_results[item['rect'][0]],
-                    op_results[item['rect'][1]],
-                    op_results[item['rect'][2]],
-                    op_results[item['rect'][3]],
-                )
-                if rect[0] <= x <= rect[2] and rect[1] <= y <= rect[3]:
-                    replies += self._eval_handlers(item['handler'], op_results)
+        for handler in self.event_handlers:
+            if handler['events'] & event_mask and \
+                    handler['rect'][0] <= x <= handler['rect'][2] and handler['rect'][1] <= y <= handler['rect'][3]:
+                op_results = UIClient.resolve_oplist(handler['oplist'], context)
+                replies += self._eval_handlers(handler['handler'], op_results)
 
         replies += self.update_watches()
 

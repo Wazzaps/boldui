@@ -1,10 +1,14 @@
-use crate::scene::{load_example_scene, EvalContext, HandlerOpcode, TopLevelOpcode, VarVal};
+use crate::scene::{
+    eval_oplist, load_example_scene, EvalContext, ExprPart, HandlerOpcode, Scene, TopLevelOpcode,
+    VarVal,
+};
 use glutin::dpi::PhysicalPosition;
 use lazy_static::lazy_static;
-use skia_safe::{Canvas, Color, Color4f, Contains, FontStyle, Paint, Point, RRect, TextBlob};
+use skia_safe::{Canvas, Color, Color4f, Contains, FontStyle, Paint, Point, RRect, Rect, TextBlob};
 use std::collections::HashMap;
 
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 #[derive(PartialEq, Eq, Hash, Debug)]
 struct MeasurementKey(String, u32, String);
@@ -55,10 +59,19 @@ pub fn get_font(family_name: &str, font_size: f32) -> Arc<skia_safe::Font> {
     }
 }
 
+struct EventHandler {
+    rect: Rect,
+    events: u32,
+    handler: Vec<HandlerOpcode>,
+    oplist: Vec<ExprPart>,
+}
+
 pub struct UIClient {
-    scene: Vec<TopLevelOpcode>,
+    pub scene: Scene,
+    event_handlers: Vec<EventHandler>,
     last_size: (i32, i32),
     variables: EvalContext,
+    start_time: Instant,
 }
 
 fn make_paint(color: Color4f) -> Paint {
@@ -79,8 +92,10 @@ impl UIClient {
 
         UIClient {
             scene: load_example_scene(),
+            event_handlers: Vec::new(),
             last_size: (0, 0),
             variables: ctx,
+            start_time: Instant::now(),
         }
     }
 
@@ -90,17 +105,27 @@ impl UIClient {
         let mut ctx = self.variables.clone();
         ctx.insert("width".to_string(), VarVal::Int(width as i64));
         ctx.insert("height".to_string(), VarVal::Int(height as i64));
+        ctx.insert(
+            "time".to_string(),
+            VarVal::Float(Instant::now().duration_since(self.start_time).as_secs_f64()),
+        );
+        ctx.insert("lv1_lv_list_start".to_string(), VarVal::Float(0.0));
+        ctx.insert("lv1_lv_scroll_pos".to_string(), VarVal::Float(0.0));
+        ctx.insert("d:Model#0".to_string(), VarVal::Int(123));
 
+        let mut new_event_handlers = Vec::new();
+
+        let op_results = self.scene.eval_oplist(&ctx).unwrap();
         canvas.clear(Color::BLACK);
-        for opcode in &self.scene {
+        for opcode in &self.scene.scene {
             match opcode {
                 TopLevelOpcode::Clear { color } => {
-                    canvas.clear(color.as_color4f(&mut ctx).unwrap());
+                    canvas.clear(Color4f::from(*color));
                 }
                 TopLevelOpcode::Rect { rect, color } => {
                     canvas.draw_rect(
-                        rect.as_rect(&mut ctx).unwrap(),
-                        &make_paint(color.as_color4f(&mut ctx).unwrap()),
+                        rect.as_rect(&op_results).unwrap(),
+                        &make_paint(op_results[*color].as_color4f().unwrap()),
                     );
                 }
                 TopLevelOpcode::RRect {
@@ -108,10 +133,10 @@ impl UIClient {
                     color,
                     radius,
                 } => {
-                    let rad = radius.as_f64(&mut ctx).unwrap() as f32;
+                    let rad = op_results[*radius].as_float().unwrap() as f32;
                     canvas.draw_rrect(
-                        RRect::new_rect_xy(rect.as_rect(&mut ctx).unwrap(), rad, rad),
-                        &make_paint(color.as_color4f(&mut ctx).unwrap()),
+                        RRect::new_rect_xy(rect.as_rect(&op_results).unwrap(), rad, rad),
+                        &make_paint(op_results[*color].as_color4f().unwrap()),
                     );
                 }
                 TopLevelOpcode::Text {
@@ -121,11 +146,11 @@ impl UIClient {
                     font_size,
                     color,
                 } => {
-                    let text = text.as_string(&mut ctx).unwrap();
-                    let x = x.as_f64(&mut ctx).unwrap() as f32;
-                    let y = y.as_f64(&mut ctx).unwrap() as f32;
-                    let font_size = font_size.as_f64(&mut ctx).unwrap() as f32;
-                    let color = color.as_color4f(&mut ctx).unwrap();
+                    let text = op_results[*text].as_string().unwrap();
+                    let x = op_results[*x].as_float().unwrap() as f32;
+                    let y = op_results[*y].as_float().unwrap() as f32;
+                    let font_size = op_results[*font_size].as_float().unwrap() as f32;
+                    let color = op_results[*color].as_color4f().unwrap();
 
                     let font = get_font("Cantarell", font_size);
                     let measurement = get_measurement(text.as_str(), &font, font_size);
@@ -143,23 +168,45 @@ impl UIClient {
                 TopLevelOpcode::Restore { .. } => {}
                 TopLevelOpcode::ClipRect { .. } => {}
                 TopLevelOpcode::Watch { .. } => {}
-                TopLevelOpcode::EventHandler { .. } => {}
+                TopLevelOpcode::EventHandler {
+                    rect,
+                    events,
+                    handler,
+                    oplist,
+                } => {
+                    let rect = rect.as_rect(&op_results).unwrap();
+                    new_event_handlers.push(EventHandler {
+                        rect,
+                        events: *events,
+                        handler: (*handler).clone(),
+                        oplist: (*oplist).clone(),
+                    });
+                }
             }
         }
+
+        self.event_handlers = new_event_handlers;
     }
 
     fn _eval_handlers(
         variables: &mut EvalContext,
         handlers: &[HandlerOpcode],
-        ctx: &mut HashMap<String, VarVal>,
+        op_results: &[VarVal],
     ) {
         for handler in handlers {
             match handler {
                 HandlerOpcode::SetVar { name, value } => {
-                    println!("Setting var {} to {}", name, value.as_i64(ctx).unwrap());
-                    variables.insert(name.to_string(), VarVal::Int(value.as_i64(ctx).unwrap()));
+                    println!("Setting var {} to {:?}", name, &op_results[*value]);
+                    variables.insert(name.to_string(), op_results[*value].clone());
                 }
-                HandlerOpcode::Reply { .. } => unimplemented!(),
+                HandlerOpcode::Reply { id, data } => {
+                    print!("UNIMPL: Would send: id={}, ", id);
+                    for d in data {
+                        let value = &op_results[*d];
+                        print!("{:?}, ", value);
+                    }
+                    println!();
+                }
             }
         }
     }
@@ -170,28 +217,29 @@ impl UIClient {
     {
         println!("mouse down at {} {}", position.x, position.y);
         let mut redraw = false;
-        for opcode in &self.scene {
-            if let TopLevelOpcode::EventHandler {
-                rect,
-                events,
-                handler,
-            } = opcode
-            {
-                if events & (1 << 0) != 0 {
-                    let mut ctx = self.variables.clone();
-                    ctx.insert("width".to_string(), VarVal::Int(self.last_size.0 as i64));
-                    ctx.insert("height".to_string(), VarVal::Int(self.last_size.1 as i64));
-                    ctx.insert("event_x".to_string(), VarVal::Float(position.x));
-                    ctx.insert("event_y".to_string(), VarVal::Float(position.y));
 
-                    let rect = rect.as_rect(&mut ctx).unwrap();
-                    if rect.contains(Point::new(position.x as f32, position.y as f32)) {
-                        UIClient::_eval_handlers(&mut self.variables, handler, &mut ctx);
-                        redraw = true;
-                    }
-                }
+        for handler in &self.event_handlers {
+            if handler.events & (1 << 0) != 0
+                && handler
+                    .rect
+                    .contains(Point::new(position.x as f32, position.y as f32))
+            {
+                let mut ctx = self.variables.clone();
+                ctx.insert("width".to_string(), VarVal::Int(self.last_size.0 as i64));
+                ctx.insert("height".to_string(), VarVal::Int(self.last_size.1 as i64));
+                ctx.insert("event_x".to_string(), VarVal::Float(position.x));
+                ctx.insert("event_y".to_string(), VarVal::Float(position.y));
+                ctx.insert(
+                    "time".to_string(),
+                    VarVal::Float(Instant::now().duration_since(self.start_time).as_secs_f64()),
+                );
+
+                let op_results = eval_oplist(&handler.oplist, &ctx).unwrap();
+                UIClient::_eval_handlers(&mut self.variables, &handler.handler, &op_results);
+                redraw = true;
             }
         }
+
         if redraw {
             redraw_cb();
         }

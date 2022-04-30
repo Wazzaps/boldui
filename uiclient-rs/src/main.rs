@@ -1,5 +1,6 @@
 pub(crate) mod render;
 pub(crate) mod scene;
+pub(crate) mod utils;
 
 use crate::render::UIClient;
 use glutin::dpi::PhysicalPosition;

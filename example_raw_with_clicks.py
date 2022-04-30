@@ -6,6 +6,7 @@ from boldui import Ops, Oplist, Expr, var, ProtocolServer
 if __name__ == '__main__':
     def make_scene(rect_color):
         oplist = Oplist()
+        reply_oplist = Oplist()
         scene = [
             Ops.clear(0xff202030),
 
@@ -28,7 +29,7 @@ if __name__ == '__main__':
                     oplist.append(var('width') - 20),
                     oplist.append(var('height') - 20),
                 ),
-                oplist.append(0xffa0a0a0),
+                oplist.append(Expr.if_(var('width') > 500, 0xffa0a0a0, 0xffe0e0e0)),
             ),
 
             # Rect in the middle (border)
@@ -64,11 +65,12 @@ if __name__ == '__main__':
                 events=0x1,
                 handler=[
                     Ops.reply(0x123, [
-                        oplist.append(var('event_x')),
-                        oplist.append(var('event_y')),
-                        oplist.append(var('time')),
+                        reply_oplist.append(var('event_x')),
+                        reply_oplist.append(var('event_y')),
+                        reply_oplist.append(var('time')),
                     ]),
                 ],
+                oplist=reply_oplist.to_list()
             ),
         ]
         return {'oplist': oplist.to_list(), 'scene': scene}

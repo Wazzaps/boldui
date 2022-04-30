@@ -68,12 +68,13 @@ class Ops:
         return {'type': 'setVar', 'name': name, 'value': value}
 
     @staticmethod
-    def event_handler(rect, events, handler):
+    def event_handler(rect, events, handler, oplist):
         return {
             'type': 'evtHnd',
             'rect': rect,
             'events': events,
-            'handler': handler
+            'handler': handler,
+            'oplist': oplist,
         }
 
     @staticmethod

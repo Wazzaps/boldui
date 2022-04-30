@@ -1,108 +1,115 @@
+use crate::render::{get_font, get_measurement};
+use crate::utils::{fmod, imod};
 use serde::Deserialize;
 use skia_safe::{Color4f, Rect};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum ExprOp {
     Var {
         name: String,
     },
     Add {
-        a: Box<ExprPart>,
-        b: Box<ExprPart>,
+        a: usize,
+        b: usize,
     },
     Sub {
-        a: Box<ExprPart>,
-        b: Box<ExprPart>,
+        a: usize,
+        b: usize,
     },
     Mul {
-        a: Box<ExprPart>,
-        b: Box<ExprPart>,
+        a: usize,
+        b: usize,
     },
     Div {
-        a: Box<ExprPart>,
-        b: Box<ExprPart>,
+        a: usize,
+        b: usize,
     },
     Fdiv {
-        a: Box<ExprPart>,
-        b: Box<ExprPart>,
+        a: usize,
+        b: usize,
     },
     Mod {
-        a: Box<ExprPart>,
-        b: Box<ExprPart>,
+        a: usize,
+        b: usize,
     },
     Pow {
-        a: Box<ExprPart>,
-        b: Box<ExprPart>,
+        a: usize,
+        b: usize,
     },
     Eq {
-        a: Box<ExprPart>,
-        b: Box<ExprPart>,
+        a: usize,
+        b: usize,
     },
     Neq {
-        a: Box<ExprPart>,
-        b: Box<ExprPart>,
+        a: usize,
+        b: usize,
     },
     Lt {
-        a: Box<ExprPart>,
-        b: Box<ExprPart>,
+        a: usize,
+        b: usize,
     },
     Lte {
-        a: Box<ExprPart>,
-        b: Box<ExprPart>,
+        a: usize,
+        b: usize,
     },
     Gt {
-        a: Box<ExprPart>,
-        b: Box<ExprPart>,
+        a: usize,
+        b: usize,
     },
     Gte {
-        a: Box<ExprPart>,
-        b: Box<ExprPart>,
+        a: usize,
+        b: usize,
     },
     BAnd {
-        a: Box<ExprPart>,
-        b: Box<ExprPart>,
+        a: usize,
+        b: usize,
     },
     BOr {
-        a: Box<ExprPart>,
-        b: Box<ExprPart>,
+        a: usize,
+        b: usize,
     },
     Not {
-        a: Box<ExprPart>,
+        a: usize,
     },
     Neg {
-        a: Box<ExprPart>,
+        a: usize,
     },
     BInvert {
-        a: Box<ExprPart>,
+        a: usize,
     },
     Min {
-        a: Box<ExprPart>,
-        b: Box<ExprPart>,
+        a: usize,
+        b: usize,
     },
     Max {
-        a: Box<ExprPart>,
-        b: Box<ExprPart>,
+        a: usize,
+        b: usize,
     },
     Abs {
-        a: Box<ExprPart>,
+        a: usize,
     },
     Inf,
     ToStr {
-        a: Box<ExprPart>,
+        a: usize,
     },
     #[serde(rename_all = "camelCase")]
     MeasureTextX {
-        text: Box<ExprPart>,
-        font_size: Box<ExprPart>,
+        text: usize,
+        font_size: usize,
     },
     #[serde(rename_all = "camelCase")]
     MeasureTextY {
-        text: Box<ExprPart>,
-        font_size: Box<ExprPart>,
+        text: usize,
+        font_size: usize,
+    },
+    If {
+        cond: usize,
+        t: usize,
+        f: usize,
     },
 }
 
@@ -110,12 +117,47 @@ pub type EvalContext = HashMap<String, VarVal>;
 
 #[derive(Debug, Clone)]
 pub enum VarVal {
+    Null,
     Int(i64),
     Float(f64),
     String(String),
 }
 
-#[derive(Deserialize, Debug)]
+impl VarVal {
+    pub fn as_int(&self) -> Option<i64> {
+        match self {
+            VarVal::Int(i) => Some(*i),
+            VarVal::Float(f) => Some((*f) as i64),
+            _ => None,
+        }
+    }
+
+    pub fn as_float(&self) -> Option<f64> {
+        match self {
+            VarVal::Float(f) => Some(*f),
+            VarVal::Int(i) => Some((*i) as f64),
+            _ => None,
+        }
+    }
+
+    pub fn as_string(&self) -> Option<String> {
+        match self {
+            VarVal::String(s) => Some(s.clone()),
+            VarVal::Int(i) => Some(i.to_string()),
+            VarVal::Float(f) => Some(f.to_string()),
+            _ => None,
+        }
+    }
+
+    pub fn as_color4f(&self) -> Option<Color4f> {
+        match self {
+            VarVal::Int(i) => Some(Color4f::from(*i as u32)),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum ExprPart {
     IntLiteral(i64),
@@ -125,164 +167,177 @@ pub enum ExprPart {
 }
 
 impl ExprPart {
-    pub fn as_f64(&self, ctx: &mut EvalContext) -> Result<f64, ()> {
+    pub fn eval(&self, ctx: &EvalContext, op_results: &[VarVal]) -> Result<VarVal, ()> {
         match self {
-            ExprPart::IntLiteral(i) => Ok(*i as f64),
-            ExprPart::FloatLiteral(f) => Ok(*f),
+            ExprPart::StringLiteral(s) => Ok(VarVal::String(s.clone())),
+            ExprPart::IntLiteral(i) => Ok(VarVal::Int(*i)),
+            ExprPart::FloatLiteral(f) => Ok(VarVal::Float(*f)),
             ExprPart::Operation(op) => match op {
-                ExprOp::Inf => Ok(f64::INFINITY),
                 ExprOp::Var { name } => match ctx.get(name) {
-                    Some(VarVal::Int(i)) => Ok(*i as f64),
-                    Some(VarVal::Float(f)) => Ok(*f),
+                    Some(v) => Ok(v.clone()),
                     None => panic!("Missing variable '{}'", name),
-                    _ => panic!("Invalid variable type of '{}'", name),
                 },
-                ExprOp::Add { a, b } => Ok(a.as_f64(ctx)? + b.as_f64(ctx)?),
-                ExprOp::Sub { a, b } => Ok(a.as_f64(ctx)? - b.as_f64(ctx)?),
-                ExprOp::Mul { a, b } => Ok(a.as_f64(ctx)? * b.as_f64(ctx)?),
-                ExprOp::Div { a, b } => Ok(a.as_f64(ctx)? / b.as_f64(ctx)?),
-                ExprOp::Fdiv { a, b } => Ok((a.as_f64(ctx)? / b.as_f64(ctx)?).floor()),
-                ExprOp::Mod { .. } => unimplemented!(),
-                ExprOp::Pow { .. } => unimplemented!(),
-                ExprOp::Eq { .. } => unimplemented!(),
-                ExprOp::Neq { .. } => unimplemented!(),
-                ExprOp::Lt { .. } => unimplemented!(),
-                ExprOp::Lte { .. } => unimplemented!(),
-                ExprOp::Gt { .. } => unimplemented!(),
-                ExprOp::Gte { .. } => unimplemented!(),
-                ExprOp::BAnd { .. } => unimplemented!(),
-                ExprOp::BOr { .. } => unimplemented!(),
-                ExprOp::BInvert { .. } => unimplemented!(),
-                ExprOp::Not { .. } => unimplemented!(),
-                ExprOp::Neg { .. } => unimplemented!(),
-                ExprOp::Min { a, b } => Ok(a.as_f64(ctx)?.min(b.as_f64(ctx)?)),
-                ExprOp::Max { a, b } => Ok(a.as_f64(ctx)?.max(b.as_f64(ctx)?)),
-                ExprOp::Abs { a } => Ok(a.as_f64(ctx)?.abs()),
-                ExprOp::ToStr { .. } => unimplemented!(),
+                ExprOp::Add { a, b } => match (&op_results[*a], &op_results[*b]) {
+                    (VarVal::Int(a), VarVal::Int(b)) => Ok(VarVal::Int(*a + *b)),
+                    (VarVal::Int(a), VarVal::Float(b)) => Ok(VarVal::Float(*a as f64 + *b)),
+                    (VarVal::Float(a), VarVal::Int(b)) => Ok(VarVal::Float(*a + *b as f64)),
+                    (VarVal::Float(a), VarVal::Float(b)) => Ok(VarVal::Float(*a + *b)),
+                    (VarVal::Null, _) => Ok(VarVal::Null),
+                    (_, VarVal::Null) => Ok(VarVal::Null),
+                    _ => panic!("Invalid operands for addition"),
+                },
+                ExprOp::Mul { a, b } => match (&op_results[*a], &op_results[*b]) {
+                    (VarVal::Int(a), VarVal::Int(b)) => {
+                        Ok(VarVal::Int((*a as f64 * *b as f64) as i64))
+                    }
+                    (VarVal::Int(a), VarVal::Float(b)) => Ok(VarVal::Int((*a as f64 * *b) as i64)),
+                    (VarVal::Float(a), VarVal::Int(b)) => Ok(VarVal::Int((*a * *b as f64) as i64)),
+                    (VarVal::Float(a), VarVal::Float(b)) => Ok(VarVal::Int((*a * *b) as i64)),
+                    (VarVal::Null, _) => Ok(VarVal::Null),
+                    (_, VarVal::Null) => Ok(VarVal::Null),
+                    _ => panic!("Invalid operands for multiply"),
+                },
+                ExprOp::Fdiv { a, b } => match (&op_results[*a], &op_results[*b]) {
+                    (VarVal::Int(a), VarVal::Int(b)) => {
+                        Ok(VarVal::Int((*a as f64 / *b as f64) as i64))
+                    }
+                    (VarVal::Int(a), VarVal::Float(b)) => Ok(VarVal::Int((*a as f64 / *b) as i64)),
+                    (VarVal::Float(a), VarVal::Int(b)) => Ok(VarVal::Int((*a / *b as f64) as i64)),
+                    (VarVal::Float(a), VarVal::Float(b)) => Ok(VarVal::Int((*a / *b) as i64)),
+                    (VarVal::Null, _) => Ok(VarVal::Null),
+                    (_, VarVal::Null) => Ok(VarVal::Null),
+                    _ => panic!("Invalid operands for floor-division"),
+                },
+                ExprOp::Div { a, b } => match (&op_results[*a], &op_results[*b]) {
+                    (VarVal::Int(a), VarVal::Int(b)) => Ok(VarVal::Float(*a as f64 / *b as f64)),
+                    (VarVal::Int(a), VarVal::Float(b)) => Ok(VarVal::Float(*a as f64 / *b)),
+                    (VarVal::Float(a), VarVal::Int(b)) => Ok(VarVal::Float(*a / *b as f64)),
+                    (VarVal::Float(a), VarVal::Float(b)) => Ok(VarVal::Float(*a / *b)),
+                    (VarVal::Null, _) => Ok(VarVal::Null),
+                    (_, VarVal::Null) => Ok(VarVal::Null),
+                    _ => panic!("Invalid operands for division"),
+                },
+                ExprOp::Gt { a, b } => match (&op_results[*a], &op_results[*b]) {
+                    (VarVal::Int(a), VarVal::Int(b)) => {
+                        Ok(VarVal::Int(if *a > *b { 1 } else { 0 }))
+                    }
+                    (VarVal::Int(a), VarVal::Float(b)) => {
+                        Ok(VarVal::Int(if *a as f64 > *b { 1 } else { 0 }))
+                    }
+                    (VarVal::Float(a), VarVal::Int(b)) => {
+                        Ok(VarVal::Int(if *a > *b as f64 { 1 } else { 0 }))
+                    }
+                    (VarVal::Float(a), VarVal::Float(b)) => {
+                        Ok(VarVal::Int(if *a > *b { 1 } else { 0 }))
+                    }
+                    (VarVal::Null, _) => Ok(VarVal::Null),
+                    (_, VarVal::Null) => Ok(VarVal::Null),
+                    _ => panic!("Invalid operands for greater-than"),
+                },
+                ExprOp::Abs { a } => match &op_results[*a] {
+                    VarVal::Int(a) => Ok(VarVal::Int(a.abs())),
+                    VarVal::Float(a) => Ok(VarVal::Float(a.abs())),
+                    VarVal::Null => Ok(VarVal::Null),
+                    _ => panic!("Invalid operands for abs"),
+                },
+                ExprOp::If { cond, t, f } => match &op_results[*cond] {
+                    VarVal::Int(1) => Ok(op_results[*t].clone()),
+                    _ => Ok(op_results[*f].clone()),
+                },
+                ExprOp::Eq { a, b } => match (&op_results[*a], &op_results[*b]) {
+                    (VarVal::Int(a), VarVal::Int(b)) => Ok(VarVal::Int((*a == (*b as i64)) as i64)),
+                    (VarVal::Int(a), VarVal::Float(b)) => {
+                        Ok(VarVal::Int(((*a as f64) == *b) as i64))
+                    }
+                    (VarVal::Float(a), VarVal::Int(b)) => {
+                        Ok(VarVal::Int((*a == (*b as f64)) as i64))
+                    }
+                    (VarVal::Float(a), VarVal::Float(b)) => Ok(VarVal::Int((*a == *b) as i64)),
+                    (VarVal::String(a), VarVal::String(b)) => Ok(VarVal::Int((*a == *b) as i64)),
+                    (VarVal::Null, _) => Ok(VarVal::Int(0)),
+                    (_, VarVal::Null) => Ok(VarVal::Int(0)),
+                    _ => panic!("Invalid operands for equality"),
+                },
+                ExprOp::Min { a, b } => match (&op_results[*a], &op_results[*b]) {
+                    (VarVal::Int(a), VarVal::Int(b)) => Ok(VarVal::Int((*a).min(*b))),
+                    (VarVal::Int(a), VarVal::Float(b)) => Ok(VarVal::Float((*a as f64).min(*b))),
+                    (VarVal::Float(a), VarVal::Int(b)) => Ok(VarVal::Float((*a).min(*b as f64))),
+                    (VarVal::Float(a), VarVal::Float(b)) => Ok(VarVal::Float((*a).min(*b))),
+                    (VarVal::Null, _) => Ok(VarVal::Null),
+                    (_, VarVal::Null) => Ok(VarVal::Null),
+                    _ => panic!("Invalid operands for min"),
+                },
+                ExprOp::Max { a, b } => match (&op_results[*a], &op_results[*b]) {
+                    (VarVal::Int(a), VarVal::Int(b)) => Ok(VarVal::Int((*a).max(*b))),
+                    (VarVal::Int(a), VarVal::Float(b)) => Ok(VarVal::Float((*a as f64).max(*b))),
+                    (VarVal::Float(a), VarVal::Int(b)) => Ok(VarVal::Float((*a).max(*b as f64))),
+                    (VarVal::Float(a), VarVal::Float(b)) => Ok(VarVal::Float((*a).max(*b))),
+                    (VarVal::Null, _) => Ok(VarVal::Null),
+                    (_, VarVal::Null) => Ok(VarVal::Null),
+                    _ => panic!("Invalid operands for max"),
+                },
+                ExprOp::Mod { a, b } => match (&op_results[*a], &op_results[*b]) {
+                    (VarVal::Int(a), VarVal::Int(b)) => Ok(VarVal::Int(imod(*a, *b))),
+                    (VarVal::Int(a), VarVal::Float(b)) => Ok(VarVal::Float(fmod(*a as f64, *b))),
+                    (VarVal::Float(a), VarVal::Int(b)) => Ok(VarVal::Float(fmod(*a, *b as f64))),
+                    (VarVal::Float(a), VarVal::Float(b)) => Ok(VarVal::Float(fmod(*a, *b))),
+                    (VarVal::Null, _) => Ok(VarVal::Null),
+                    (_, VarVal::Null) => Ok(VarVal::Null),
+                    _ => panic!("Invalid operands for mod"),
+                },
+                ExprOp::Neg { a } => match &op_results[*a] {
+                    VarVal::Int(a) => Ok(VarVal::Int(-*a)),
+                    VarVal::Float(a) => Ok(VarVal::Float(-*a)),
+                    VarVal::Null => Ok(VarVal::Null),
+                    _ => panic!("Invalid operands for neg"),
+                },
                 ExprOp::MeasureTextX { text, font_size } => {
-                    let text = text.as_string(ctx).unwrap();
-                    let font_size = font_size.as_f64(ctx)? as f32;
-                    let font = crate::render::get_font("Cantarell", font_size);
-                    let measurement =
-                        crate::render::get_measurement(text.as_str(), &font, font_size);
+                    let text = op_results[*text].as_string().unwrap();
+                    let font_size = op_results[*font_size].as_float().unwrap() as f32;
 
-                    Ok(measurement.0 as f64)
+                    let font = get_font("Cantarell", font_size);
+                    let measurement = get_measurement(text.as_str(), &font, font_size);
+
+                    Ok(VarVal::Float(measurement.0 as f64))
                 }
-                ExprOp::MeasureTextY { font_size, .. } => Ok(font_size.as_f64(ctx)?),
-            },
-            ExprPart::StringLiteral(_) => unimplemented!(),
-        }
-    }
+                ExprOp::MeasureTextY { text, font_size } => {
+                    let text = op_results[*text].as_string().unwrap();
+                    let font_size = op_results[*font_size].as_float().unwrap() as f32;
 
-    pub fn as_i64(&self, ctx: &mut EvalContext) -> Result<i64, ()> {
-        match self {
-            ExprPart::IntLiteral(i) => Ok(*i),
-            ExprPart::FloatLiteral(f) => Ok(*f as i64),
-            ExprPart::Operation(op) => match op {
-                ExprOp::Inf => panic!("Cannot convert infinity to integer"),
-                ExprOp::Var { name } => match ctx.get(name) {
-                    Some(VarVal::Int(i)) => Ok(*i),
-                    Some(VarVal::Float(f)) => Ok(*f as i64),
-                    None => panic!("Missing variable '{}'", name),
-                    _ => panic!("Invalid variable type"),
-                },
-                ExprOp::Add { a, b } => Ok(a.as_i64(ctx)? + b.as_i64(ctx)?),
-                ExprOp::Sub { a, b } => Ok(a.as_i64(ctx)? - b.as_i64(ctx)?),
-                ExprOp::Mul { a, b } => Ok(a.as_i64(ctx)? * b.as_i64(ctx)?),
-                ExprOp::Div { a, b } => Ok(a.as_i64(ctx)? / b.as_i64(ctx)?), // FIXME: This whole logic is wonky,
-                ExprOp::Fdiv { a, b } => Ok((a.as_f64(ctx)? / b.as_f64(ctx)?) as i64),
-                ExprOp::Mod { .. } => unimplemented!(),
-                ExprOp::Pow { .. } => unimplemented!(),
-                ExprOp::Eq { .. } => unimplemented!(),
-                ExprOp::Neq { .. } => unimplemented!(),
-                ExprOp::Lt { .. } => unimplemented!(),
-                ExprOp::Lte { .. } => unimplemented!(),
-                ExprOp::Gt { .. } => unimplemented!(),
-                ExprOp::Gte { .. } => unimplemented!(),
-                ExprOp::BAnd { a, b } => Ok(a.as_i64(ctx)? & b.as_i64(ctx)?),
-                ExprOp::BOr { a, b } => Ok(a.as_i64(ctx)? | b.as_i64(ctx)?),
-                ExprOp::BInvert { .. } => unimplemented!(),
-                ExprOp::Not { .. } => unimplemented!(),
-                ExprOp::Neg { .. } => unimplemented!(),
-                ExprOp::Min { .. } => unimplemented!(),
-                ExprOp::Max { .. } => unimplemented!(),
-                ExprOp::Abs { a } => Ok(a.as_i64(ctx)?.abs()),
-                ExprOp::ToStr { .. } => unimplemented!(),
-                ExprOp::MeasureTextX { .. } => unimplemented!(),
-                ExprOp::MeasureTextY { .. } => unimplemented!(),
-            },
-            ExprPart::StringLiteral(_) => unimplemented!(),
-        }
-    }
+                    let font = get_font("Cantarell", font_size);
+                    let measurement = get_measurement(text.as_str(), &font, font_size);
 
-    pub fn as_color4f(&self, ctx: &mut EvalContext) -> Result<Color4f, ()> {
-        Ok(Color4f::from(self.as_i64(ctx)? as u32))
-    }
-
-    pub fn as_string(&self, ctx: &mut EvalContext) -> Result<String, ()> {
-        match self {
-            ExprPart::StringLiteral(s) => Ok(s.clone()),
-            ExprPart::Operation(op) => match op {
-                ExprOp::Var { name } => match ctx.get(name) {
-                    Some(VarVal::String(s)) => Ok(s.clone()),
-                    None => panic!("Missing variable '{}'", name),
-                    _ => panic!("Invalid variable type"),
-                },
-                ExprOp::ToStr { a } => Ok(format!("{}", a.as_f64(ctx)?)),
-                ExprOp::Add { .. } => unimplemented!(),
-                ExprOp::Sub { .. } => unimplemented!(),
-                ExprOp::Mul { .. } => unimplemented!(),
-                ExprOp::Div { .. } => unimplemented!(),
-                ExprOp::Fdiv { .. } => unimplemented!(),
-                ExprOp::Mod { .. } => unimplemented!(),
-                ExprOp::Pow { .. } => unimplemented!(),
-                ExprOp::Eq { .. } => unimplemented!(),
-                ExprOp::Neq { .. } => unimplemented!(),
-                ExprOp::Lt { .. } => unimplemented!(),
-                ExprOp::Lte { .. } => unimplemented!(),
-                ExprOp::Gt { .. } => unimplemented!(),
-                ExprOp::Gte { .. } => unimplemented!(),
-                ExprOp::BAnd { .. } => unimplemented!(),
-                ExprOp::BInvert { .. } => unimplemented!(),
-                ExprOp::BOr { .. } => unimplemented!(),
-                ExprOp::Not { .. } => unimplemented!(),
-                ExprOp::Neg { .. } => unimplemented!(),
-                ExprOp::Min { .. } => unimplemented!(),
-                ExprOp::Max { .. } => unimplemented!(),
-                ExprOp::Abs { .. } => unimplemented!(),
-                ExprOp::Inf => unimplemented!(),
-                ExprOp::MeasureTextX { .. } => unimplemented!(),
-                ExprOp::MeasureTextY { .. } => unimplemented!(),
+                    Ok(VarVal::Float(measurement.1 as f64))
+                }
+                _ => unimplemented!("{op:?}"),
             },
-            ExprPart::IntLiteral(_) => unimplemented!(),
-            ExprPart::FloatLiteral(_) => unimplemented!(),
         }
     }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum HandlerOpcode {
-    SetVar { name: String, value: Box<ExprPart> },
-    Reply { id: u64, data: Vec<Box<ExprPart>> },
+    SetVar { name: String, value: usize },
+    Reply { id: u64, data: Vec<usize> },
 }
 
 #[derive(Deserialize, Debug)]
 #[serde(from = "ExprRectTuple")]
 pub struct ExprRect {
-    pub left: Box<ExprPart>,
-    pub top: Box<ExprPart>,
-    pub right: Box<ExprPart>,
-    pub bottom: Box<ExprPart>,
+    pub left: usize,
+    pub top: usize,
+    pub right: usize,
+    pub bottom: usize,
 }
 
 impl ExprRect {
-    pub fn as_rect(&self, ctx: &mut EvalContext) -> Result<Rect, ()> {
-        Ok(Rect::new(
-            self.left.as_f64(ctx)? as f32,
-            self.top.as_f64(ctx)? as f32,
-            self.right.as_f64(ctx)? as f32,
-            self.bottom.as_f64(ctx)? as f32,
+    pub fn as_rect(&self, op_results: &[VarVal]) -> Option<Rect> {
+        Some(Rect::new(
+            op_results[self.left].as_float()? as f32,
+            op_results[self.top].as_float()? as f32,
+            op_results[self.right].as_float()? as f32,
+            op_results[self.bottom].as_float()? as f32,
         ))
     }
 }
@@ -291,31 +346,32 @@ impl ExprRect {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum TopLevelOpcode {
     Clear {
-        color: Box<ExprPart>,
+        color: u32,
     },
     Rect {
         rect: ExprRect,
-        color: Box<ExprPart>,
+        color: usize,
     },
     #[serde(rename = "rrect")]
     RRect {
         rect: ExprRect,
-        color: Box<ExprPart>,
-        radius: Box<ExprPart>,
+        color: usize,
+        radius: usize,
     },
     #[serde(rename = "evtHnd")]
     EventHandler {
         rect: ExprRect,
         events: u32,
         handler: Vec<HandlerOpcode>,
+        oplist: Vec<ExprPart>,
     },
     #[serde(rename_all = "camelCase")]
     Text {
-        text: Box<ExprPart>,
-        x: Box<ExprPart>,
-        y: Box<ExprPart>,
-        font_size: Box<ExprPart>,
-        color: Box<ExprPart>,
+        text: usize,
+        x: usize,
+        y: usize,
+        font_size: usize,
+        color: usize,
     },
     Save {},
     Restore {},
@@ -325,16 +381,36 @@ pub enum TopLevelOpcode {
     #[serde(rename_all = "camelCase")]
     Watch {
         id: u64,
-        cond: Box<ExprPart>,
+        cond: usize,
         wait_for_roundtrip: bool,
         handler: Vec<HandlerOpcode>,
     },
 }
 
-type ExprRectTuple = (Box<ExprPart>, Box<ExprPart>, Box<ExprPart>, Box<ExprPart>);
+#[derive(Deserialize, Debug)]
+pub struct Scene {
+    oplist: Vec<ExprPart>,
+    pub(crate) scene: Vec<TopLevelOpcode>,
+}
 
-impl From<(Box<ExprPart>, Box<ExprPart>, Box<ExprPart>, Box<ExprPart>)> for ExprRect {
-    fn from(rect: (Box<ExprPart>, Box<ExprPart>, Box<ExprPart>, Box<ExprPart>)) -> Self {
+pub fn eval_oplist(oplist: &[ExprPart], ctx: &EvalContext) -> Result<Vec<VarVal>, ()> {
+    let mut op_results = Vec::new();
+    for op in oplist {
+        op_results.push(op.eval(ctx, &op_results)?);
+    }
+    Ok(op_results)
+}
+
+impl Scene {
+    pub fn eval_oplist(&self, ctx: &EvalContext) -> Result<Vec<VarVal>, ()> {
+        eval_oplist(&self.oplist, ctx)
+    }
+}
+
+type ExprRectTuple = (usize, usize, usize, usize);
+
+impl From<(usize, usize, usize, usize)> for ExprRect {
+    fn from(rect: (usize, usize, usize, usize)) -> Self {
         ExprRect {
             left: rect.0,
             top: rect.1,
@@ -344,7 +420,7 @@ impl From<(Box<ExprPart>, Box<ExprPart>, Box<ExprPart>, Box<ExprPart>)> for Expr
     }
 }
 
-pub fn load_example_scene() -> Vec<TopLevelOpcode> {
+pub fn load_example_scene() -> Scene {
     let mut args = std::env::args().skip(1);
     if args.len() != 1 {
         println!("Usage: uiclient <filename>");
@@ -354,7 +430,6 @@ pub fn load_example_scene() -> Vec<TopLevelOpcode> {
     let filename = args.next().unwrap();
     let scene_file = File::open(filename).unwrap();
     let scene_reader = BufReader::new(scene_file);
-    let scene: Vec<TopLevelOpcode> =
-        serde_json::from_reader(scene_reader).expect("Failed to parse scene file");
+    let scene: Scene = serde_json::from_reader(scene_reader).expect("Failed to parse scene file");
     scene
 }
