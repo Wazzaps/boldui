@@ -193,7 +193,7 @@ if __name__ == '__main__':
 
 We define a model, each field is given an ID (which becomes the key in the DB), and each field can either be read/modified (Like `Model.counter`) or be used to create a binding (Like `Model.bind.counter`).
 
-Bindings save a widget rebuild if the value changes, the app simply notifies the client the of new value and it redraws accordingly. 
+Bindings save a widget rebuild if the value changes, the app simply notifies the client the of new value, and it redraws accordingly. 
 
 The model cannot contain lists (at least at the moment), just `int`s, `float`s, `str`s, and other subtypes of `BaseModel`.
 
