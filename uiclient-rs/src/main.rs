@@ -32,6 +32,7 @@ fn main() {
         .with_depth_buffer(0)
         .with_stencil_buffer(8)
         .with_pixel_format(24, 8)
+        .with_vsync(true)
         .with_gl_profile(GlProfile::Core);
 
     // #[cfg(not(feature = "wayland"))]
@@ -66,15 +67,16 @@ fn main() {
     window.set_min_inner_size(Some(glutin::dpi::Size::new(glutin::dpi::LogicalSize::new(
         100.0, 100.0,
     ))));
-    // .set_inner_size(glutin::dpi::Size::new(glutin::dpi::LogicalSize::new(
+    // window.set_inner_size(glutin::dpi::Size::new(glutin::dpi::LogicalSize::new(
     //     1280.0, 720.0,
     // )));
+    // windowed_context.resize(glutin::dpi::PhysicalSize::new(1280, 720));
 
     fn create_surface(
         windowed_context: &WindowedContext,
         fb_info: &FramebufferInfo,
         gr_context: &mut skia_safe::gpu::DirectContext,
-    ) -> skia_safe::Surface {
+    ) -> Surface {
         let pixel_format = windowed_context.get_pixel_format();
         let size = windowed_context.window().inner_size();
         let backend_render_target = BackendRenderTarget::new_gl(
@@ -121,6 +123,7 @@ fn main() {
 
     let mut uiclient = UIClient::new();
     let mut current_mouse_pos = PhysicalPosition::default();
+    // let mut last_frame = Instant::now();
 
     el.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
@@ -181,12 +184,16 @@ fn main() {
                     // canvas.draw_rect(Rect::new(10., 10., right, bottom), &paint);
 
                     // renderer::render_frame(frame % 360, 12, 60, canvas);
+                    canvas.flush();
                 }
-                env.surface.canvas().flush();
                 env.windowed_context.swap_buffers().unwrap();
+
+                // let now = Instant::now();
+                // let framerate = 1.0 / ((now - last_frame).as_millis() as f64 / 1_000.0);
+                // println!("framerate: {}", framerate);
+                // last_frame = now;
             }
-            Event::RedrawEventsCleared => {
-                *control_flow = ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(16));
+            Event::MainEventsCleared => {
                 env.windowed_context.window().request_redraw();
             }
             _ => (),
