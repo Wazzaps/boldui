@@ -233,6 +233,7 @@ class Column(Widget):
 class Padding(Widget):
     BUILDS_CHILDREN = True
 
+    # noinspection PyShadowingBuiltins
     def __init__(self, child, left=0, top=0, right=0, bottom=0, horizontal=None, vertical=None, all=None):
         self.child = child
         self._built_child = None
@@ -283,7 +284,7 @@ class Padding(Widget):
         child_max_width = Expr(max_width) - self.left - self.right
         child_max_height = Expr(max_height) - self.top - self.bottom
         child_width, child_height = self._built_child.layout(child_min_width, child_min_height,
-                                                      child_max_width, child_max_height)
+                                                             child_max_width, child_max_height)
         return child_width + self.left + self.right, child_height + self.top + self.bottom
 
     def render(self, oplist, left, top, right, bottom):
