@@ -5,6 +5,7 @@ pub(crate) mod utils;
 use crate::render::UIClient;
 use glutin::dpi::PhysicalPosition;
 use glutin::event::ElementState;
+use std::time::{Duration, Instant};
 
 fn main() {
     use gl::types::*;
@@ -60,11 +61,11 @@ fn main() {
         }
     };
 
-    windowed_context
-        .window()
-        .set_min_inner_size(Some(glutin::dpi::Size::new(glutin::dpi::LogicalSize::new(
-            100.0, 100.0,
-        ))));
+    let window = windowed_context.window();
+    // window.set_fullscreen(Some(Fullscreen::Borderless(None)));
+    window.set_min_inner_size(Some(glutin::dpi::Size::new(glutin::dpi::LogicalSize::new(
+        100.0, 100.0,
+    ))));
     // .set_inner_size(glutin::dpi::Size::new(glutin::dpi::LogicalSize::new(
     //     1280.0, 720.0,
     // )));
@@ -183,6 +184,10 @@ fn main() {
                 }
                 env.surface.canvas().flush();
                 env.windowed_context.swap_buffers().unwrap();
+            }
+            Event::RedrawEventsCleared => {
+                *control_flow = ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(16));
+                env.windowed_context.window().request_redraw();
             }
             _ => (),
         }
