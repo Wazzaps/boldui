@@ -6,6 +6,7 @@ import json
 import os
 import socket
 import struct
+import boldui.hotrefresh
 from simplexp import Expr, var, Oplist
 from typing import List
 
@@ -131,6 +132,7 @@ class ProtocolServer:
         self.pending_vars = {}
         self.address = address
         self._scene = None
+        self._cached_scene = None
         self.reply_handler = reply_handler
         if os.path.exists(address):
             os.remove(address)
@@ -143,17 +145,30 @@ class ProtocolServer:
         self._batch_scene_updated = False
         self._batch_vars = None
 
+        hotrefresh.init(self)
+
     @property
     def scene(self):
-        return self._scene
+        if self._cached_scene is None:
+            if callable(self._scene):
+                self._cached_scene = self._scene()
+            else:
+                self._cached_scene = self._scene
+
+        return self._cached_scene
 
     @scene.setter
     def scene(self, value):
         self._scene = value
+        self._cached_scene = None
         if self._is_batch:
             self._batch_scene_updated = True
         else:
             self._send_scene()
+
+    def refresh_scene(self):
+        self._cached_scene = None
+        self._send_scene()
 
     @contextlib.contextmanager
     def batch_update(self):
@@ -247,7 +262,7 @@ class ProtocolServer:
 
     def _send_scene(self):
         if self.socket:
-            self._send_packet(Actions.UPDATE_SCENE.to_bytes(4, 'big') + json.dumps(self._scene).encode())
+            self._send_packet(Actions.UPDATE_SCENE.to_bytes(4, 'big') + json.dumps(self.scene).encode())
 
     def set_remote_var(self, name, val_type, value):
         self.pending_vars[name] = (val_type, value)

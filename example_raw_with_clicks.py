@@ -3,7 +3,8 @@ import random
 
 from boldui import Ops, Oplist, Expr, var, ProtocolServer
 
-if __name__ == '__main__':
+
+def main():
     def make_scene(rect_color):
         oplist = Oplist()
         reply_oplist = Oplist()
@@ -80,8 +81,12 @@ if __name__ == '__main__':
             click_x, click_y, click_time = data
             print('Click at pos ({}, {}) at time {}'.format(click_x, click_y, click_time))
             color = random.randint(0x000000, 0xffffff)
-            server.scene = make_scene(0xff000000 | color)
+            server.scene = lambda: make_scene(0xff000000 | color)
 
     server = ProtocolServer("/tmp/boldui.hello_world.sock", handle_reply)
-    server.scene = make_scene(0xffc08080)
+    server.scene = lambda: make_scene(0xffc08080)
     server.serve()
+
+
+if __name__ == '__main__':
+    main()
