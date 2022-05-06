@@ -8,7 +8,7 @@ from boldui.framework import Widget, Clear, export, Context
 
 def update_widget():
     print('update_widget')
-    Context['_app'].server.scene = Context['_app'].rebuild()
+    Context['_app'].server.scene = lambda: Context['_app'].force_rebuild()
 
 
 def widget(fn):
@@ -32,6 +32,10 @@ class App:
         self._reply_handlers = {}
         self._txn_active = False
 
+    def force_rebuild(self):
+        self._scene_instance = None
+        return self.rebuild()
+
     def rebuild(self):
         with self._build_context():
             if self._scene_instance is None:
@@ -54,7 +58,7 @@ class App:
 
     def run(self):
         self.server = ProtocolServer("/tmp/boldui.hello_world.sock", reply_handler=self._reply_handler)
-        self.server.scene = self.rebuild()
+        self.server.scene = lambda: self.force_rebuild()
         self.server.serve()
 
     @contextlib.contextmanager
