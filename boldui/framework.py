@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import abc
 import contextlib
-from typing import Tuple, Dict, List
+from typing import Tuple, Dict, List, Literal
 from boldui import Ops, Oplist, Expr, var
 from boldui.store import BaseModel
 
@@ -97,7 +97,9 @@ class Row(Widget):
         if total_flex_x == 0:
             width = sum((size[0] for size in children_sizes), Expr(0))
         if total_flex_y == 0:
-            height = sum((size[1] for size in children_sizes), Expr(0))
+            height = Expr(0)
+            for size in children_sizes:
+                height = height.max(size[1])
 
         return width, height
 
@@ -184,7 +186,9 @@ class Column(Widget):
                     children_sizes[i] = list(child.layout(0, min_height, Expr(float('inf')), max_height))
 
             if total_flex_x == 0:
-                width = sum((size[0] for size in children_sizes), Expr(0))
+                width = Expr(0)
+                for size in children_sizes:
+                    width = width.max(size[0])
             if total_flex_y == 0:
                 height = sum((size[1] for size in children_sizes), Expr(0))
 
@@ -684,7 +688,7 @@ class EventHandler(Widget):
             (oplist.append(left), oplist.append(top), oplist.append(right), oplist.append(bottom)),
             events,
             handlers,
-            handler_oplist,
+            handler_oplist.to_list(),
         )
         if self._built_child:
             return [
@@ -841,7 +845,7 @@ class Clip(Widget):
 class Stack(Widget):
     BUILDS_CHILDREN = True
 
-    def __init__(self, children, align='center', fit='expand'):
+    def __init__(self, children, align='center', fit: Literal['expand', 'tight'] = 'expand'):
         self.children = children
         self.align = align
         self.fit = fit
