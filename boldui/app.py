@@ -31,13 +31,15 @@ class App:
         self.durable_model = durable_model
         self._reply_handlers = {}
         self._txn_active = False
+        self._last_read_items = set()
+        self._dirty = False
 
     def force_rebuild(self):
         self._scene_instance = None
         return self.rebuild()
 
     def rebuild(self):
-        with self._build_context():
+        with self._build_context(is_main_scene=True):
             if self._scene_instance is None:
                 self._scene_instance = self.scene()
             else:
@@ -62,7 +64,7 @@ class App:
         self.server.serve()
 
     @contextlib.contextmanager
-    def _build_context(self):
+    def _build_context(self, is_main_scene=False):
         if self.durable_store is not None and not self._txn_active:
             txn = self.durable_store.begin(write=True)
             model_instance = self.durable_model(txn, 'd')
@@ -77,7 +79,14 @@ class App:
                     yield
 
                     if txn is not None:
-                        _read_items = set(model_instance._read_items)
+                        _written_items = set(model_instance._written_items)
+                        if not self._last_read_items.isdisjoint(_written_items):
+                            print('should update!')
+                            self._dirty = True
+
+                        if is_main_scene:
+                            self._last_read_items = set(model_instance._read_items)
+
                         for path in model_instance._bound_items:
                             item = model_instance._items_by_path[path]
                             _key = f'{item.model_name}#{item.id}'
@@ -96,3 +105,9 @@ class App:
     def _reply_handler(self, reply_id, data_array):
         with self._build_context():
             self._reply_handlers[reply_id](data_array)
+
+        if self._dirty:
+            print('refreshing!')
+            self.server.refresh_scene()
+            self._dirty = False
+

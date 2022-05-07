@@ -30,6 +30,7 @@ class BaseModel(metaclass=_MetaBaseModel):
         type(self)._items_by_path = {}
         type(self)._bound_items = set()
         type(self)._read_items = set()
+        type(self)._written_items = set()
         type(self)._txn = txn
         type(self)._prefix = prefix
 
@@ -77,6 +78,7 @@ class BaseModel(metaclass=_MetaBaseModel):
         _key = f'{item.model_name}#{item.id}'
         _var_key = f'{self._prefix}:{_key}'
         self._txn.put(_key.encode(), str(value).encode())
+        self._written_items.add(path)
         self._update_client(_var_key, item.type, value)
 
     def _update_client(self, key: str, val_type: type, value):
@@ -151,6 +153,9 @@ def make_model_proxy():
                     if DEBUG:
                         print(f'bind item: {field_name}')
                     setattr(type(self), field_name, ModelItemDescriptor(base_model, field_type, new_path, is_bind=is_bind))
+
+            if not is_bind:
+                setattr(type(self), 'bind', ModelProxyDescriptor(base_model, submodel, path, is_bind=True))
 
         def __getattr__(self, item):
             # print(self)
