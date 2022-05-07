@@ -4,100 +4,86 @@ Visualize each opcode in the scene graph as a graph using graphviz.
 """
 import json
 import sys
-import textwrap
 
-from anytree import Node
-from anytree.exporter import UniqueDotExporter
-
-
-COUNTER = 0
-EXPECTED_NODES = 243350
-
-
-def categorize_attrs(obj):
-    plain_attrs = {}
-    big_attrs = {}
-    subtree_attrs = []
-
-    if isinstance(obj, dict):
-        keys = obj
-    elif isinstance(obj, list):
-        keys = range(len(obj))
-    else:
-        assert False, f'Unknown type: {type(obj)}'
-
-    for attr in keys:
-        if attr == 'type':
-            continue
-        if (isinstance(obj[attr], dict) and 'type' in obj[attr]) or isinstance(obj[attr], list):
-            subtree_attrs.append(attr)
-        else:
-            attr_repr = repr(obj[attr])
-            if len(attr_repr) > 50:
-                big_attrs[attr] = attr_repr[:1000]
-                if len(attr_repr) > 1000:
-                    big_attrs[attr] += '...'
-            else:
-                plain_attrs[attr] = attr_repr
-
-    return plain_attrs, big_attrs, subtree_attrs
-
-
-def render_attrs(attrs):
-    output = []
-
-    for attr in attrs:
-        output.append(f'{attr}: {attrs[attr]}')
-
-    if output:
-        return '<BR /><FONT POINT-SIZE="9">' + '<BR />'.join(output) + '</FONT>'
-    else:
-        return ''
-
-
-def create_subnodes(node, big_attrs, parent_data, subtree_attrs):
-    global COUNTER
-
-    for attr in subtree_attrs:
-        current_node = parent_data[attr]
-        child_plain_attrs, child_big_attrs, child_subtree_attrs = categorize_attrs(current_node)
-
-        if isinstance(current_node, dict):
-            prefix = current_node["type"]
-            COUNTER += 1
-            if COUNTER % 1000 == 0:
-                print(f'{COUNTER}/{EXPECTED_NODES} ({float(COUNTER) / EXPECTED_NODES * 100:.2f}%)')
-        else:
-            prefix = '(list)'
-
-        subnode = Node(
-            f'{prefix}{render_attrs(child_plain_attrs)}',
-            attr_name=attr,
-            parent=node
-        )
-        create_subnodes(subnode, child_big_attrs, current_node, child_subtree_attrs)
-
-    for attr, attr_val in big_attrs.items():
-        wrapped = '<BR />'.join(textwrap.wrap(attr_val, width=50))
-        if not wrapped:
-            wrapped = '(empty)'
-        _subnode = Node(
-            f'<FONT POINT-SIZE="9">{wrapped}</FONT>',
-            attr_name=attr,
-            parent=node
-        )
+from graphviz import Digraph
 
 
 def visualize(json_file):
     json_data = json.load(open(json_file, 'r'))
-    for i, node in enumerate(json_data):
-        # for i in range(1):
-        plain_attrs, big_attrs, subtree_attrs = categorize_attrs(node)
+    dot = Digraph(graph_attr={'splines': 'ortho'})
 
-        root = Node(f'Ops.{node["type"]}{render_attrs(plain_attrs)}', attr_name='')
-        create_subnodes(root, big_attrs, node, subtree_attrs)
+    dot.node('root', 'Scene', color='purple', fontcolor='purple')
 
-        UniqueDotExporter(root, nodeattrfunc=lambda n: 'label=<%s>, xlabel=<%s>' % (n.name, n.attr_name)).to_picture(f'scene_op_{i}.png')
+    for i, op in enumerate(json_data["oplist"]):
+        if type(op) == dict:
+            attrs = {}
+            for attr in op:
+                if attr == 'type':
+                    continue
+                if type(op[attr]) == str:
+                    attrs[attr] = repr(op[attr])
+
+            nodetext = f'OP{i}: {op["type"]}'
+            if attrs:
+                nodetext += f'<BR /><FONT POINT-SIZE="10">' \
+                            f'{"<BR />".join(f"{attr}: {attrs[attr]}" for attr in attrs)}' \
+                            f'</FONT>'
+            dot.node(f'op-{i}', f'<{nodetext}>')
+
+            for attr in op:
+                if attr == 'type':
+                    continue
+                if type(op[attr]) == int:
+                    dot.edge(f'op-{op[attr]}', f'op-{i}', headlabel=f' {attr} ', minlen='2')
+        else:
+            op_repr = repr(op)
+            if type(op) == int and op >= 0x1000:
+                op_repr = hex(op)
+
+            dot.node(f'op-{i}', f'OP{i}: {op_repr}', color='blue', fontcolor='blue')
+
+    for i, op in enumerate(json_data["scene"]):
+        attrs = {}
+
+        def handle_attrs1(obj):
+            for attr in obj:
+                if attr == 'type':
+                    continue
+                elif op['type'] == 'clear' and attr == 'color':
+                    attrs[attr] = hex(op[attr])
+                elif op['type'] == 'evtHnd' and attr == 'events':
+                    attrs[attr] = hex(op[attr])
+                elif type(op[attr]) == str:
+                    attrs[attr] = repr(op[attr])
+
+        handle_attrs1(op)
+
+        nodetext = f'SCN{i}: {op["type"]}'
+        if attrs:
+            nodetext += f'<BR /><FONT POINT-SIZE="10">' \
+                        f'{"<BR />".join(f"{attr}: {attrs[attr]}" for attr in attrs)}' \
+                        f'</FONT>'
+
+        dot.node(f'scn-{i}', f'<{nodetext}>', color='red', fontcolor='red')
+        dot.edge(f'scn-{i}', 'root', minlen='2')
+
+        def handle_attrs2(obj):
+            for attr in obj:
+                if attr == 'type':
+                    continue
+                if obj['type'] == 'clear' and attr == 'color':
+                    continue
+                if obj['type'] == 'evtHnd' and attr == 'events':
+                    continue
+                if type(obj[attr]) == int:
+                    dot.edge(f'op-{obj[attr]}', f'scn-{i}', headlabel=f' {attr} ', minlen='2')
+                if type(obj[attr]) == list:
+                    for j, entry in enumerate(obj[attr]):
+                        handle_attrs2({f'{attr}.{j}': entry, 'type': ''})
+
+        handle_attrs2(op)
+
+    dot.render(view=True, engine='dot')
 
 
 def main():

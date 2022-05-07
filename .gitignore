@@ -3,3 +3,5 @@
 /uiclient-rs/target
 /scene.json
 __pycache__
+/utils/Digraph.gv
+/utils/Digraph.gv.pdf
