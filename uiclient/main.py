@@ -75,7 +75,7 @@ class Protocol:
                     # FIXME: remove when variables get static types
                     new_value = UIClient.resolve_oplist(json.loads(var_value), self.ui_client.context)[-1]
                     if var_type == b'n':
-                        new_value = int(new_value)
+                        new_value = float(new_value)
                     elif var_type == b's':
                         new_value = str(new_value)
                     else:
@@ -113,6 +113,7 @@ class UIClient:
         self.width = 0
         self.height = 0
         self.image_cache = {}
+        self._start_time = time.time()
 
         self.protocol.connect()
 
@@ -256,7 +257,7 @@ class UIClient:
             **self.persistent_context,
             'width': self.width,
             'height': self.height,
-            'time': time.time()
+            'time': time.time() - self._start_time,
         }
 
     def resize(self, width, height):
