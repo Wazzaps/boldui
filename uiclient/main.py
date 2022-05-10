@@ -58,33 +58,45 @@ class Protocol:
         packet_type = int.from_bytes(packet[:4], 'big')
         packet = packet[4:]
 
+        def set_vars_from_list(parts):
+            while parts:
+                var_name, var_type, var_value = parts[:3]
+                parts = parts[3:]
+
+                if type(var_name) == bytes:
+                    var_name = var_name.decode()
+
+                if type(var_type) == str:
+                    var_type = bytes(var_type, 'utf-8')
+
+                # FIXME: remove when variables get static types
+                new_value = UIClient.resolve_oplist(json.loads(var_value), self.ui_client.context)[-1]
+                if var_type == b'n':
+                    new_value = float(new_value)
+                elif var_type == b's':
+                    new_value = str(new_value)
+                else:
+                    raise Exception('Unknown var type: {}'.format(var_type))
+
+                print(f'{var_name}:{var_type} = {var_value}')
+                self.ui_client.persistent_context[var_name] = new_value
+            self.ui_client._should_update_watches = True
+            self.ui_client.update_watches(send=True)
+
         if packet_type == Actions.UPDATE_SCENE:
             open('scene.json', 'wb').write(packet)
+
             self.ui_client.scene = json.loads(packet)
+            if 'vars' in self.ui_client.scene and self.ui_client.scene['vars']:
+                set_vars_from_list(self.ui_client.scene['vars'])
+
             self.ui_client._blocked_watches.clear()
             self.ui_client._should_update_watches = True
             self.ui_client.update_watches(send=True)
-            # print(self.ui_client.scene)
         elif packet_type == Actions.SET_VAR:
             if packet:
                 parts = packet.split(b'\x00')
-                while parts:
-                    var_name, var_type, var_value = parts[:3]
-                    parts = parts[3:]
-
-                    # FIXME: remove when variables get static types
-                    new_value = UIClient.resolve_oplist(json.loads(var_value), self.ui_client.context)[-1]
-                    if var_type == b'n':
-                        new_value = float(new_value)
-                    elif var_type == b's':
-                        new_value = str(new_value)
-                    else:
-                        raise Exception('Unknown var type')
-
-                    print(f'{var_name}:{var_type} = {var_value}')
-                    self.ui_client.persistent_context[var_name.decode()] = new_value
-                self.ui_client._should_update_watches = True
-                self.ui_client.update_watches(send=True)
+                set_vars_from_list(parts)
         elif packet_type == Actions.WATCH_ACK:
             ack_id = int.from_bytes(packet[:8], 'big')
             # print(f'Watch ack #{ack_id}')

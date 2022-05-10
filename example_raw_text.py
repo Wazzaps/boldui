@@ -12,6 +12,7 @@ BG = 0xff242424
 class Model(BaseModel):
     font_size: int = 24
     bold_switch: Switch.State
+    italic_switch: Switch.State
 
     @staticmethod
     def add_font_size(delta):
@@ -20,6 +21,13 @@ class Model(BaseModel):
 
 @widget
 def main_page():
+    text = 'Hello, world!'
+
+    if Model.bold_switch.is_active:
+        text = f'<b>{text}</b>'
+    if Model.italic_switch.is_active:
+        text = f'<i>{text}</i>'
+
     return Clear(
         color=BG,
         child=Padding(
@@ -54,6 +62,19 @@ def main_page():
                             ),
                         ),
                     ]),
+
+                    SizedBox(Rectangle(0), width=36, height=0),  # TODO: Empty SizedBox
+
+                    # Italic
+                    Column([
+                        Text("Italics?", color=FG, font_size=16),
+                        Padding(
+                            vertical=12,
+                            child=Switch(
+                                state=Model.italic_switch,
+                            ),
+                        ),
+                    ]),
                 ]),
 
                 # Text area
@@ -68,7 +89,7 @@ def main_page():
 
                             # Text
                             Text(
-                                text="Hello, world!!!" if Model.bold_switch.is_active else "Hello, world!",
+                                text=text,
                                 font_size=Model.bind.font_size,
                                 color=FG,
                             ),

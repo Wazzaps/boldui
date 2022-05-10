@@ -168,7 +168,10 @@ class ProtocolServer:
 
     def refresh_scene(self):
         self._cached_scene = None
-        self._send_scene()
+        if self._is_batch:
+            self._batch_scene_updated = True
+        else:
+            self._send_scene()
 
     @contextlib.contextmanager
     def batch_update(self):
@@ -180,10 +183,10 @@ class ProtocolServer:
 
         yield
 
-        if self._batch_vars:
-            self._send_remote_var([(name, val_type, val) for name, (val_type, val) in self._batch_vars.items()])
         if self._batch_scene_updated:
             self._send_scene()
+        elif self._batch_vars:
+            self._send_remote_var([(name, val_type, val) for name, (val_type, val) in self._batch_vars.items()])
 
         self._is_batch = False
         self._batch_scene_updated = False
@@ -262,6 +265,15 @@ class ProtocolServer:
 
     def _send_scene(self):
         if self.socket:
+            combined_scene = self.scene
+            if self._batch_vars:
+                combined_scene['vars'] = sum(
+                    (
+                        [k, v[0], json.dumps(Oplist(Expr.to_dict(v[1])).to_list())]
+                        for k, v in self._batch_vars.items()
+                    ),
+                    []
+                )
             self._send_packet(Actions.UPDATE_SCENE.to_bytes(4, 'big') + json.dumps(self.scene).encode())
 
     def set_remote_var(self, name, val_type, value):
