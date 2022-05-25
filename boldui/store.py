@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import List, Optional
 
 import lmdb
 
@@ -7,183 +8,110 @@ from boldui import Expr, var
 DEBUG = False
 
 
-@dataclass
-class ModelItem:
-    id: int
-    model_name: str
-    name: str
-    path: str
-    type: type
+class BaseModel:
+    def __init__(
+            self,
+            db: lmdb.Environment,
+            txn: List[Optional[lmdb.Transaction]],
+            prefix: str = 'd',
+            parent=None,
+            field_counter=None
+    ):
+        if field_counter is None:
+            field_counter = [0]
 
+        default_values = {
+            f: getattr(type(self), f)
+            for f in type(self).__dict__ if f in type(self).__annotations__
+        }
 
-# Big brain moment
-class _MetaBaseModel(type):
-    pass
+        for f in default_values:
+            delattr(type(self), f)
 
+        self.__dict__['_ids'] = {}
+        self.__dict__['_types'] = {}
+        self.__dict__['_defaults'] = {}
+        self.__dict__['_db'] = db
+        self.__dict__['_txn'] = txn
 
-class BaseModel(metaclass=_MetaBaseModel):
-    def __init__(self, txn: lmdb.Transaction, prefix: str):
-        self.bind = None  # Fake variable for intellisense
-        del self.bind
-
-        type(self)._items_by_id = {}
-        type(self)._items_by_path = {}
-        type(self)._bound_items = set()
-        type(self)._read_items = set()
-        type(self)._written_items = set()
-        type(self)._txn = txn
-        type(self)._prefix = prefix
-
-        ctr = 0
-
-        def visit_class(cls, path, is_immed=False):
-            nonlocal ctr
-
-            for field_name, field_type in cls.__annotations__.items():
-                new_path = f'{path}.{field_name}'
-                if issubclass(field_type, BaseModel):
-                    visit_class(field_type, new_path)
-                    if is_immed:
-                        setattr(type(type(self)), field_name, ModelProxyDescriptor(self, field_type, new_path))
-                else:
-                    item = ModelItem(id=ctr, model_name=type(self).__name__,
-                                     name=field_name, path=new_path, type=field_type)
-                    self._items_by_id[item.id] = item
-                    self._items_by_path[item.path] = item
-                    if is_immed:
-                        setattr(type(type(self)), field_name, ModelItemDescriptor(self, field_type, new_path))
-                    ctr += 1
-
-        visit_class(type(self), '', is_immed=True)
-        setattr(type(self), 'bind', ModelProxyDescriptor(self, type(self), '', is_bind=True))
-
-    def __getattr__(self, item: str):
-        raise AttributeError(f'Invalid field "{item}" on model "{type(self).__name__}"')
-
-    def _get_item(self, path):
-        item = self._items_by_path[path]
-        _key = f'{item.model_name}#{item.id}'
-        _var_key = f'{self._prefix}:{_key}'
-        self._read_items.add(path)
-        return item.type(self._txn.get(
-            _key.encode(),
-            default=str(item.type()).encode()
-        ).decode())
-
-    def _bind_item(self, path):
-        self._bound_items.add(path)
-
-    def _set_item(self, path, value):
-        item = self._items_by_path[path]
-        _key = f'{item.model_name}#{item.id}'
-        _var_key = f'{self._prefix}:{_key}'
-        self._txn.put(_key.encode(), str(value).encode())
-        self._written_items.add(path)
-        self._update_client(_var_key, item.type, value)
-
-    def _update_client(self, key: str, val_type: type, value):
-        from boldui.framework import Context
-
-        if val_type in (int, float):
-            Context['_app'].server.set_remote_var(key, 'n', value)
-        elif val_type is str:
-            Context['_app'].server.set_remote_var(key, 's', value)
-
-
-class ModelItemDescriptor:
-    def __init__(self, base_model: BaseModel, item_type: type, path: str, is_bind: bool = False):
-        self._base_model = base_model
-        self._item_type = item_type
-        self._path = path
-        self._is_bind = is_bind
-
-        item = self._base_model._items_by_path[self._path]
-        self._key = f'{item.model_name}#{item.id}'
-        self._var_key = f'{self._base_model._prefix}:{self._key}'
-
-    def __get__(self, instance, owner=None):
-
-        if self._is_bind:
-            self._base_model._bind_item(self._path)
-            return var(self._var_key)
+        if parent is not None:
+            self.__dict__['_read_items'] = parent.__dict__['_read_items']
+            self.__dict__['_written_items'] = parent.__dict__['_written_items']
+            self.__dict__['_bound_items'] = parent.__dict__['_bound_items']
         else:
-            value = self._base_model._get_item(self._path)
-            if DEBUG:
-                print(f'GET: {type(self._base_model).__name__}{self._path}')
-            return value
+            self.__dict__['_read_items'] = set()
+            self.__dict__['_written_items'] = set()
+            self.__dict__['_bound_items'] = set()
 
-    def __set__(self, instance, value):
-        # TODO: Implement this for no-roundtrip updates (Model.bind.x += y)
-        if self._is_bind:
-            raise AttributeError('Cannot modify binding')
-        else:
-            if not isinstance(value, self._item_type):
-                raise TypeError(f'Invalid type for field {type(self._base_model).__name__}{self._path}')
-            if DEBUG:
-                print(f'SET: {type(self._base_model).__name__}{self._path} = {value}')
-            self._base_model._set_item(self._path, value)
-
-
-class ModelProxyDescriptor:
-    def __init__(self, base_model: BaseModel, submodel: type, path: str, is_bind: bool = False):
-        self._base_model = base_model
-        self._submodel = submodel
-        self._path = path
-        self._is_bind = is_bind
-
-    def __get__(self, instance, owner=None):
-        return make_model_proxy()(self._base_model, self._submodel, self._path, is_bind=self._is_bind)
-
-
-def make_model_proxy():
-    class ModelProxy:
-        def __init__(self, base_model: BaseModel, submodel: type, path: str, is_bind: bool = False):
-            self._base_model = base_model
-            self._submodel = submodel
-            self._path = path
-            self._is_bind = is_bind
-
-            for field_name, field_type in submodel.__annotations__.items():
-                new_path = f'{path}.{field_name}'
-                if issubclass(field_type, BaseModel):
-                    if DEBUG:
-                        print(f'bind proxy: {field_name}')
-                    setattr(type(self), field_name, ModelProxyDescriptor(base_model, field_type, new_path, is_bind=is_bind))
-                else:
-                    if DEBUG:
-                        print(f'bind item: {field_name}')
-                    setattr(type(self), field_name, ModelItemDescriptor(base_model, field_type, new_path, is_bind=is_bind))
-
-            if not is_bind:
-                setattr(type(self), 'bind', ModelProxyDescriptor(base_model, submodel, path, is_bind=True))
-
-        def __getattr__(self, item):
-            # print(self)
-            try:
-                return getattr(type(self), item)
-            except AttributeError:
-                raise AttributeError(f'Invalid field "{self._path[1:]}.{item}" on model "{type(self._base_model).__name__}"')
-
-        def __str__(self):
-            if self._is_bind:
-                return f'<Bind ModelProxy: {type(self._base_model).__name__}{self._path}>'
+        for field_name, field_type in type(self).__annotations__.items():
+            # print(f'- #{field_counter[0]}: {field_name}: {field_type}')
+            if issubclass(field_type, BaseModel):
+                self.__dict__[field_name] = field_type(db, txn, prefix, self, field_counter)
             else:
-                return f'<ModelProxy: {type(self._base_model).__name__}{self._path}>'
+                self.__dict__['_ids'][field_name] = f'{prefix}:{field_counter[0]}'
+                self.__dict__['_types'][field_name] = field_type
+                if field_name in default_values:
+                    self.__dict__['_defaults'][field_name] = default_values[field_name]
 
-    return ModelProxy
+            field_counter[0] += 1
 
+        self.__dict__['_last_id'] = field_counter[0]
 
-def test():
-    db = lmdb.Environment('/home/david/.local/example_app.db/')
+    def __hash__(self):
+        return self.__dict__['_last_id']
 
-    txn = db.begin(write=True)
+    @classmethod
+    def open_db(cls, path: str, prefix: str = 'd'):
+        return cls(db=lmdb.Environment(path), txn=[None], prefix=prefix)
 
-    class Model(BaseModel):
-        a: int
-        b: int
+    def key_of(self, item):
+        return self.__dict__['_ids'][item]
 
-    model = Model(txn, 'd')
+    def bind(self, item):
+        self.__dict__['_bound_items'].add((self, item))
+        return var(self.__dict__['_ids'][item])
 
-    model.a = 5
+    def begin_txn(self, write=False):
+        db: lmdb.Environment = self.__dict__['_db']
+        self.__dict__['_txn'][0] = db.begin(write=write)
+        self.__dict__['_read_items'].clear()
+        self.__dict__['_written_items'].clear()
+        self.__dict__['_bound_items'].clear()
 
-    return txn, model
+    def commit_txn(self):
+        txn: lmdb.Transaction = self.__dict__['_txn'][0]
+        assert txn, 'Tried to commit, but no transaction in progress'
+        txn.commit()
+
+    def abort_txn(self):
+        txn: lmdb.Transaction = self.__dict__['_txn'][0]
+        assert txn, 'Tried to abort, but no transaction in progress'
+        txn.abort()
+
+    def __getattr__(self, item):
+        if DEBUG:
+            print('GET:', item)
+        if item in self.__dict__['_ids']:
+            self.__dict__['_read_items'].add((self, item))
+            return self.__dict__['_types'][item](self.__dict__['_txn'][0].get(
+                self.__dict__['_ids'][item].encode(),
+                default=str(
+                    self.__dict__['_defaults'].get(item, self.__dict__['_types'][item]())
+                ).encode()
+            ).decode())
+        elif item in self.__dict__:
+            return self.__dict__[item]
+        else:
+            raise AttributeError(f'{item} not found')
+
+    def __setattr__(self, key, value):
+        if DEBUG:
+            print('SET:', key, '=', value)
+        if key in self.__dict__['_ids']:
+            self.__dict__['_written_items'].add((self, key))
+            self.__dict__['_txn'][0].put(
+                self.__dict__['_ids'][key].encode(),
+                str(value).encode(),
+            )
+        else:
+            raise AttributeError(f'{key} not found')

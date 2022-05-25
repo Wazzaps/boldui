@@ -4,6 +4,7 @@ import lmdb as lmdb
 
 from boldui import stringify_op, ProtocolServer, Oplist, Expr, var
 from boldui.framework import Widget, Clear, export, Context
+from boldui.store import BaseModel
 
 
 def update_widget():
@@ -20,22 +21,29 @@ def widget(fn):
     return outer
 
 
+def stateful_widget(fn):
+    def outer(model, *args, **kwargs):
+        class AnonWidget(Widget):
+            def build(self):
+                return fn(model, *args, **kwargs)
+        return AnonWidget()
+    return outer
+
+
 class App:
     _curr_context = None
 
-    def __init__(self, scene, durable_store=None, durable_model=None):
+    def __init__(self, scene, durable_model=None):
         self.scene = scene
         self._scene_instance = None
         self.server = None
-        self.durable_store = lmdb.Environment(durable_store) if durable_store else None
-        self.durable_model = durable_model
+        self.durable_model: BaseModel = durable_model
         self._reply_handlers = {}
         self._txn_active = False
         self._last_read_items = set()
         self._dirty = False
 
     def force_rebuild(self):
-        self._scene_instance = None
         return self.rebuild()
 
     def rebuild(self):
@@ -65,41 +73,48 @@ class App:
 
     @contextlib.contextmanager
     def _build_context(self, is_main_scene=False):
-        if self.durable_store is not None and not self._txn_active:
-            txn = self.durable_store.begin(write=True)
-            model_instance = self.durable_model(txn, 'd')
+        if self.durable_model is not None and not self._txn_active:
+            self.durable_model.begin_txn(write=True)
             self._txn_active = True
+            my_txn = True
         else:
-            txn = None
-            model_instance = None
+            my_txn = False
 
         try:
             with export('_app', self):
                 with export('_reply_handlers', self._reply_handlers):
-                    yield
+                    yield self.durable_model
 
-                    if txn is not None:
-                        _written_items = set(model_instance._written_items)
+                    if my_txn:
+                        _written_items = set(self.durable_model.__dict__['_written_items'])
                         if not self._last_read_items.isdisjoint(_written_items):
                             print('should update!')
                             self._dirty = True
 
                         if is_main_scene:
-                            self._last_read_items = set(model_instance._read_items)
+                            self._last_read_items = set(self.durable_model.__dict__['_read_items'])
 
-                        for path in model_instance._bound_items:
-                            item = model_instance._items_by_path[path]
-                            _key = f'{item.model_name}#{item.id}'
-                            _var_key = f'{model_instance._prefix}:{_key}'
-                            model_instance._update_client(_var_key, item.type, model_instance._get_item(path))
-            if txn is not None:
-                txn.commit()
+                        bound_or_written = self.durable_model.__dict__['_bound_items'] | _written_items
+
+                        for container, item_name in bound_or_written:
+                            # print('newly_bound_or_written:', item_name)
+
+                            key = container.__dict__['_ids'][item_name]
+                            item_type = container.__dict__['_types'][item_name]
+                            value = getattr(container, item_name)
+
+                            if item_type in (int, float):
+                                Context['_app'].server.set_remote_var(key, 'n', value)
+                            elif item_type is str:
+                                Context['_app'].server.set_remote_var(key, 's', value)
+            if my_txn:
+                self.durable_model.commit_txn()
         except BaseException:
-            if txn is not None:
-                txn.abort()
+            if my_txn:
+                self.durable_model.abort_txn()
             raise
 
-        if txn is not None:
+        if my_txn:
             self._txn_active = False
 
     def _reply_handler(self, reply_id, data_array):

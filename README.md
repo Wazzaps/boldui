@@ -168,30 +168,31 @@ class Model(BaseModel):
     counter: int
 
 
-@widget
-def main_page():
-     def increment(_):
-         Model.counter += 1
+@stateful_widget
+def main_page(model):
+    def increment(_):
+        model.counter += 1
 
-     return Stack([
-         # Background
-         Rectangle(color=0xff222222),
+    return Stack([
+        # Background
+        Rectangle(color=0xff222222),
 
-         # Counter
-         Center(
+        # Counter
+        Center(
             EventHandler(
-               on_mouse_down=increment,
-               child=Text(text=Model.bind.counter.to_str(), font_size=24),
+                on_mouse_down=increment,
+                child=Text(text=model.bind('counter').to_str(), font_size=24),
             ),
-         ),
-     ])
+        ),
+    ])
 
 if __name__ == '__main__':
-   app = App(main_page, durable_store='/run/user/1000/example_app.db', durable_model=Model)
-   app.run()
+    app_model = Model.open_db('/run/user/1000/example_app.db')
+    app = App(lambda: main_page(app_model), durable_model=app_model)
+    app.run()
 ```
 
-We define a model, each field is given an ID (which becomes the key in the DB), and each field can either be read/modified (Like `Model.counter`) or be used to create a binding (Like `Model.bind.counter`).
+We define a model, each field is given an ID (which becomes the key in the DB), and each field can either be read/modified (Like `model.counter`) or be used to create a binding (Like `model.bind('counter')`).
 
 Bindings save a widget rebuild if the value changes, the app simply notifies the client the of new value, and it redraws accordingly. 
 

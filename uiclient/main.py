@@ -149,6 +149,7 @@ class UIClient:
         if key in UIClient._text_measurement_cache:
             return UIClient._text_measurement_cache[key]
 
+        # print('measure text cache miss')
         paint = UIClient._paint_from_int_color(0xffffffff)
         font = UIClient.get_font(font_name, font_size)
         bounds = skia.Rect()
@@ -164,6 +165,7 @@ class UIClient:
         if key in UIClient._font_cache:
             return UIClient._font_cache[key]
 
+        print('font cache miss')
         UIClient._font_cache[key] = skia.Font(skia.Typeface(font_name), font_size)
         return UIClient._font_cache[key]
 

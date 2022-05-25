@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from boldui.adwaita import TextButton, Switch
-from boldui.app import widget, App
+from boldui.app import App, stateful_widget
 from boldui.framework import Row, SizedBox, Rectangle, Clear, Column, Padding, Stack, RoundRect, Text
 from boldui.store import BaseModel
 
@@ -14,18 +14,17 @@ class Model(BaseModel):
     bold_switch: Switch.State
     italic_switch: Switch.State
 
-    @staticmethod
-    def add_font_size(delta):
-        Model.font_size += delta
+    def add_font_size(self, delta):
+        self.font_size += delta
 
 
-@widget
-def main_page():
+@stateful_widget
+def main_page(model):
     text = 'Hello, world!'
 
-    if Model.bold_switch.is_active:
+    if model.bold_switch.is_active:
         text = f'<b>{text}</b>'
-    if Model.italic_switch.is_active:
+    if model.italic_switch.is_active:
         text = f'<i>{text}</i>'
 
     return Clear(
@@ -40,12 +39,12 @@ def main_page():
                         Padding(
                             vertical=12,
                             child=Row([
-                                TextButton('-', on_mouse_down=lambda _: Model.add_font_size(-1)),
+                                TextButton('-', on_mouse_down=lambda _: model.add_font_size(-1)),
                                 Padding(
                                     horizontal=18,
-                                    child=Text(Model.bind.font_size.to_str(), color=FG, font_size=18)
+                                    child=Text(model.bind('font_size').to_str(), color=FG, font_size=18)
                                 ),
-                                TextButton('+', on_mouse_down=lambda _: Model.add_font_size(1)),
+                                TextButton('+', on_mouse_down=lambda _: model.add_font_size(1)),
                             ]),
                         ),
                     ]),
@@ -58,7 +57,7 @@ def main_page():
                         Padding(
                             vertical=12,
                             child=Switch(
-                                state=Model.bold_switch,
+                                state=model.bold_switch,
                             ),
                         ),
                     ]),
@@ -71,7 +70,7 @@ def main_page():
                         Padding(
                             vertical=12,
                             child=Switch(
-                                state=Model.italic_switch,
+                                state=model.italic_switch,
                             ),
                         ),
                     ]),
@@ -90,7 +89,7 @@ def main_page():
                             # Text
                             Text(
                                 text=text,
-                                font_size=Model.bind.font_size,
+                                font_size=model.bind('font_size'),
                                 color=FG,
                             ),
                         ], fit='tight'),
@@ -102,5 +101,6 @@ def main_page():
 
 
 if __name__ == '__main__':
-    app = App(main_page, durable_store='/run/user/1000/example_app.db', durable_model=Model)
+    app_model = Model.open_db('/run/user/1000/example_app.db')
+    app = App(lambda: main_page(app_model), durable_model=app_model)
     app.run()

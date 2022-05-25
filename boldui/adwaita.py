@@ -1,6 +1,6 @@
 from simplexp import var
 
-from boldui import Expr
+from boldui import Expr, Ops
 from boldui.framework import Widget, RoundRect, EventHandler, Stack, Text, Padding, SizedBox, PositionOffset, Row
 from boldui.store import BaseModel
 
@@ -44,10 +44,30 @@ def lerp(a, b, t):
     return a + (b - a) * t
 
 
+class AnimatedValue(BaseModel):
+    target_value: float
+    last_value: float
+    animation_start: float
+    animation_duration: float
+
+    def set_remotely(self, value, duration):
+        return [
+            Ops.set_var(self.key_of('last_value'), self.bind('target_value')),
+            Ops.set_var(self.key_of('target_value'), value),
+            Ops.set_var(self.key_of('animation_start'), var('time')),
+            Ops.set_var(self.key_of('animation_duration'), duration),
+        ]
+
+    def get(self):
+        progress = ((var('time') - self.key_of('animation_start')) / self.key_of('duration')).min(1.0).max(0.0)
+        return progress * self.key_of('target_value') + ((1.0 - progress) * self.key_of('last_value'))
+
+
 class Switch(Widget):
     class State(BaseModel):
         is_active: int
         animation_start: float
+        # position: AnimatedValue
 
     def __init__(self, state: State):
         self.state = state
@@ -63,7 +83,9 @@ class Switch(Widget):
         return 0
 
     def build(self) -> Widget:
-        animation_progress = ((var('time') - self.state.bind.animation_start) / 0.1).min(1.0).max(0.0)
+        animation_progress = ((var('time') - self.state.bind('animation_start')) / 0.1).min(1.0).max(0.0)
+        # animation_progress = self.state.position.get()
+
         if self.state.is_active:
             track_color = 0xff3584e4
             thumb_color = 0xffffffff
