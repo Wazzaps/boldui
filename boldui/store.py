@@ -32,6 +32,7 @@ class BaseModel:
         self.__dict__['_types'] = {}
         self.__dict__['_defaults'] = {}
         self.__dict__['_db'] = db
+        self.__dict__['_prefix'] = prefix
         self.__dict__['_txn'] = txn
 
         if parent is not None:
@@ -66,6 +67,17 @@ class BaseModel:
 
     def key_of(self, item):
         return self.__dict__['_ids'][item]
+
+    def iter_fields(self):
+        for field_name, field_type in type(self).__annotations__.items():
+            if issubclass(field_type, BaseModel):
+                yield from self.__dict__[field_name].iter_fields()
+            else:
+                yield (
+                    self.__dict__['_ids'][field_name],
+                    self.__dict__['_types'][field_name],
+                    self.__dict__['_defaults'].get(field_name, None),
+                )
 
     def bind(self, item):
         self.__dict__['_bound_items'].add((self, item))

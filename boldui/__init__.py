@@ -186,7 +186,7 @@ class ProtocolServer:
         if self._batch_scene_updated:
             self._send_scene()
         elif self._batch_vars:
-            self._send_remote_var([(name, val_type, val) for name, (val_type, val) in self._batch_vars.items()])
+            self._send_remote_var([(name, val) for name, val in self._batch_vars.items()])
 
         self._is_batch = False
         self._batch_scene_updated = False
@@ -266,29 +266,24 @@ class ProtocolServer:
     def _send_scene(self):
         if self.socket:
             combined_scene = self.scene
-            if self._batch_vars:
-                combined_scene['vars'] = sum(
-                    (
-                        [k, v[0], json.dumps(Oplist(Expr.to_dict(v[1])).to_list())]
-                        for k, v in self._batch_vars.items()
-                    ),
-                    []
-                )
+            if self._batch_vars is not None:
+                for key, value in self._batch_vars.items():
+                    combined_scene['vars'][key]['value'] = json.dumps(Oplist(Expr.to_dict(value)).to_list())
             self._send_packet(Actions.UPDATE_SCENE.to_bytes(4, 'big') + json.dumps(self.scene).encode())
 
     def set_remote_var(self, name, val_type, value):
         self.pending_vars[name] = (val_type, value)
         if self._is_batch:
-            self._batch_vars[name] = (val_type, value)
+            self._batch_vars[name] = value
         else:
-            self._send_remote_var([(name, val_type, value)])
+            self._send_remote_var([(name, value)])
 
     def _send_remote_var(self, set_vars):
         if self.socket:
             parts = []
-            for name, val_type, value in set_vars:
+            for name, value in set_vars:
                 value = Oplist(Expr.to_dict(value)).to_list()
-                parts.append(name.encode() + b'\x00' + val_type.encode() + b'\x00' + json.dumps(value).encode())
+                parts.append(name.encode() + b'\x00' + json.dumps(value).encode())
             self._send_packet(Actions.SET_VAR.to_bytes(4, 'big') + b'\x00'.join(parts))
 
     def send_watch_ack(self, ack_id: int):

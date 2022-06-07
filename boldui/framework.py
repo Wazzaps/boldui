@@ -959,12 +959,13 @@ class ListViewInner(Widget):
         item_offset: int
         item_count: int
         gen: int
+        list_start: float
+        scroll_pos: float
 
-    def __init__(self, state: State, builder, offset, var_prefix='', height_slack=128):
+    def __init__(self, state: State, builder, offset, height_slack=128):
         self.state = state
         self.builder = builder
         self.offset = Expr(offset)
-        self.var_prefix = var_prefix
         self.height_slack = height_slack
         self._built_children = {}
         self._laid_out_children = {}
@@ -1029,56 +1030,56 @@ class ListViewInner(Widget):
         def update_bottom_widget(data):
             from boldui.app import update_widget
 
-            total_height, above_top_widget_height, top_widget_height, bot_widget_height, max_height_val, lv_list_start, lv_scroll_pos, gen = data
-            print(f'lv_list_start={lv_list_start} lv_scroll_pos={lv_scroll_pos} gen={gen}')
+            total_height, above_top_widget_height, top_widget_height, bot_widget_height, max_height_val, list_start, scroll_pos, gen = data
+            print(f'list_start={list_start} scroll_pos={scroll_pos} gen={gen}')
             if gen != self._gen:
                 return
 
             update = False
-            if lv_scroll_pos - lv_list_start > top_widget_height + self.height_slack:
+            if scroll_pos - list_start > top_widget_height + self.height_slack:
                 # Delete top widget
                 print('scroll down', top_widget_height, 'px')
-                Context['_app'].server.set_remote_var(self.var_prefix + 'lv_list_start', 'n', lv_list_start + top_widget_height)
+                Context['_app'].server.set_remote_var(self.state.key_of('list_start'), 'n', list_start + top_widget_height)
                 self.state.item_offset += 1
                 update = True
-            elif lv_scroll_pos - lv_list_start < self.height_slack and lv_list_start > 0:
+            elif scroll_pos - list_start < self.height_slack and list_start > 0:
                 # Add top widget
                 print('scroll up', above_top_widget_height, 'px')
-                Context['_app'].server.set_remote_var(self.var_prefix + 'lv_list_start', 'n', lv_list_start - above_top_widget_height)
+                Context['_app'].server.set_remote_var(self.state.key_of('list_start'), 'n', list_start - above_top_widget_height)
                 self.state.item_offset -= 1
                 update = True
 
-            if total_height - (lv_scroll_pos - lv_list_start) - self.height_slack - bot_widget_height > max_height_val:
+            if total_height - (scroll_pos - list_start) - self.height_slack - bot_widget_height > max_height_val:
                 # Delete bottom widget
                 print('delete bot widget')
                 self.state.item_count -= 1
                 update = True
-            elif total_height - (lv_scroll_pos - lv_list_start) - self.height_slack < max_height_val:
+            elif total_height - (scroll_pos - list_start) - self.height_slack < max_height_val:
                 # Add bottom widget
                 print('add bot widget')
                 self.state.item_count += 1
                 update = True
 
-            if update:
-                update_widget()
+            # if update:
+            #     update_widget()
 
         # TODO: Add/Remove multiple widgets at a time
-        print(f'============= {self.var_prefix} === {max_height}')
+        print(f'============= {max_height}')
         self._watch_var = WatchVar(
             cond=Expr(
                 (
                     # Delete top widget
-                    (var(self.var_prefix + 'lv_scroll_pos') - var(self.var_prefix + 'lv_list_start')) > (Expr(self._top_widget_height or 0) + self.height_slack)
+                    (self.state.bind('scroll_pos') - self.state.bind('list_start')) > (Expr(self._top_widget_height or 0) + self.height_slack)
                 ) | (
                     # Add top widget
-                    ((var(self.var_prefix + 'lv_scroll_pos') - var(self.var_prefix + 'lv_list_start')) < self.height_slack)
-                    & (var(self.var_prefix + 'lv_list_start') > 0)
+                    ((self.state.bind('scroll_pos') - self.state.bind('list_start')) < self.height_slack)
+                    & (self.state.bind('list_start') > 0)
                 ) | (
                     # Delete bottom widget
-                    (self._total_height - (var(self.var_prefix + 'lv_scroll_pos') - var(self.var_prefix + 'lv_list_start')) - self.height_slack - (self._bot_widget_height or 0)) > max_height
+                    (self._total_height - (self.state.bind('scroll_pos') - self.state.bind('list_start')) - self.height_slack - (self._bot_widget_height or 0)) > max_height
                 ) | (
                     # Add bottom widget
-                    (self._total_height - (var(self.var_prefix + 'lv_scroll_pos') - var(self.var_prefix + 'lv_list_start')) - self.height_slack) < max_height
+                    (self._total_height - (self.state.bind('scroll_pos') - self.state.bind('list_start')) - self.height_slack) < max_height
                 )
             ),
             data=[
@@ -1087,7 +1088,7 @@ class ListViewInner(Widget):
                 self._top_widget_height or 0,
                 self._bot_widget_height or 0,
                 max_height or 0,
-                var(self.var_prefix + 'lv_list_start'), var(self.var_prefix + 'lv_scroll_pos'),
+                self.state.bind('list_start'), self.state.bind('scroll_pos'),
                 self._gen
             ],
             handler=update_bottom_widget,
@@ -1112,27 +1113,27 @@ class ListViewInner(Widget):
 class ListView(Widget):
     State = ListViewInner.State
 
-    def __init__(self, state, builder, var_prefix=''):
+    def __init__(self, state, builder, clip=True):
         self.state = state
         self.builder = builder
-        self.var_prefix = var_prefix
+        self.clip = clip
         super().__init__()
 
     def build(self):
-        return EventHandler(
-            Clip(
-                ListViewInner(
-                    state=self.state,
-                    builder=self.builder,
-                    offset=var(self.var_prefix + 'lv_list_start') - var(self.var_prefix + 'lv_scroll_pos'),
-                    var_prefix=self.var_prefix,
-                ),
-            ),
+        inner = ListViewInner(
+            state=self.state,
+            builder=self.builder,
+            offset=self.state.bind('list_start') - self.state.bind('scroll_pos'),
+        )
+        if self.clip:
+            inner = Clip(inner)
 
+        return EventHandler(
+            inner,
             on_scroll=[
                 Ops.set_var(
-                    self.var_prefix + 'lv_scroll_pos',
-                    (var(self.var_prefix + 'lv_scroll_pos') - var('scroll_y') * 10).max(0)
+                    self.state.key_of('scroll_pos'),
+                    (self.state.bind('scroll_pos') - var('scroll_y') * 10).max(0)
                 ),
             ],
         )

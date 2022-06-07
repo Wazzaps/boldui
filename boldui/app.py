@@ -1,10 +1,14 @@
 import contextlib
 
-import lmdb as lmdb
-
-from boldui import stringify_op, ProtocolServer, Oplist, Expr, var
+from boldui import ProtocolServer, Oplist, Expr, var
 from boldui.framework import Widget, Clear, export, Context
 from boldui.store import BaseModel
+
+_TYPE_TO_TYPENAME = {
+    int: 'int',
+    float: 'float',
+    str: 'string',
+}
 
 
 def update_widget():
@@ -61,10 +65,19 @@ class App:
             size = built_scene.layout(Expr(0), Expr(0), var('width'), var('height'))
         oplist = Oplist()
         rendered_scene = built_scene.render(oplist, Expr(0), Expr(0), size[0], size[1])
+
+        variables = {}
+        if self.durable_model:
+            variables.update({
+                key: {'type': _TYPE_TO_TYPENAME[item_type], 'default': default_val}
+                for key, item_type, default_val in self.durable_model.iter_fields()
+            })
+
+        # print(oplist.to_list())
         # for op in rendered_scene:
         #     print(stringify_op(op))
 
-        return {'oplist': oplist.to_list(), 'scene': rendered_scene}
+        return {'oplist': oplist.to_list(), 'scene': rendered_scene, 'vars': variables}
 
     def run(self):
         self.server = ProtocolServer("/tmp/boldui.hello_world.sock", reply_handler=self._reply_handler)
@@ -88,13 +101,14 @@ class App:
                     if my_txn:
                         _written_items = set(self.durable_model.__dict__['_written_items'])
                         if not self._last_read_items.isdisjoint(_written_items):
-                            print('should update!')
+                            print('should update! dirty items:', self._last_read_items.intersection(_written_items))
                             self._dirty = True
 
                         if is_main_scene:
                             self._last_read_items = set(self.durable_model.__dict__['_read_items'])
 
                         bound_or_written = self.durable_model.__dict__['_bound_items'] | _written_items
+                        # bound_or_written = _written_items  # FIXME: This fixes listview example
 
                         for container, item_name in bound_or_written:
                             # print('newly_bound_or_written:', item_name)

@@ -23,5 +23,5 @@ if __name__ == '__main__':
         ))
 
     server = ProtocolServer("/tmp/boldui.hello_world.sock")
-    server.scene = {'oplist': oplist.to_list(), 'scene': scene}
+    server.scene = {'oplist': oplist.to_list(), 'scene': scene, 'vars': {}}
     server.serve()

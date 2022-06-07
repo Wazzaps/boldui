@@ -58,28 +58,38 @@ class Protocol:
         packet_type = int.from_bytes(packet[:4], 'big')
         packet = packet[4:]
 
-        def set_vars_from_list(parts):
-            while parts:
-                var_name, var_type, var_value = parts[:3]
-                parts = parts[3:]
+        def process_var_defs(defs):
+            print('process_var_defs: defs:', defs)
+            vars_to_delete = set(self.ui_client.persistent_context.keys()) - set(defs.keys())
+            vars_to_create = set(defs.keys()) - set(self.ui_client.persistent_context.keys())
 
-                if type(var_name) == bytes:
-                    var_name = var_name.decode()
+            for v in vars_to_delete:
+                print('process_var_defs: del:', v)
+                self.ui_client.persistent_context.pop(v)
 
-                if type(var_type) == str:
-                    var_type = bytes(var_type, 'utf-8')
-
-                # FIXME: remove when variables get static types
-                new_value = UIClient.resolve_oplist(json.loads(var_value), self.ui_client.context)[-1]
-                if var_type == b'n':
-                    new_value = float(new_value)
-                elif var_type == b's':
-                    new_value = str(new_value)
+            for v in vars_to_create:
+                print('process_var_defs: cre:', v)
+                if 'default' not in defs[v] or defs[v]['default'] is None:
+                    self.ui_client.persistent_context[v] = {
+                        'int': 0,
+                        'float': 0.0,
+                        'string': '',
+                    }[defs[v]['type']]
                 else:
-                    raise Exception('Unknown var type: {}'.format(var_type))
+                    self.ui_client.persistent_context[v] = defs[v]['default']
 
-                print(f'{var_name}:{var_type} = {var_value}')
-                self.ui_client.persistent_context[var_name] = new_value
+            for v in defs:
+                if 'value' in defs[v] and defs[v]['value'] is not None:
+                    print('process_var_defs: set:', v)
+                    new_value = UIClient.resolve_oplist(json.loads(defs[v]['value']), self.ui_client.context)[-1]
+                    self.ui_client.persistent_context[v] = new_value
+
+        def update_vars(var_updates):
+            for v in var_updates:
+                new_value = UIClient.resolve_oplist(json.loads(var_updates[v]), self.ui_client.context)[-1]
+                self.ui_client.persistent_context[v] = new_value
+                print(f'{v} = {new_value}')
+
             self.ui_client._should_update_watches = True
             self.ui_client.update_watches(send=True)
 
@@ -87,8 +97,8 @@ class Protocol:
             open('scene.json', 'wb').write(packet)
 
             self.ui_client.scene = json.loads(packet)
-            if 'vars' in self.ui_client.scene and self.ui_client.scene['vars']:
-                set_vars_from_list(self.ui_client.scene['vars'])
+            if 'vars' in self.ui_client.scene:
+                process_var_defs(self.ui_client.scene['vars'])
 
             self.ui_client._blocked_watches.clear()
             self.ui_client._should_update_watches = True
@@ -96,7 +106,12 @@ class Protocol:
         elif packet_type == Actions.SET_VAR:
             if packet:
                 parts = packet.split(b'\x00')
-                set_vars_from_list(parts)
+                var_updates = {}
+                while parts:
+                    key, value = parts[:2]
+                    parts = parts[2:]
+                    var_updates[key.decode()] = value.decode()
+                update_vars(var_updates)
         elif packet_type == Actions.WATCH_ACK:
             ack_id = int.from_bytes(packet[:8], 'big')
             # print(f'Watch ack #{ack_id}')

@@ -6,7 +6,7 @@ from boldui.store import BaseModel
 
 
 class Model(BaseModel):
-    counter: int
+    counter: int = 1
 
 
 @stateful_widget
@@ -26,7 +26,7 @@ def main_page(model):
             WatchVar(
                 cond=model.bind('counter') == 3,
                 data=[model.bind('counter')],
-                handler=lambda _: print('Icecream!'),
+                handler=lambda counter_val: print('Icecream!', counter_val[0]),
                 child=Row([
                     SizedBox(
                         width=80, height=80,
