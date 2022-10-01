@@ -1,0 +1,366 @@
+
+LittleEndian();
+
+struct String {
+    uint64 len;
+    char data[len];
+};
+
+struct Bytes {
+    uint64 len;
+    ubyte data[len];
+};
+        
+struct A2RExtendedHelloResponse;
+
+struct A2RHelloResponse;
+
+struct A2RMessage;
+
+struct A2RReparentScene;
+
+struct A2RUpdate;
+
+struct A2RUpdateScene;
+
+struct CmdsCommand;
+
+struct Color;
+
+struct Error;
+
+struct HandlerBlock;
+
+struct HandlerCmd;
+
+struct OpId;
+
+struct OpsOperation;
+
+struct R2AExtendedHello;
+
+struct R2AHello;
+
+struct R2AMessage;
+
+struct R2AOpen;
+
+struct R2AUpdate;
+
+struct Value;
+
+struct VarId;
+
+
+struct A2RExtendedHelloResponse {
+};
+
+
+struct A2RHelloResponse {
+    uint16 protocol_major_version;
+    uint16 protocol_minor_version;
+    uint32 extra_len;
+    struct { ubyte is_some; if (is_some) { Error item; } } error;
+};
+
+
+enum <uint32> A2RMessage_TAGS {
+    A2RMessage_Update = 0,
+    A2RMessage_Error = 1,
+};
+
+struct A2RMessage {
+    enum A2RMessage_TAGS _tag;
+
+    if (_tag == 0) {
+        A2RUpdate value;
+    }
+
+    if (_tag == 1) {
+        Error value;
+    }
+
+};
+
+enum <uint32> A2RReparentScene_TAGS {
+    A2RReparentScene_Inside = 0,
+    A2RReparentScene_After = 1,
+    A2RReparentScene_Root = 2,
+    A2RReparentScene_Disconnect = 3,
+    A2RReparentScene_Hide = 4,
+};
+
+struct A2RReparentScene {
+    enum A2RReparentScene_TAGS _tag;
+
+    if (_tag == 0) {
+        uint32 value;
+    }
+
+    if (_tag == 1) {
+        uint32 value;
+    }
+
+    if (_tag == 2) {
+    }
+
+    if (_tag == 3) {
+    }
+
+    if (_tag == 4) {
+    }
+
+};
+
+struct A2RUpdate {
+    struct { uint64 len; A2RUpdateScene items[len] <optimize=false>; } updated_scenes;
+    struct { uint64 len; HandlerBlock items[len] <optimize=false>; } run_blocks;
+};
+
+
+struct A2RUpdateScene {
+    uint32 id;
+    OpId paint;
+    OpId backdrop;
+    OpId transform;
+    OpId clip;
+    String uri;
+    struct { uint64 len; OpsOperation items[len] <optimize=false>; } ops;
+    struct { uint64 len; CmdsCommand items[len] <optimize=false>; } cmds;
+    struct { uint64 len; struct { String key; Value value; } items[len] <optimize=false>; } var_decls;
+};
+
+
+enum <uint32> CmdsCommand_TAGS {
+    CmdsCommand_Clear = 0,
+    CmdsCommand_DrawRect = 1,
+};
+
+struct CmdsCommand {
+    enum CmdsCommand_TAGS _tag;
+
+    if (_tag == 0) {
+        OpId color;
+    }
+
+    if (_tag == 1) {
+        OpId paint;
+        OpId rect;
+    }
+
+};
+
+struct Color {
+    uint16 r;
+    uint16 g;
+    uint16 b;
+    uint16 a;
+};
+
+
+struct Error {
+    uint64 code;
+    String text;
+};
+
+
+struct HandlerBlock {
+    struct { uint64 len; OpsOperation items[len] <optimize=false>; } ops;
+    struct { uint64 len; HandlerCmd items[len] <optimize=false>; } cmds;
+};
+
+
+enum <uint32> HandlerCmd_TAGS {
+    HandlerCmd_Nop = 0,
+    HandlerCmd_ReparentScene = 1,
+    HandlerCmd_UpdateVar = 2,
+    HandlerCmd_If = 3,
+};
+
+struct HandlerCmd {
+    enum HandlerCmd_TAGS _tag;
+
+    if (_tag == 0) {
+    }
+
+    if (_tag == 1) {
+        uint32 scene;
+        A2RReparentScene to;
+    }
+
+    if (_tag == 2) {
+        VarId var;
+        OpId value;
+    }
+
+    if (_tag == 3) {
+        OpId condition;
+        HandlerCmd then;
+        HandlerCmd or_else;
+    }
+
+};
+
+struct OpId {
+    uint32 scene_id;
+    uint32 idx;
+};
+
+
+enum <uint32> OpsOperation_TAGS {
+    OpsOperation_Value = 0,
+    OpsOperation_Var = 1,
+    OpsOperation_GetTime = 2,
+    OpsOperation_Add = 3,
+    OpsOperation_Neg = 4,
+    OpsOperation_MakePoint = 5,
+    OpsOperation_MakeRectFromPoints = 6,
+    OpsOperation_MakeRectFromSides = 7,
+};
+
+struct OpsOperation {
+    enum OpsOperation_TAGS _tag;
+
+    if (_tag == 0) {
+        Value value;
+    }
+
+    if (_tag == 1) {
+        VarId value;
+    }
+
+    if (_tag == 2) {
+        double low_clamp;
+        double high_clamp;
+    }
+
+    if (_tag == 3) {
+        OpId a;
+        OpId b;
+    }
+
+    if (_tag == 4) {
+        OpId a;
+    }
+
+    if (_tag == 5) {
+        OpId left;
+        OpId top;
+    }
+
+    if (_tag == 6) {
+        OpId left_top;
+        OpId right_bottom;
+    }
+
+    if (_tag == 7) {
+        OpId left;
+        OpId top;
+        OpId right;
+        OpId bottom;
+    }
+
+};
+
+struct R2AExtendedHello {
+};
+
+
+struct R2AHello {
+    uint16 min_protocol_major_version;
+    uint16 min_protocol_minor_version;
+    uint16 max_protocol_major_version;
+    uint32 extra_len;
+};
+
+
+enum <uint32> R2AMessage_TAGS {
+    R2AMessage_Update = 0,
+    R2AMessage_Open = 1,
+    R2AMessage_Error = 2,
+};
+
+struct R2AMessage {
+    enum R2AMessage_TAGS _tag;
+
+    if (_tag == 0) {
+        R2AUpdate value;
+    }
+
+    if (_tag == 1) {
+        R2AOpen value;
+    }
+
+    if (_tag == 2) {
+        Error value;
+    }
+
+};
+
+struct R2AOpen {
+    String path;
+};
+
+
+struct R2AUpdate {
+};
+
+
+enum <uint32> Value_TAGS {
+    Value_Sint64 = 0,
+    Value_Double = 1,
+    Value_String = 2,
+    Value_Color = 3,
+    Value_Point = 4,
+    Value_Rect = 5,
+};
+
+struct Value {
+    enum Value_TAGS _tag;
+
+    if (_tag == 0) {
+        int64 value;
+    }
+
+    if (_tag == 1) {
+        double value;
+    }
+
+    if (_tag == 2) {
+        String value;
+    }
+
+    if (_tag == 3) {
+        Color value;
+    }
+
+    if (_tag == 4) {
+        double left;
+        double top;
+    }
+
+    if (_tag == 5) {
+        double left;
+        double top;
+        double right;
+        double bottom;
+    }
+
+};
+
+struct VarId {
+    String key;
+    uint32 scene;
+};
+
+
+char magic[7];
+if (Memcmp(magic, "BOLDUI\x01", sizeof("BOLDUI\x01")-1) == 0) {
+    A2RHelloResponse hello_res;
+    A2RExtendedHelloResponse ext_hello_res;
+    while (!FEof()) {
+        uint32 msg_len;
+        A2RMessage msg;
+    }
+}
+        

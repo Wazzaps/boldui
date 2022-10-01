@@ -1,0 +1,23 @@
+[workspace]
+members = [
+    "boldui_protocol",
+    "boldui_protocol_bindings",
+    "boldui_renderer",
+    "examples/boldui_example_shapes",
+]
+
+[profile.dev]
+incremental = true
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true
+
+[profile.release-small]
+inherits = "release"
+lto = true
+opt-level = 'z'
+
+[patch.crates-io]
+serde-generate = { git = "https://github.com/Wazzaps/serde-reflection-010bt.git" }
+serde-reflection = { git = "https://github.com/Wazzaps/serde-reflection-010bt.git" }
