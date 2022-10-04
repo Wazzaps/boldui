@@ -146,6 +146,10 @@ pub enum OpsOperation {
     Neg {
         a: OpId,
     },
+    Eq {
+        a: OpId,
+        b: OpId,
+    },
     MakePoint {
         left: OpId,
         top: OpId,
@@ -168,6 +172,12 @@ pub enum CmdsCommand {
     DrawRect { paint: OpId, rect: OpId },
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Watch {
+    pub condition: OpId,
+    pub handler: HandlerBlock,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct A2RUpdateScene {
     pub id: SceneId,
@@ -180,6 +190,7 @@ pub struct A2RUpdateScene {
     pub ops: Vec<OpsOperation>,
     pub cmds: Vec<CmdsCommand>,
     pub var_decls: BTreeMap<String, Value>,
+    pub watches: Vec<Watch>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -210,6 +221,9 @@ pub enum HandlerCmd {
     UpdateVar {
         var: VarId,
         value: OpId,
+    },
+    DebugMessage {
+        msg: String,
     },
     If {
         condition: OpId,

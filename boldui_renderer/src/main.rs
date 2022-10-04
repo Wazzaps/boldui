@@ -4,6 +4,7 @@ use crate::state_machine::StateMachine;
 use state_machine::Communicator;
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Barrier};
 use util::SerdeSender;
 
 pub(crate) mod cli;
@@ -48,12 +49,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         app_stdin: inp,
         app_stdout: out,
         state_machine: &state_machine,
+        update_barrier: None,
     };
     communicator.connect()?;
     communicator.send_open(params.uri.unwrap_or_else(|| "/".to_string()))?;
 
-    let (mut frontend, wakeup_proxy) = ImageFrontend::new(Renderer {}, &state_machine);
+    let (mut frontend, wakeup_proxy, update_barrier) =
+        ImageFrontend::new(Renderer {}, &state_machine);
     state_machine.lock().wakeup_proxy = Some(wakeup_proxy);
+    communicator.update_barrier = Some(update_barrier);
 
     crossbeam::scope(|scope| {
         scope.spawn(|_| {

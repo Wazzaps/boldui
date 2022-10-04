@@ -5,7 +5,7 @@ mod util;
 use crate::util::SerdeSender;
 use boldui_protocol::{
     A2RMessage, A2RReparentScene, A2RUpdate, A2RUpdateScene, CmdsCommand, Color, Error,
-    HandlerBlock, HandlerCmd, OpId, OpsOperation, R2AMessage, R2AOpen, Value, VarId,
+    HandlerBlock, HandlerCmd, OpId, OpsOperation, R2AMessage, R2AOpen, Value, VarId, Watch,
 };
 use byteorder::{ReadBytesExt, LE};
 use std::collections::{BTreeMap, HashMap};
@@ -36,6 +36,12 @@ impl Deref for OpIdWrapper {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl OpIdWrapper {
+    fn equals(self, rhs: OpIdWrapper) -> OpWrapper {
+        OpWrapper(OpsOperation::Eq { a: *self, b: *rhs })
     }
 }
 
@@ -136,7 +142,7 @@ fn open_window(
             }
 
             let mut scene = A2RUpdateScene {
-                id: 2,
+                id: 1,
                 paint: OpId::default(),
                 backdrop: OpId::default(),
                 transform: OpId::default(),
@@ -148,6 +154,7 @@ fn open_window(
                 ops: vec![],
                 cmds: vec![],
                 var_decls,
+                watches: vec![],
             };
 
             {
@@ -170,12 +177,23 @@ fn open_window(
                 )
                 .push(f);
 
+                let offset_eq_100 = offset.equals(OpFactory::new_f64(100.0).push(f)).push(f);
+
                 scene.cmds.push(CmdsCommand::Clear {
                     color: *clear_color,
                 });
                 scene.cmds.push(CmdsCommand::DrawRect {
                     paint: *rect_color,
                     rect: *rect,
+                });
+                scene.watches.push(Watch {
+                    condition: *offset_eq_100,
+                    handler: HandlerBlock {
+                        ops: vec![],
+                        cmds: vec![HandlerCmd::DebugMessage {
+                            msg: "Offset is 100.0!".to_string(),
+                        }],
+                    },
                 });
             }
 
@@ -186,7 +204,7 @@ fn open_window(
                     HandlerBlock {
                         ops: vec![],
                         cmds: vec![HandlerCmd::ReparentScene {
-                            scene: 2,
+                            scene: 1,
                             to: A2RReparentScene::Root,
                         }],
                     },
@@ -205,7 +223,7 @@ fn open_window(
                         cmds: vec![HandlerCmd::UpdateVar {
                             var: VarId {
                                 key: "offset".to_string(),
-                                scene: 2,
+                                scene: 1,
                             },
                             value: OpId {
                                 scene_id: 0,

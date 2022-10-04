@@ -89,36 +89,39 @@ All following messages should be length-prefixed (`u32`, little endian) `R2AMess
 
 The renderer issues an "open" command like so:
 
-```json
-{
-  "open": {
-    "path": "/"
-  }
-}
+```python
+R2AMessage__Open(R2AOpen(path='/'))
 ```
 
 Then the app replies with the requested scene:
 
-```json
-{
-  "update": {
-    "updatedScenes": [
-      {
-        "id": 0,
-        "uri": "/?session=e58cfa5f-5aa9-46e6-8d75-c3235f3fa144",
-        "ops": [/* ... */],
-        "cmds": [/* ... */],
-        "varDecls": [/* ... */]
-      }
+```python
+A2RMessage__Update(A2RUpdate(
+    updated_scenes=[
+        A2RUpdateScene(
+            id=1,
+            paint=0,
+            backdrop=0,
+            transform=0,
+            clip=0,
+            uri='/?session=...',
+            ops=[],  # ...
+            cmds=[],  # ...
+            var_decls={},  # ...
+        )
     ],
-    "reparentedScenes": [
-      {
-        "id": 0,
-        "root": null
-      }
+    run_blocks=[
+        HandlerBlock(
+            ops=[],
+            cmds=[
+                HandlerCmd__ReparentScene(
+                    scene=1,
+                    to=A2RReparentScene__Root()
+                )
+            ]
+        )
     ]
-  }
-}
+))
 ```
 
 Then the renderer and the app exchange messages (e.g. `R2AUpdate` for new inputs and `A2RUpdate` for scene and var updates).

@@ -5,11 +5,13 @@ use skia_safe::{AlphaType, Color4f, ColorSpace, EncodedImageFormat, ISize, Image
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::sync::mpsc::{Receiver, Sender};
+use std::sync::{Arc, Barrier};
 
 pub struct ImageFrontend<'a> {
     pub wakeup_recv: Receiver<()>,
     pub renderer: Renderer,
     pub state_machine: &'a Mutex<StateMachine>,
+    pub update_barrier: Arc<Barrier>,
 }
 
 pub struct ImageEventLoopProxy {
@@ -18,7 +20,7 @@ pub struct ImageEventLoopProxy {
 
 impl ImageEventLoopProxy {
     pub fn request_redraw(&self) {
-        self.wakeup_send.send(()).unwrap()
+        self.wakeup_send.send(()).unwrap();
     }
 }
 
@@ -26,23 +28,29 @@ impl<'a> ImageFrontend<'a> {
     pub fn new(
         renderer: Renderer,
         state_machine: &'a Mutex<StateMachine>,
-    ) -> (ImageFrontend<'a>, ImageEventLoopProxy) {
+    ) -> (ImageFrontend<'a>, ImageEventLoopProxy, Arc<Barrier>) {
         let (wakeup_send, wakeup_recv) = std::sync::mpsc::channel();
+        let update_barrier = Arc::new(Barrier::new(2));
         (
             Self {
                 wakeup_recv,
                 renderer,
                 state_machine,
+                update_barrier: update_barrier.clone(),
             },
             ImageEventLoopProxy { wakeup_send },
+            update_barrier,
         )
     }
 
     pub fn main_loop(&mut self) {
         // Create canvas
         for i in 0u64.. {
+            // Let the next update happen
+            self.update_barrier.wait();
+
             if self.wakeup_recv.recv().is_err() {
-                println!("State machine seems to be done, bye from frontend!");
+                eprintln!("State machine seems to be done, bye from frontend!");
                 break;
             }
 
@@ -76,7 +84,7 @@ impl<'a> ImageFrontend<'a> {
                 .encode_to_data(EncodedImageFormat::PNG)
                 .expect("Failed to encode as PNG");
             out.write_all(img.as_bytes()).expect("Failed to write PNG");
-            println!("Wrote frame #{i}");
+            eprintln!("Wrote frame #{i}");
         }
     }
 }

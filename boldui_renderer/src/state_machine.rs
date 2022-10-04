@@ -8,6 +8,7 @@ use byteorder::{ReadBytesExt, LE};
 use parking_lot::Mutex;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{Read, Write};
+use std::sync::{Arc, Barrier};
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub enum SceneParent {
@@ -160,6 +161,13 @@ impl StateMachine {
                 Value::Double(val) => Value::Double(-*val),
                 val => panic!("Tried to convert {:?} into a number", val),
             },
+            OpsOperation::Eq { a, b } => {
+                match (self.op_results.get(*a, ctx), self.op_results.get(*b, ctx)) {
+                    (Value::Sint64(a), Value::Sint64(b)) => Value::Sint64((a == b) as i64),
+                    (Value::Double(a), Value::Double(b)) => Value::Sint64((a == b) as i64),
+                    val => todo!("Unimpl type for eq: {:?}", val),
+                }
+            }
             OpsOperation::GetTime { .. } => {
                 todo!()
             }
@@ -208,6 +216,7 @@ impl StateMachine {
         }
 
         let mut stack = vec![(self.root_scene.unwrap(), 0)];
+        let mut watches_to_run = vec![];
 
         while !stack.is_empty() {
             let (scene_id, child_id) = stack.pop().unwrap();
@@ -215,10 +224,19 @@ impl StateMachine {
 
             if child_id == 0 {
                 // Evaluate current scene
-                println!("Evaluating scene #{scene_id}");
+                eprintln!("[rnd:dbg] Evaluating scene #{scene_id}");
                 let values = self.eval_ops_list(&scene_desc.ops, scene_id);
-                println!(" -> {values:?}");
+                eprintln!("[rnd:dbg]  -> {values:?}");
                 self.op_results.vals.insert(scene_id, values);
+
+                for (i, watch) in scene_desc.watches.iter().enumerate() {
+                    let cond_val = self.op_results.get(watch.condition, (0, &[]));
+                    match cond_val {
+                        Value::Sint64(0) => continue,
+                        Value::Sint64(_) => watches_to_run.push((scene_id, i)),
+                        val => panic!("Watch condition must be of type Sint64, not: {:?}", val),
+                    }
+                }
             }
             if child_id < scene_state.children.len() {
                 stack.push((scene_id, child_id + 1));
@@ -226,6 +244,23 @@ impl StateMachine {
                 stack.push((child, 0));
             } else {
                 // no more children, bye
+            }
+        }
+
+        for (scene_id, watch_id) in watches_to_run {
+            eprintln!("[rnd:dbg] Running watch #{watch_id} of scene #{scene_id}");
+            let watch = self
+                .scenes
+                .get(&scene_id)
+                .unwrap()
+                .0
+                .watches
+                .get(watch_id)
+                .unwrap();
+            let op_results = self.eval_ops_list(&watch.handler.ops, 0);
+            let cmds = watch.handler.cmds.clone();
+            for cmd in cmds.iter() {
+                self.eval_handler_cmd(cmd, (0, &op_results));
             }
         }
     }
@@ -246,12 +281,136 @@ impl StateMachine {
             (_, _) => None,
         }
     }
+
+    pub fn eval_handler_cmd(&mut self, cmd: &HandlerCmd, ctx: (SceneId, &[Value])) {
+        match cmd {
+            HandlerCmd::Nop => {}
+            HandlerCmd::ReparentScene { scene, to } => {
+                let root_scene = &mut self.root_scene;
+                let scenes = &mut self.scenes;
+                let parent = scenes.get(scene).unwrap().1.parent;
+
+                // Disconnect from previous parent
+                match parent {
+                    SceneParent::NoParent | SceneParent::Hidden => {} // Already disconnected / hidden
+                    SceneParent::Root => {
+                        // Is Root
+                        *root_scene = None;
+                    }
+                    SceneParent::Parent(prev_parent) => {
+                        let parent = scenes.get_mut(&prev_parent).unwrap();
+                        parent
+                            .1
+                            .children
+                            .remove(parent.1.children.iter().position(|s| s == scene).unwrap());
+                    }
+                }
+                self.scenes.get_mut(scene).unwrap().1.parent = SceneParent::NoParent;
+
+                // Connect to new parent
+                match to {
+                    A2RReparentScene::Inside(inside_what) => {
+                        self.scenes
+                            .get_mut(inside_what)
+                            .unwrap()
+                            .1
+                            .children
+                            .insert(0, *scene);
+                        self.scenes.get_mut(scene).unwrap().1.parent =
+                            SceneParent::Parent(*inside_what);
+                    }
+                    A2RReparentScene::After(after_what) => {
+                        let idx = self
+                            .scenes
+                            .get(&self.scenes.get(after_what).unwrap().1.parent.unwrap())
+                            .unwrap()
+                            .1
+                            .children
+                            .iter()
+                            .position(|s| *s == *after_what)
+                            .unwrap();
+                        self.scenes
+                            .get_mut(&self.scenes.get(after_what).unwrap().1.parent.unwrap())
+                            .unwrap()
+                            .1
+                            .children
+                            .insert(idx + 1, *scene);
+                        self.scenes.get_mut(scene).unwrap().1.parent =
+                            self.scenes.get(after_what).unwrap().1.parent;
+                    }
+                    A2RReparentScene::Root => {
+                        if let Some(root_scene) = self.root_scene {
+                            self.scenes.get_mut(&root_scene).unwrap().1.parent =
+                                SceneParent::NoParent;
+                        }
+                        self.root_scene = Some(*scene);
+                        self.scenes.get_mut(scene).unwrap().1.parent = SceneParent::Root;
+                    }
+                    A2RReparentScene::Disconnect => {} // Was already disconnected
+                    A2RReparentScene::Hide => {
+                        self.scenes.get_mut(scene).unwrap().1.parent = SceneParent::Hidden;
+                    }
+                }
+            }
+            HandlerCmd::UpdateVar { var, value } => {
+                let var_value = self.op_results.get(*value, ctx).to_owned();
+                let default_var_val = self
+                    .scenes
+                    .get_mut(&var.scene)
+                    .unwrap()
+                    .0
+                    .var_decls
+                    .get(&var.key)
+                    .unwrap();
+
+                // Typecheck
+                match (&var_value, &default_var_val) {
+                    (Value::Sint64(_), Value::Sint64(_)) => {},
+                    (Value::Double(_), Value::Double(_)) => {},
+                    (Value::String(_), Value::String(_)) => {},
+                    (val, default) => panic!("Calculated value doesn't match declaration: Declared as {default:?}, Got: {val:?}"),
+                }
+
+                let var_vals = &mut self.scenes.get_mut(&var.scene).unwrap().1.var_vals;
+                eprintln!(
+                    "[rnd:dbg] Set {}.{} to {:?}",
+                    var.scene, var.key, &var_value
+                );
+                var_vals.insert(var.key.to_owned(), var_value);
+            }
+            HandlerCmd::DebugMessage { msg: debug } => {
+                eprintln!("[rnd:dbg] Reply: {}", debug);
+            }
+            HandlerCmd::If {
+                condition,
+                then,
+                or_else,
+            } => {
+                let cond_value = self.op_results.get(*condition, ctx).to_owned();
+                match cond_value {
+                    Value::Sint64(0) => {
+                        eprintln!("[rnd:dbg] Running else");
+                        self.eval_handler_cmd(or_else, ctx);
+                    }
+                    Value::Sint64(_) => {
+                        eprintln!("[rnd:dbg] Running then");
+                        self.eval_handler_cmd(then, ctx);
+                    }
+                    _ => panic!(
+                        "'If' conditions must be of type Sint64, not: {:?}",
+                        cond_value
+                    ),
+                }
+            }
+        }
+    }
 }
 
 pub struct Communicator<'a> {
     pub app_stdin: Box<dyn Write + Send>,
     pub app_stdout: Box<dyn Read + Send>,
     pub state_machine: &'a Mutex<StateMachine>,
+    pub update_barrier: Option<Arc<Barrier>>,
 }
 
 impl<'a> Communicator<'a> {
@@ -332,6 +491,11 @@ impl<'a> Communicator<'a> {
                     updated_scenes,
                     run_blocks,
                 }) => {
+                    // Some frontends (e.g. image frontend) want to run between _each_ update, so wait for it to finish
+                    if let Some(update_barrier) = &self.update_barrier {
+                        update_barrier.wait();
+                    }
+
                     // TODO: Create utilities for some of the repeated code here
                     let mut state = self.state_machine.lock();
                     for update in updated_scenes {
@@ -365,7 +529,7 @@ impl<'a> Communicator<'a> {
                     for block in run_blocks.iter() {
                         let op_results = state.eval_ops_list(&block.ops, 0);
                         for cmd in block.cmds.iter() {
-                            self.eval_handler_cmd(cmd, (0, &op_results), &mut state);
+                            state.eval_handler_cmd(cmd, (0, &op_results));
                         }
                     }
 
@@ -377,138 +541,10 @@ impl<'a> Communicator<'a> {
                     // Redraw
                     state.wakeup_proxy.as_ref().unwrap().request_redraw();
 
-                    eprintln!("New scenes: {:#?}", state.scenes);
+                    eprintln!("[rnd:dbg] New scenes: {:#?}", state.scenes);
                 }
                 A2RMessage::Error(e) => {
                     panic!("App Error: Code {}: {}", e.code, e.text);
-                }
-            }
-        }
-    }
-
-    pub fn eval_handler_cmd(
-        &self,
-        cmd: &HandlerCmd,
-        ctx: (SceneId, &[Value]),
-        state: &mut StateMachine,
-    ) {
-        match cmd {
-            HandlerCmd::Nop => {}
-            HandlerCmd::ReparentScene { scene, to } => {
-                let state = &mut *state;
-                let root_scene = &mut state.root_scene;
-                let scenes = &mut state.scenes;
-                let parent = scenes.get(scene).unwrap().1.parent;
-
-                // Disconnect from previous parent
-                match parent {
-                    SceneParent::NoParent | SceneParent::Hidden => {} // Already disconnected / hidden
-                    SceneParent::Root => {
-                        // Is Root
-                        *root_scene = None;
-                    }
-                    SceneParent::Parent(prev_parent) => {
-                        let parent = scenes.get_mut(&prev_parent).unwrap();
-                        parent
-                            .1
-                            .children
-                            .remove(parent.1.children.iter().position(|s| s == scene).unwrap());
-                    }
-                }
-                state.scenes.get_mut(scene).unwrap().1.parent = SceneParent::NoParent;
-
-                // Connect to new parent
-                match to {
-                    A2RReparentScene::Inside(inside_what) => {
-                        state
-                            .scenes
-                            .get_mut(inside_what)
-                            .unwrap()
-                            .1
-                            .children
-                            .insert(0, *scene);
-                        state.scenes.get_mut(scene).unwrap().1.parent =
-                            SceneParent::Parent(*inside_what);
-                    }
-                    A2RReparentScene::After(after_what) => {
-                        let idx = state
-                            .scenes
-                            .get(&state.scenes.get(after_what).unwrap().1.parent.unwrap())
-                            .unwrap()
-                            .1
-                            .children
-                            .iter()
-                            .position(|s| *s == *after_what)
-                            .unwrap();
-                        state
-                            .scenes
-                            .get_mut(&state.scenes.get(after_what).unwrap().1.parent.unwrap())
-                            .unwrap()
-                            .1
-                            .children
-                            .insert(idx + 1, *scene);
-                        state.scenes.get_mut(scene).unwrap().1.parent =
-                            state.scenes.get(after_what).unwrap().1.parent;
-                    }
-                    A2RReparentScene::Root => {
-                        if let Some(root_scene) = state.root_scene {
-                            state.scenes.get_mut(&root_scene).unwrap().1.parent =
-                                SceneParent::NoParent;
-                        }
-                        state.root_scene = Some(*scene);
-                        state.scenes.get_mut(scene).unwrap().1.parent = SceneParent::Root;
-                    }
-                    A2RReparentScene::Disconnect => {} // Was already disconnected
-                    A2RReparentScene::Hide => {
-                        state.scenes.get_mut(scene).unwrap().1.parent = SceneParent::Hidden;
-                    }
-                }
-            }
-            HandlerCmd::UpdateVar { var, value } => {
-                let var_value = state.op_results.get(*value, ctx).to_owned();
-                let default_var_val = state
-                    .scenes
-                    .get_mut(&var.scene)
-                    .unwrap()
-                    .0
-                    .var_decls
-                    .get(&var.key)
-                    .unwrap();
-
-                // Typecheck
-                match (&var_value, &default_var_val) {
-                    (Value::Sint64(_), Value::Sint64(_)) => {},
-                    (Value::Double(_), Value::Double(_)) => {},
-                    (Value::String(_), Value::String(_)) => {},
-                    (val, default) => panic!("Calculated value doesn't match declaration: Declared as {default:?}, Got: {val:?}"),
-                }
-
-                let var_vals = &mut state.scenes.get_mut(&var.scene).unwrap().1.var_vals;
-                eprintln!(
-                    "[rnd:dbg] Set {}.{} to {:?}",
-                    var.scene, var.key, &var_value
-                );
-                var_vals.insert(var.key.to_owned(), var_value);
-            }
-            HandlerCmd::If {
-                condition,
-                then,
-                or_else,
-            } => {
-                let cond_value = state.op_results.get(*condition, ctx).to_owned();
-                match cond_value {
-                    Value::Sint64(0) => {
-                        println!("Running else");
-                        self.eval_handler_cmd(or_else, ctx, state);
-                    }
-                    Value::Sint64(_) => {
-                        println!("Running then");
-                        self.eval_handler_cmd(then, ctx, state);
-                    }
-                    _ => panic!(
-                        "'If' conditions must be of type Sint64, not: {:?}",
-                        cond_value
-                    ),
                 }
             }
         }
