@@ -17,7 +17,7 @@ impl IntoColor4f for Color {
     }
 }
 
-pub struct Renderer {}
+pub(crate) struct Renderer {}
 
 impl Renderer {
     pub fn render(&mut self, canvas: &mut Canvas, state: &mut StateMachine) {

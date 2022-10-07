@@ -1,4 +1,24 @@
 use argh::FromArgs;
+use std::str::FromStr;
+
+#[derive(Debug, Default)]
+pub(crate) enum FrontendType {
+    #[default]
+    Image,
+    Window,
+}
+
+impl FromStr for FrontendType {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "image" => FrontendType::Image,
+            "window" => FrontendType::Window,
+            _ => return Err("Invalid frontend type, see --help"),
+        })
+    }
+}
 
 #[derive(FromArgs, Debug)]
 /// Renderer for BoldUI applications
@@ -9,6 +29,10 @@ pub(crate) struct Params {
     /// a uri to open inside the app
     #[argh(option, short = 'u')]
     pub uri: Option<String>,
+
+    /// rendering frontend to use, one of: 'image' (default), 'window'
+    #[argh(option)]
+    pub frontend: Option<FrontendType>,
 }
 
 /// Extract the basename from a path
@@ -34,7 +58,7 @@ pub(crate) fn get_params() -> (Params, Option<Vec<String>>) {
         .collect();
     let extra_strings = sep_idx.map(|sep_idx| strings[sep_idx + 1..].to_owned());
 
-    let params = Params::from_args(&[argv0], &params_strs[1..]).unwrap_or_else(|early_exit| {
+    let mut params = Params::from_args(&[argv0], &params_strs[1..]).unwrap_or_else(|early_exit| {
         std::process::exit(match early_exit.status {
             Ok(()) => {
                 println!("{}", early_exit.output);
@@ -49,6 +73,10 @@ pub(crate) fn get_params() -> (Params, Option<Vec<String>>) {
             }
         })
     });
+
+    if params.frontend.is_none() {
+        params.frontend = Some(FrontendType::default());
+    }
 
     (params, extra_strings)
 }

@@ -1,5 +1,5 @@
 use crate::renderer::Renderer;
-use crate::StateMachine;
+use crate::{EventLoopProxy, Frontend, StateMachine};
 use parking_lot::Mutex;
 use skia_safe::{AlphaType, Color4f, ColorSpace, EncodedImageFormat, ISize, ImageInfo, Surface};
 use std::fs::File;
@@ -7,7 +7,7 @@ use std::io::{BufWriter, Write};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Barrier};
 
-pub struct ImageFrontend<'a> {
+pub(crate) struct ImageFrontend<'a> {
     pub wakeup_recv: Receiver<()>,
     pub renderer: Renderer,
     pub state_machine: &'a Mutex<StateMachine>,
@@ -18,8 +18,8 @@ pub struct ImageEventLoopProxy {
     pub wakeup_send: Sender<()>,
 }
 
-impl ImageEventLoopProxy {
-    pub fn request_redraw(&self) {
+impl EventLoopProxy for ImageEventLoopProxy {
+    fn request_redraw(&self) {
         self.wakeup_send.send(()).unwrap();
     }
 }
@@ -42,8 +42,10 @@ impl<'a> ImageFrontend<'a> {
             update_barrier,
         )
     }
+}
 
-    pub fn main_loop(&mut self) {
+impl<'a> Frontend for ImageFrontend<'a> {
+    fn main_loop(&mut self) {
         // Create canvas
         for i in 0u64.. {
             // Let the next update happen

@@ -1,4 +1,4 @@
-use crate::image_frontend::ImageEventLoopProxy;
+use crate::EventLoopProxy;
 use crate::SerdeSender;
 use boldui_protocol::{
     bincode, A2RMessage, A2RReparentScene, A2RUpdate, A2RUpdateScene, HandlerCmd, OpId,
@@ -114,11 +114,11 @@ impl OpResults {
     }
 }
 
-pub struct StateMachine {
+pub(crate) struct StateMachine {
     pub scenes: HashMap<SceneId, Scene>,
     pub op_results: OpResults,
     pub root_scene: Option<SceneId>,
-    pub wakeup_proxy: Option<ImageEventLoopProxy>,
+    pub wakeup_proxy: Option<Box<dyn EventLoopProxy + Send>>,
 }
 
 impl StateMachine {
@@ -406,7 +406,7 @@ impl StateMachine {
     }
 }
 
-pub struct Communicator<'a> {
+pub(crate) struct Communicator<'a> {
     pub app_stdin: Box<dyn Write + Send>,
     pub app_stdout: Box<dyn Read + Send>,
     pub state_machine: &'a Mutex<StateMachine>,
