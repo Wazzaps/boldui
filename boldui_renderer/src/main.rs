@@ -2,14 +2,16 @@ use crate::cli::FrontendType;
 use crate::image_frontend::ImageFrontend;
 use crate::renderer::Renderer;
 use crate::state_machine::StateMachine;
-use state_machine::Communicator;
+use communicator::Communicator;
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 use util::SerdeSender;
 
 pub(crate) mod cli;
 // pub(crate) mod devtools;
+pub(crate) mod communicator;
 pub(crate) mod image_frontend;
+pub(crate) mod op_interpreter;
 pub(crate) mod renderer;
 pub(crate) mod state_machine;
 pub(crate) mod util;
