@@ -1,10 +1,17 @@
 use crate::op_interpreter::OpResults;
 use crate::EventLoopProxy;
 use boldui_protocol::{
-    A2RReparentScene, A2RUpdateScene, HandlerBlock, HandlerCmd, OpsOperation, SceneId, Value,
+    A2RReparentScene, A2RUpdateScene, HandlerBlock, HandlerCmd, OpsOperation, R2AReply, SceneId,
+    Value,
 };
+use crossbeam::channel::{Receiver, Sender};
+use nix::fcntl::{fcntl, FcntlArg, OFlag};
+use nix::unistd::pipe;
 use parking_lot::Mutex;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fs::File;
+use std::io::Write;
+use std::os::unix::io::FromRawFd;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub enum SceneParent {
@@ -43,17 +50,35 @@ pub(crate) struct StateMachine {
     pub scenes: HashMap<SceneId, Scene>,
     pub op_results: OpResults,
     pub root_scene: Option<SceneId>,
+    pub has_pending_replies: bool,
+    pub reply_send: Sender<R2AReply>,
+    pub reply_notify_send: File,
     pub wakeup_proxy: Option<Box<dyn EventLoopProxy + Send>>,
 }
 
 impl StateMachine {
-    pub fn new_locked() -> Mutex<Self> {
-        Mutex::new(Self {
-            scenes: HashMap::new(),
-            op_results: OpResults::new(),
-            root_scene: None,
-            wakeup_proxy: None,
-        })
+    pub fn new() -> (Mutex<Self>, Receiver<R2AReply>, File) {
+        let (reply_send, reply_recv) = crossbeam::channel::unbounded();
+        let (reply_notify_send, reply_notify_recv) = {
+            let fds = pipe().unwrap();
+            // Set the read fd to be non-blocking
+            fcntl(fds.0, FcntlArg::F_SETFL(OFlag::O_NONBLOCK)).unwrap();
+            // SAFETY: These files were just given to us by the `pipe` call, they are open.
+            unsafe { (File::from_raw_fd(fds.1), File::from_raw_fd(fds.0)) }
+        };
+        (
+            Mutex::new(Self {
+                scenes: HashMap::new(),
+                op_results: OpResults::new(),
+                root_scene: None,
+                has_pending_replies: false,
+                reply_send,
+                reply_notify_send,
+                wakeup_proxy: None,
+            }),
+            reply_recv,
+            reply_notify_recv,
+        )
     }
 
     pub fn eval_ops_list(&self, ops: &[OpsOperation], scene_id: SceneId) -> Vec<Value> {
@@ -66,6 +91,7 @@ impl StateMachine {
     }
 
     pub fn update_and_evaluate(&mut self, time: f64, width: i64, height: i64) {
+        // TODO: Create utilities for some of the repeated code here
         {
             let vars = &mut self
                 .scenes
@@ -125,6 +151,12 @@ impl StateMachine {
             for cmd in cmds.iter() {
                 self.eval_handler_cmd(cmd, (0, &op_results));
             }
+        }
+
+        if self.has_pending_replies {
+            // Sending a character on this pipe signifies the `reply_recv` end of the channel is ready for reading
+            self.reply_notify_send.write_all(b".").unwrap();
+            self.has_pending_replies = false;
         }
     }
 
@@ -231,18 +263,33 @@ impl StateMachine {
                     (Value::Sint64(_), Value::Sint64(_)) => {},
                     (Value::Double(_), Value::Double(_)) => {},
                     (Value::String(_), Value::String(_)) => {},
+                    (Value::Color(_), Value::Color(_)) => {},
+                    (Value::Point { .. }, Value::Point { .. }) => {},
+                    (Value::Rect { .. }, Value::Rect { .. }) => {},
                     (val, default) => panic!("Calculated value doesn't match declaration: Declared as {default:?}, Got: {val:?}"),
                 }
 
                 let var_vals = &mut self.scenes.get_mut(&var.scene).unwrap().1.var_vals;
                 eprintln!(
-                    "[rnd:dbg] Set {}.{} to {:?}",
-                    var.scene, var.key, &var_value
+                    "[rnd:dbg] Set {}@{} to {:?}",
+                    var.key, var.scene, &var_value
                 );
                 var_vals.insert(var.key.to_owned(), var_value);
             }
             HandlerCmd::DebugMessage { msg: debug } => {
-                eprintln!("[rnd:dbg] Reply: {}", debug);
+                eprintln!("[rnd:dbg] DebugMessage: {}", debug);
+            }
+            HandlerCmd::Reply { path, params } => {
+                let reply = R2AReply {
+                    path: path.to_owned(),
+                    params: params
+                        .iter()
+                        .map(|opid| self.op_results.get(*opid, (0, &[])).to_owned())
+                        .collect(),
+                };
+                eprintln!("[rnd:dbg] Replying: {:?}", reply);
+                self.reply_send.send(reply).unwrap();
+                self.has_pending_replies = true;
             }
             HandlerCmd::If {
                 condition,
@@ -265,6 +312,7 @@ impl StateMachine {
                     ),
                 }
             }
+            HandlerCmd::AllocateWindowId => unimplemented!(),
         }
     }
 
@@ -307,6 +355,12 @@ impl StateMachine {
             for cmd in block.cmds.iter() {
                 self.eval_handler_cmd(cmd, (0, &op_results));
             }
+        }
+
+        if self.has_pending_replies {
+            // Sending a character on this pipe signifies the `reply_recv` end of the channel is ready for reading
+            self.reply_notify_send.write_all(b".").unwrap();
+            self.has_pending_replies = false;
         }
 
         // Remove scenes with no parent

@@ -1,15 +1,22 @@
+use crate::util::ReadExt;
 use crate::{SerdeSender, StateMachine};
-use boldui_protocol::{bincode, A2RMessage, A2RUpdate};
+use boldui_protocol::{bincode, A2RMessage, A2RUpdate, R2AReply, R2AUpdate};
 use byteorder::{ReadBytesExt, LE};
+use crossbeam::channel::Receiver;
+use nix::sys::select::{select, FdSet};
 use parking_lot::Mutex;
+use std::fs::File;
 use std::io::{Read, Write};
+use std::os::unix::io::AsRawFd;
 use std::sync::{Arc, Barrier};
 
 pub(crate) struct Communicator<'a> {
-    pub app_stdin: Box<dyn Write + Send>,
-    pub app_stdout: Box<dyn Read + Send>,
+    pub app_stdin: File,
+    pub app_stdout: File,
     pub state_machine: &'a Mutex<StateMachine>,
     pub update_barrier: Option<Arc<Barrier>>,
+    pub reply_recv: Receiver<R2AReply>,
+    pub reply_notify_recv: File,
 }
 
 impl<'a> Communicator<'a> {
@@ -17,6 +24,7 @@ impl<'a> Communicator<'a> {
         // Send hello
         {
             eprintln!("[rnd:dbg] sending hello");
+
             self.app_stdin.write_all(boldui_protocol::R2A_MAGIC)?;
             self.app_stdin
                 .write_all(&bincode::serialize(&boldui_protocol::R2AHello {
@@ -78,30 +86,55 @@ impl<'a> Communicator<'a> {
     pub fn main_loop(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let mut msg_buf = Vec::new();
         loop {
-            let msg_len = self.app_stdout.read_u32::<LE>()?;
-            eprintln!("[rnd:dbg] reading msg of size {}", msg_len);
-            msg_buf.resize(msg_len as usize, 0);
-            self.app_stdout.read_exact(&mut msg_buf)?;
-            let msg = bincode::deserialize::<A2RMessage>(&msg_buf)?;
+            let mut fds = FdSet::new();
+            fds.insert(self.app_stdout.as_raw_fd());
+            fds.insert(self.reply_notify_recv.as_raw_fd());
+            select(None, Some(&mut fds), None, None, None).unwrap();
 
-            eprintln!("[rnd:dbg] A2R: {:#?}", &msg);
-            match msg {
-                A2RMessage::Update(A2RUpdate {
-                    updated_scenes,
-                    run_blocks,
-                }) => {
-                    // Some frontends (e.g. image frontend) want to run between _each_ update, so wait for it to finish
-                    if let Some(update_barrier) = &self.update_barrier {
-                        update_barrier.wait();
-                    }
+            // Check if replies are pending
+            if fds.contains(self.reply_notify_recv.as_raw_fd()) {
+                self.reply_notify_recv.discard_until_eof().unwrap();
 
-                    // TODO: Create utilities for some of the repeated code here
-                    let mut state = self.state_machine.lock();
-
-                    state.update_scenes_and_run_blocks(updated_scenes, run_blocks);
+                // Send any pending replies
+                let mut replies = vec![];
+                while let Ok(reply) = self.reply_recv.try_recv() {
+                    replies.push(reply);
                 }
-                A2RMessage::Error(e) => {
-                    panic!("App Error: Code {}: {}", e.code, e.text);
+                if !replies.is_empty() {
+                    self.app_stdin
+                        .send(&boldui_protocol::R2AMessage::Update(R2AUpdate { replies }))?;
+                }
+            }
+
+            // Check if new app inputs are pending
+            if fds.contains(self.app_stdout.as_raw_fd()) {
+                let msg_len = self.app_stdout.read_u32::<LE>()?;
+                eprintln!("[rnd:dbg] reading msg of size {}", msg_len);
+                msg_buf.resize(msg_len as usize, 0);
+                self.app_stdout.read_exact(&mut msg_buf)?;
+                let msg = bincode::deserialize::<A2RMessage>(&msg_buf)?;
+
+                eprintln!("[rnd:dbg] A2R: {:#?}", &msg);
+                match msg {
+                    A2RMessage::Update(A2RUpdate {
+                        updated_scenes,
+                        run_blocks,
+                    }) => {
+                        // Some frontends (e.g. image frontend) want to run between _each_ update, so wait for it to finish
+                        if let Some(update_barrier) = &self.update_barrier {
+                            update_barrier.wait();
+                        }
+
+                        let mut state = self.state_machine.lock();
+
+                        state.update_scenes_and_run_blocks(updated_scenes, run_blocks);
+                    }
+                    A2RMessage::Error(e) => {
+                        panic!("App Error: Code {}: {}", e.code, e.text);
+                    }
+                    A2RMessage::CompressedUpdate(_msg) => unimplemented!(
+                        "TODO: Implement zstd compressed payloads (for small binary sizes)"
+                    ),
                 }
             }
         }

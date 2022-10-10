@@ -11,6 +11,7 @@ boldui_protocol = { path = "../boldui_protocol" }
 byteorder = "1.4.3"
 parking_lot = "0.12.1"
 crossbeam = "0.8.2"
+nix = "0.25.0"
 
 # Graphics
 glutin = "0.29.1"

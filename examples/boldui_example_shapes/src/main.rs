@@ -5,7 +5,8 @@ mod util;
 use crate::util::SerdeSender;
 use boldui_protocol::{
     A2RMessage, A2RReparentScene, A2RUpdate, A2RUpdateScene, CmdsCommand, Color, Error,
-    HandlerBlock, HandlerCmd, OpId, OpsOperation, R2AMessage, R2AOpen, Value, VarId, Watch,
+    HandlerBlock, HandlerCmd, OpId, OpsOperation, R2AMessage, R2AOpen, R2AUpdate, Value, VarId,
+    Watch,
 };
 use byteorder::{ReadBytesExt, LE};
 use std::collections::{BTreeMap, HashMap};
@@ -47,6 +48,7 @@ impl OpIdWrapper {
 
 struct OpFactory<'a>(&'a mut A2RUpdateScene);
 
+#[allow(dead_code)]
 impl<'a> OpFactory<'a> {
     pub fn new_i64(val: i64) -> OpWrapper {
         OpWrapper(OpsOperation::Value(Value::Sint64(val)))
@@ -190,9 +192,15 @@ fn open_window(
                     condition: *offset_eq_100,
                     handler: HandlerBlock {
                         ops: vec![],
-                        cmds: vec![HandlerCmd::DebugMessage {
-                            msg: "Offset is 100.0!".to_string(),
-                        }],
+                        cmds: vec![
+                            HandlerCmd::DebugMessage {
+                                msg: "Offset is 100.0, sending reply".to_string(),
+                            },
+                            HandlerCmd::Reply {
+                                path: "/".to_string(),
+                                params: vec![*width, *height],
+                            },
+                        ],
                     },
                 });
             }
@@ -303,9 +311,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         stdin.read_exact(&mut msg_buf)?;
         let msg = bincode::deserialize::<R2AMessage>(&msg_buf)?;
 
-        eprintln!("[app:dbg] R2A: {:#?}", &msg);
+        // eprintln!("[app:dbg] R2A: {:#?}", &msg);
         match msg {
-            R2AMessage::Update(_) => {}
+            R2AMessage::Update(R2AUpdate { replies }) => {
+                eprintln!("[app:dbg] Replies: {:?}", &replies);
+            }
             R2AMessage::Open(R2AOpen { path }) => {
                 fn parse_path(path: &str) -> (String, Vec<String>, Vec<(String, String)>) {
                     let reference = RelativeReference::try_from(path).unwrap();

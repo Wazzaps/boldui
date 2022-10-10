@@ -3,7 +3,8 @@ use crate::image_frontend::ImageFrontend;
 use crate::renderer::Renderer;
 use crate::state_machine::StateMachine;
 use communicator::Communicator;
-use std::io::{Read, Write};
+use std::fs::File;
+use std::os::unix::io::{FromRawFd, IntoRawFd};
 use std::process::{Command, Stdio};
 use util::SerdeSender;
 
@@ -24,7 +25,7 @@ pub(crate) trait Frontend {
     fn main_loop(&mut self);
 }
 
-fn create_child(extra: Vec<String>) -> (Box<dyn Write + Send>, Box<dyn Read + Send>) {
+fn create_child(extra: Vec<String>) -> (File, File) {
     let mut cmd = Command::new(&extra[0])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -32,10 +33,13 @@ fn create_child(extra: Vec<String>) -> (Box<dyn Write + Send>, Box<dyn Read + Se
         .spawn()
         .expect("[rnd:err] Failed to spawn child");
 
-    (
-        Box::new(cmd.stdin.take().unwrap()),
-        Box::new(cmd.stdout.take().unwrap()),
-    )
+    // SAFETY: These FDs were given to us by the `Command`, and will not be closed by themselves
+    unsafe {
+        (
+            File::from_raw_fd(cmd.stdin.take().unwrap().into_raw_fd()),
+            File::from_raw_fd(cmd.stdout.take().unwrap().into_raw_fd()),
+        )
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -54,12 +58,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (inp, out) = create_child(extra);
 
     // Connect
-    let state_machine = StateMachine::new_locked();
+    let (state_machine, reply_recv, reply_notify_recv) = StateMachine::new();
     let mut communicator = Communicator {
         app_stdin: inp,
         app_stdout: out,
         state_machine: &state_machine,
         update_barrier: None,
+        reply_recv,
+        reply_notify_recv,
     };
     communicator.connect()?;
     communicator.send_open(params.uri.unwrap_or_else(|| "/".to_string()))?;

@@ -1,10 +1,10 @@
 use crate::renderer::Renderer;
 use crate::{EventLoopProxy, Frontend, StateMachine};
+use crossbeam::channel::{Receiver, Sender};
 use parking_lot::Mutex;
 use skia_safe::{AlphaType, Color4f, ColorSpace, EncodedImageFormat, ISize, ImageInfo, Surface};
 use std::fs::File;
 use std::io::{BufWriter, Write};
-use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Barrier};
 
 pub(crate) struct ImageFrontend<'a> {
@@ -29,7 +29,7 @@ impl<'a> ImageFrontend<'a> {
         renderer: Renderer,
         state_machine: &'a Mutex<StateMachine>,
     ) -> (ImageFrontend<'a>, ImageEventLoopProxy, Arc<Barrier>) {
-        let (wakeup_send, wakeup_recv) = std::sync::mpsc::channel();
+        let (wakeup_send, wakeup_recv) = crossbeam::channel::unbounded();
         let update_barrier = Arc::new(Barrier::new(2));
         (
             Self {

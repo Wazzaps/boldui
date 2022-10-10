@@ -27,7 +27,15 @@ pub enum R2AMessage {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct R2AUpdate {}
+pub struct R2AUpdate {
+    pub replies: Vec<R2AReply>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct R2AReply {
+    pub path: String,
+    pub params: Vec<Value>,
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct R2AOpen {
@@ -40,7 +48,6 @@ pub struct Error {
     pub text: String,
 }
 
-// Make sure to update typecheck in `renderer::main_loop` when adding types
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Color {
     pub r: u16,
@@ -82,6 +89,7 @@ impl Color {
     }
 }
 
+// Make sure to update typecheck in `HandlerCmd::UpdateVar` handler in `eval_handler_cmd` when adding types
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum Value {
     Sint64(i64),
@@ -115,6 +123,7 @@ pub struct A2RExtendedHelloResponse {}
 pub enum A2RMessage {
     Update(A2RUpdate),
     Error(Error),
+    CompressedUpdate(Vec<u8>),
 }
 
 pub type SceneId = u32;
@@ -214,6 +223,7 @@ pub enum A2RReparentScene {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum HandlerCmd {
     Nop,
+    AllocateWindowId,
     ReparentScene {
         scene: SceneId,
         to: A2RReparentScene,
@@ -224,6 +234,10 @@ pub enum HandlerCmd {
     },
     DebugMessage {
         msg: String,
+    },
+    Reply {
+        path: String,
+        params: Vec<OpId>,
     },
     If {
         condition: OpId,
