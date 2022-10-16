@@ -6,12 +6,12 @@ use crate::util::SerdeSender;
 use boldui_protocol::{
     A2RMessage, A2RReparentScene, A2RUpdate, A2RUpdateScene, CmdsCommand, Color, Error,
     HandlerBlock, HandlerCmd, OpId, OpsOperation, R2AMessage, R2AOpen, R2AUpdate, Value, VarId,
-    Watch,
 };
 use byteorder::{ReadBytesExt, LE};
 use std::collections::{BTreeMap, HashMap};
 use std::io::{Read, Write};
 use std::ops::Deref;
+use std::time::Instant;
 use uriparse::RelativeReference;
 
 #[derive(Clone)]
@@ -40,6 +40,7 @@ impl Deref for OpIdWrapper {
     }
 }
 
+#[allow(dead_code)]
 impl OpIdWrapper {
     fn equals(self, rhs: OpIdWrapper) -> OpWrapper {
         OpWrapper(OpsOperation::Eq { a: *self, b: *rhs })
@@ -77,7 +78,7 @@ impl<'a> OpFactory<'a> {
         })
     }
 
-    pub fn new_rect(&mut self, left: f64, top: f64, right: f64, bottom: f64) -> OpWrapper {
+    pub fn new_rect(left: f64, top: f64, right: f64, bottom: f64) -> OpWrapper {
         OpWrapper(OpsOperation::Value(Value::Rect {
             left,
             top,
@@ -99,6 +100,10 @@ impl<'a> OpFactory<'a> {
             key: key.into(),
             scene: scene_id,
         }))
+    }
+
+    pub fn push_cmd(&mut self, cmd: CmdsCommand) {
+        self.0.cmds.push(cmd);
     }
 }
 
@@ -127,14 +132,15 @@ fn open_window(
     match path {
         // Root
         [""] => {
+            let start = Instant::now();
             let mut var_decls = BTreeMap::new();
             var_decls.insert("offset".to_string(), Value::Double(20.0));
             var_decls.insert(
                 ":window_title".to_string(),
-                Value::String("BoldUI Example: Shapes".to_string()),
+                Value::String("BoldUI Example: Calculator".to_string()),
             );
-            var_decls.insert(":window_initial_size_x".to_string(), Value::Sint64(600));
-            var_decls.insert(":window_initial_size_y".to_string(), Value::Sint64(400));
+            var_decls.insert(":window_initial_size_x".to_string(), Value::Sint64(334));
+            var_decls.insert(":window_initial_size_y".to_string(), Value::Sint64(327));
             if let Some(window_id) = params.get("window_id") {
                 // Copy from input
                 var_decls.insert(
@@ -161,48 +167,245 @@ fn open_window(
 
             {
                 let f = &mut OpFactory(&mut scene);
-                let clear_color = OpFactory::new_color(Color::from_hex(0x003333)).push(f);
-                let rect_color = OpFactory::new_color(Color::from_hex(0x3A8DDA)).push(f);
 
-                let offset = f.var("offset").push(f);
-                let neg_offset = (-offset).push(f);
-                let width = f.var(":width").push(f);
-                let height = f.var(":height").push(f);
+                // Background
+                let bg_color = OpFactory::new_color(Color::from_hex(0x242424)).push(f);
+                f.push_cmd(CmdsCommand::Clear { color: *bg_color });
 
-                let rect = OpFactory::make_rect_from_points(
-                    OpFactory::make_point(offset, offset).push(f),
-                    OpFactory::make_point(
-                        (width + neg_offset).push(f),
-                        (height + neg_offset).push(f),
+                // Results box
+                let result_bg_color = OpFactory::new_color(Color::from_hex(0x363636)).push(f);
+                const RESULTS_WIDTH: f64 = 334.0;
+                const RESULTS_HEIGHT: f64 = 65.0;
+                let results_rect =
+                    OpFactory::new_rect(0.0, 1.0, RESULTS_WIDTH, RESULTS_HEIGHT + 1.0).push(f);
+                f.push_cmd(CmdsCommand::DrawRect {
+                    paint: *result_bg_color,
+                    rect: *results_rect,
+                });
+
+                let result_text_color = OpFactory::new_color(Color::from_hex(0xffffff)).push(f);
+                // const RESULT_LEFT_PADDING: f64 = 16.0;
+                let text_pos =
+                    OpFactory::new_point(RESULTS_WIDTH / 2.0, RESULTS_HEIGHT / 2.0).push(f);
+                let text = OpFactory::new_string("0".to_string()).push(f);
+                f.push_cmd(CmdsCommand::DrawCenteredText {
+                    text: *text,
+                    paint: *result_text_color,
+                    center: *text_pos,
+                });
+
+                // Buttons: Row 1
+                let action_button_color = OpFactory::new_color(Color::from_hex(0x3a3a3a)).push(f);
+                let number_button_color = OpFactory::new_color(Color::from_hex(0x505050)).push(f);
+                let equals_button_color = OpFactory::new_color(Color::from_hex(0xe66100)).push(f);
+                let button_text_color = OpFactory::new_color(Color::from_hex(0xffffff)).push(f);
+
+                fn make_btn(
+                    f: &mut OpFactory,
+                    color: OpId,
+                    x: i32,
+                    y: i32,
+                    text: &str,
+                    text_color: OpId,
+                ) {
+                    const TOP_PADDING: f64 = 79.0;
+                    const LEFT_PADDING: f64 = 12.0;
+                    const X_PADDING: f64 = 4.0;
+                    const Y_PADDING: f64 = 4.0;
+                    const BTN_WIDTH: f64 = 59.0;
+                    const BTN_HEIGHT: f64 = 44.0;
+
+                    let rect = OpFactory::new_rect(
+                        LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH),
+                        TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT),
+                        LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + BTN_WIDTH,
+                        TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT) + BTN_HEIGHT,
                     )
-                    .push(f),
-                )
-                .push(f);
+                    .push(f);
+                    f.push_cmd(CmdsCommand::DrawRect {
+                        paint: color,
+                        rect: *rect,
+                    });
 
-                let offset_eq_100 = offset.equals(OpFactory::new_f64(100.0).push(f)).push(f);
+                    let text_pos = OpFactory::new_point(
+                        LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + 0.5 * BTN_WIDTH,
+                        TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT) + 0.5 * BTN_HEIGHT,
+                    )
+                    .push(f);
+                    let text = OpFactory::new_string(text.to_string()).push(f);
+                    f.push_cmd(CmdsCommand::DrawCenteredText {
+                        text: *text,
+                        paint: text_color,
+                        center: *text_pos,
+                    });
+                }
 
-                scene.cmds.push(CmdsCommand::Clear {
-                    color: *clear_color,
-                });
-                scene.cmds.push(CmdsCommand::DrawRect {
-                    paint: *rect_color,
-                    rect: *rect,
-                });
-                scene.watches.push(Watch {
-                    condition: *offset_eq_100,
-                    handler: HandlerBlock {
-                        ops: vec![],
-                        cmds: vec![
-                            HandlerCmd::DebugMessage {
-                                msg: "Offset is 100.0, sending reply".to_string(),
-                            },
-                            HandlerCmd::Reply {
-                                path: "/".to_string(),
-                                params: vec![*width, *height],
-                            },
-                        ],
-                    },
-                });
+                fn make_tall_btn(
+                    f: &mut OpFactory,
+                    color: OpId,
+                    x: i32,
+                    y: i32,
+                    text: &str,
+                    text_color: OpId,
+                ) {
+                    const TOP_PADDING: f64 = 79.0;
+                    const LEFT_PADDING: f64 = 12.0;
+                    const X_PADDING: f64 = 4.0;
+                    const Y_PADDING: f64 = 4.0;
+                    const BTN_WIDTH: f64 = 59.0;
+                    const BTN_HEIGHT: f64 = 44.0;
+
+                    let rect = OpFactory::new_rect(
+                        LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH),
+                        TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT),
+                        LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + BTN_WIDTH,
+                        TOP_PADDING + ((y + 1) as f64) * (Y_PADDING + BTN_HEIGHT) + BTN_HEIGHT,
+                    )
+                    .push(f);
+                    f.push_cmd(CmdsCommand::DrawRect {
+                        paint: color,
+                        rect: *rect,
+                    });
+
+                    let text_pos = OpFactory::new_point(
+                        LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + 0.5 * BTN_WIDTH,
+                        TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT) + 1.0 * BTN_HEIGHT,
+                    )
+                    .push(f);
+                    let text = OpFactory::new_string(text.to_string()).push(f);
+                    f.push_cmd(CmdsCommand::DrawCenteredText {
+                        text: *text,
+                        paint: text_color,
+                        center: *text_pos,
+                    });
+                }
+
+                // Row 1
+                // Backspace
+                make_btn(f, *action_button_color, 0, 0, "<x|", *button_text_color);
+
+                // Left Bracket
+                make_btn(f, *action_button_color, 1, 0, "(", *button_text_color);
+
+                // Right Bracket
+                make_btn(f, *action_button_color, 2, 0, ")", *button_text_color);
+
+                // Mod
+                make_btn(f, *action_button_color, 3, 0, "mod", *button_text_color);
+
+                // Pi
+                make_btn(f, *action_button_color, 4, 0, "pi", *button_text_color);
+
+                // Row 2
+                // 7
+                make_btn(f, *number_button_color, 0, 1, "7", *button_text_color);
+
+                // 8
+                make_btn(f, *number_button_color, 1, 1, "8", *button_text_color);
+
+                // 9
+                make_btn(f, *number_button_color, 2, 1, "9", *button_text_color);
+
+                // Div
+                make_btn(f, *action_button_color, 3, 1, "/", *button_text_color);
+
+                // Sqrt
+                make_btn(f, *action_button_color, 4, 1, "sqrt", *button_text_color);
+
+                // Row 3
+                // 4
+                make_btn(f, *number_button_color, 0, 2, "4", *button_text_color);
+
+                // 5
+                make_btn(f, *number_button_color, 1, 2, "5", *button_text_color);
+
+                // 6
+                make_btn(f, *number_button_color, 2, 2, "6", *button_text_color);
+
+                // Mult
+                make_btn(f, *action_button_color, 3, 2, "*", *button_text_color);
+
+                // x^2
+                make_btn(f, *action_button_color, 4, 2, "x^2", *button_text_color);
+
+                // Row 4
+                // 1
+                make_btn(f, *number_button_color, 0, 3, "1", *button_text_color);
+
+                // 2
+                make_btn(f, *number_button_color, 1, 3, "2", *button_text_color);
+
+                // 3
+                make_btn(f, *number_button_color, 2, 3, "3", *button_text_color);
+
+                // Sub
+                make_btn(f, *action_button_color, 3, 3, "-", *button_text_color);
+
+                // Equals
+                make_tall_btn(f, *equals_button_color, 4, 3, "=", *button_text_color);
+
+                // Row 5
+                // 0
+                make_btn(f, *number_button_color, 0, 4, "0", *button_text_color);
+
+                // Dot
+                make_btn(f, *action_button_color, 1, 4, ".", *button_text_color);
+
+                // Percent
+                make_btn(f, *action_button_color, 2, 4, "%", *button_text_color);
+
+                // Plus
+                make_btn(f, *action_button_color, 3, 4, "+", *button_text_color);
+
+                // let rect_color = OpFactory::new_color(Color::from_hex(0x3A8DDA)).push(f);
+                //
+                // let offset = f.var("offset").push(f);
+                // let neg_offset = (-offset).push(f);
+                // let width = f.var(":width").push(f);
+                // let height = f.var(":height").push(f);
+                //
+                // let rect = OpFactory::make_rect_from_points(
+                //     OpFactory::make_point(offset, offset).push(f),
+                //     OpFactory::make_point(
+                //         (width + neg_offset).push(f),
+                //         (height + neg_offset).push(f),
+                //     )
+                //     .push(f),
+                // )
+                // .push(f);
+                //
+                // let offset_eq_100 = offset.equals(OpFactory::new_f64(100.0).push(f)).push(f);
+                //
+                // scene.cmds.push(CmdsCommand::DrawRect {
+                //     paint: *rect_color,
+                //     rect: *rect,
+                // });
+                // scene.watches.push(Watch {
+                //     condition: *offset_eq_100,
+                //     handler: HandlerBlock {
+                //         ops: vec![],
+                //         cmds: vec![
+                //             HandlerCmd::DebugMessage {
+                //                 msg: "Offset is 100.0, sending reply".to_string(),
+                //             },
+                //             HandlerCmd::Reply {
+                //                 path: "/".to_string(),
+                //                 params: vec![*width, *height],
+                //             },
+                //         ],
+                //     },
+                // });
+
+                // for i in 0..256 {
+                //     let color = OpFactory::new_color(Color::from_hex(0xe66100 + i)).push(f);
+                //     let rect =
+                //         OpFactory::new_rect(i as f64, i as f64, i as f64 + 30.0, i as f64 + 30.0)
+                //             .push(f);
+                //     f.push_cmd(CmdsCommand::DrawRect {
+                //         paint: *color,
+                //         rect: *rect,
+                //     });
+                // }
             }
 
             stdout.send(&A2RMessage::Update(A2RUpdate {
@@ -221,26 +424,33 @@ fn open_window(
 
             stdout.send(&A2RMessage::Update(A2RUpdate {
                 updated_scenes: vec![],
-                run_blocks: vec![
-                    // Change offset
-                    HandlerBlock {
-                        ops: vec![
-                            // Op #0
-                            OpsOperation::Value(Value::Double(100.0)),
-                        ],
-                        cmds: vec![HandlerCmd::UpdateVar {
-                            var: VarId {
-                                key: "offset".to_string(),
-                                scene: 1,
-                            },
-                            value: OpId {
-                                scene_id: 0,
-                                idx: 0,
-                            },
-                        }],
-                    },
-                ],
+                run_blocks: vec![],
             }))?;
+
+            // stdout.send(&A2RMessage::Update(A2RUpdate {
+            //     updated_scenes: vec![],
+            //     run_blocks: vec![
+            //         // Change offset
+            //         HandlerBlock {
+            //             ops: vec![
+            //                 // Op #0
+            //                 OpsOperation::Value(Value::Double(100.0)),
+            //             ],
+            //             cmds: vec![HandlerCmd::UpdateVar {
+            //                 var: VarId {
+            //                     key: "offset".to_string(),
+            //                     scene: 1,
+            //                 },
+            //                 value: OpId {
+            //                     scene_id: 0,
+            //                     idx: 0,
+            //                 },
+            //             }],
+            //         },
+            //     ],
+            // }))?;
+
+            eprintln!("[app:dbg] Scene update took {:?} to make", start.elapsed());
         }
 
         // Not found

@@ -9,14 +9,15 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::os::unix::io::AsRawFd;
 use std::sync::{Arc, Barrier};
+use std::time::Instant;
 
 pub(crate) struct Communicator<'a> {
     pub app_stdin: File,
     pub app_stdout: File,
     pub state_machine: &'a Mutex<StateMachine>,
     pub update_barrier: Option<Arc<Barrier>>,
-    pub reply_recv: Receiver<R2AReply>,
-    pub reply_notify_recv: File,
+    pub from_frontend_recv: Receiver<Option<R2AReply>>,
+    pub from_frontend_notify_recv: File,
 }
 
 impl<'a> Communicator<'a> {
@@ -88,17 +89,23 @@ impl<'a> Communicator<'a> {
         loop {
             let mut fds = FdSet::new();
             fds.insert(self.app_stdout.as_raw_fd());
-            fds.insert(self.reply_notify_recv.as_raw_fd());
+            fds.insert(self.from_frontend_notify_recv.as_raw_fd());
             select(None, Some(&mut fds), None, None, None).unwrap();
 
             // Check if replies are pending
-            if fds.contains(self.reply_notify_recv.as_raw_fd()) {
-                self.reply_notify_recv.discard_until_eof().unwrap();
+            if fds.contains(self.from_frontend_notify_recv.as_raw_fd()) {
+                self.from_frontend_notify_recv.discard_until_eof().unwrap();
 
                 // Send any pending replies
                 let mut replies = vec![];
-                while let Ok(reply) = self.reply_recv.try_recv() {
-                    replies.push(reply);
+                while let Ok(reply) = self.from_frontend_recv.try_recv() {
+                    if let Some(reply) = reply {
+                        replies.push(reply);
+                    } else {
+                        // Got a None, this means we're closing the session!
+                        eprintln!("[rnd:dbg] done");
+                        return Ok(());
+                    }
                 }
                 if !replies.is_empty() {
                     self.app_stdin
@@ -114,7 +121,7 @@ impl<'a> Communicator<'a> {
                 self.app_stdout.read_exact(&mut msg_buf)?;
                 let msg = bincode::deserialize::<A2RMessage>(&msg_buf)?;
 
-                eprintln!("[rnd:dbg] A2R: {:#?}", &msg);
+                // eprintln!("[rnd:dbg] A2R: {:#?}", &msg);
                 match msg {
                     A2RMessage::Update(A2RUpdate {
                         updated_scenes,
@@ -125,9 +132,11 @@ impl<'a> Communicator<'a> {
                             update_barrier.wait();
                         }
 
+                        let start = Instant::now();
                         let mut state = self.state_machine.lock();
 
                         state.update_scenes_and_run_blocks(updated_scenes, run_blocks);
+                        eprintln!("[rnd:dbg] A2R update took {:?} to handle", start.elapsed());
                     }
                     A2RMessage::Error(e) => {
                         panic!("App Error: Code {}: {}", e.code, e.text);

@@ -33,6 +33,10 @@ pub(crate) struct Params {
     /// rendering frontend to use, one of: 'image' (default), 'window'
     #[argh(option)]
     pub frontend: Option<FrontendType>,
+
+    /// path to a JSON file describing a simulated set of clicks, keystrokes, etc.
+    #[argh(option)]
+    pub dev_simulated_input: Option<String>,
 }
 
 /// Extract the basename from a path

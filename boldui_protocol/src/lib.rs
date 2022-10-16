@@ -177,8 +177,18 @@ pub enum OpsOperation {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum CmdsCommand {
-    Clear { color: OpId },
-    DrawRect { paint: OpId, rect: OpId },
+    Clear {
+        color: OpId,
+    },
+    DrawRect {
+        paint: OpId,
+        rect: OpId,
+    },
+    DrawCenteredText {
+        text: OpId,
+        paint: OpId,
+        center: OpId,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

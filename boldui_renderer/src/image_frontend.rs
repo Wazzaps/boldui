@@ -6,6 +6,7 @@ use skia_safe::{AlphaType, Color4f, ColorSpace, EncodedImageFormat, ISize, Image
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::sync::{Arc, Barrier};
+use std::time::Instant;
 
 pub(crate) struct ImageFrontend<'a> {
     pub wakeup_recv: Receiver<()>,
@@ -56,7 +57,9 @@ impl<'a> Frontend for ImageFrontend<'a> {
                 break;
             }
 
+            let start = Instant::now();
             let mut state = self.state_machine.lock();
+            eprintln!("[rnd:dbg] [{:?}] Acquired lock", start.elapsed());
             let window_size = {
                 const DEFAULT_WINDOW_SIZE: (i32, i32) = (1280, 720);
                 let root_scene = state.root_scene.unwrap();
@@ -71,13 +74,17 @@ impl<'a> Frontend for ImageFrontend<'a> {
             let mut surface = Surface::new_raster(&image_info, image_info.min_row_bytes(), None)
                 .expect("Failed to create surface");
             let canvas = surface.canvas();
+            eprintln!("[rnd:dbg] [{:?}] Created canvas", start.elapsed());
 
             // Render
             canvas.clear(Color4f::new(0.0, 0.0, 0.0, 0.0));
             {
                 state.update_and_evaluate(0.0, img_size.width as i64, img_size.height as i64);
+                eprintln!("[rnd:dbg] [{:?}] Updated", start.elapsed());
                 self.renderer.render(canvas, &mut *state);
+                eprintln!("[rnd:dbg] [{:?}] Rendered", start.elapsed());
             }
+            eprintln!("[rnd:dbg] Frame took {:?} to render", start.elapsed());
 
             // Encode it
             let mut out = BufWriter::new(File::create(format!("target/result-{i}.png")).unwrap());
@@ -87,6 +94,12 @@ impl<'a> Frontend for ImageFrontend<'a> {
                 .expect("Failed to encode as PNG");
             out.write_all(img.as_bytes()).expect("Failed to write PNG");
             eprintln!("Wrote frame #{i}");
+
+            // Exit
+            // state.to_communicator_send.send(None).unwrap();
+            // state.to_communicator_notify_send.write_all(b".").unwrap();
+            // self.update_barrier.wait();
+            // return;
         }
     }
 }

@@ -58,14 +58,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (inp, out) = create_child(extra);
 
     // Connect
-    let (state_machine, reply_recv, reply_notify_recv) = StateMachine::new();
+    let (state_machine, from_frontend_recv, from_frontend_notify_recv) = StateMachine::new();
     let mut communicator = Communicator {
         app_stdin: inp,
         app_stdout: out,
         state_machine: &state_machine,
         update_barrier: None,
-        reply_recv,
-        reply_notify_recv,
+        from_frontend_recv,
+        from_frontend_notify_recv,
     };
     communicator.connect()?;
     communicator.send_open(params.uri.unwrap_or_else(|| "/".to_string()))?;

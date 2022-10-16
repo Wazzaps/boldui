@@ -51,15 +51,15 @@ pub(crate) struct StateMachine {
     pub op_results: OpResults,
     pub root_scene: Option<SceneId>,
     pub has_pending_replies: bool,
-    pub reply_send: Sender<R2AReply>,
-    pub reply_notify_send: File,
+    pub to_communicator_send: Sender<Option<R2AReply>>,
+    pub to_communicator_notify_send: File,
     pub wakeup_proxy: Option<Box<dyn EventLoopProxy + Send>>,
 }
 
 impl StateMachine {
-    pub fn new() -> (Mutex<Self>, Receiver<R2AReply>, File) {
-        let (reply_send, reply_recv) = crossbeam::channel::unbounded();
-        let (reply_notify_send, reply_notify_recv) = {
+    pub fn new() -> (Mutex<Self>, Receiver<Option<R2AReply>>, File) {
+        let (to_communicator_send, from_frontend_recv) = crossbeam::channel::unbounded();
+        let (to_communicator_notify_send, from_frontend_notify_recv) = {
             let fds = pipe().unwrap();
             // Set the read fd to be non-blocking
             fcntl(fds.0, FcntlArg::F_SETFL(OFlag::O_NONBLOCK)).unwrap();
@@ -72,12 +72,12 @@ impl StateMachine {
                 op_results: OpResults::new(),
                 root_scene: None,
                 has_pending_replies: false,
-                reply_send,
-                reply_notify_send,
+                to_communicator_send,
+                to_communicator_notify_send,
                 wakeup_proxy: None,
             }),
-            reply_recv,
-            reply_notify_recv,
+            from_frontend_recv,
+            from_frontend_notify_recv,
         )
     }
 
@@ -155,7 +155,7 @@ impl StateMachine {
 
         if self.has_pending_replies {
             // Sending a character on this pipe signifies the `reply_recv` end of the channel is ready for reading
-            self.reply_notify_send.write_all(b".").unwrap();
+            self.to_communicator_notify_send.write_all(b".").unwrap();
             self.has_pending_replies = false;
         }
     }
@@ -288,7 +288,7 @@ impl StateMachine {
                         .collect(),
                 };
                 eprintln!("[rnd:dbg] Replying: {:?}", reply);
-                self.reply_send.send(reply).unwrap();
+                self.to_communicator_send.send(Some(reply)).unwrap();
                 self.has_pending_replies = true;
             }
             HandlerCmd::If {
@@ -359,7 +359,7 @@ impl StateMachine {
 
         if self.has_pending_replies {
             // Sending a character on this pipe signifies the `reply_recv` end of the channel is ready for reading
-            self.reply_notify_send.write_all(b".").unwrap();
+            self.to_communicator_notify_send.write_all(b".").unwrap();
             self.has_pending_replies = false;
         }
 
@@ -370,6 +370,6 @@ impl StateMachine {
         // Redraw
         self.wakeup_proxy.as_ref().unwrap().request_redraw();
 
-        eprintln!("[rnd:dbg] New scenes: {:#?}", self.scenes);
+        // eprintln!("[rnd:dbg] New scenes: {:#?}", self.scenes);
     }
 }
