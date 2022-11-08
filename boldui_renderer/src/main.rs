@@ -1,8 +1,9 @@
 use crate::cli::FrontendType;
+use crate::communicator::{ConnectionInitiator, ToStateMachine};
 use crate::image_frontend::ImageFrontend;
 use crate::renderer::Renderer;
+use crate::simulator::{SimulationFile, Simulator};
 use crate::state_machine::StateMachine;
-use communicator::Communicator;
 use std::fs::File;
 use std::os::unix::io::{FromRawFd, IntoRawFd};
 use std::process::{Command, Stdio};
@@ -14,11 +15,12 @@ pub(crate) mod communicator;
 pub(crate) mod image_frontend;
 pub(crate) mod op_interpreter;
 pub(crate) mod renderer;
+pub(crate) mod simulator;
 pub(crate) mod state_machine;
 pub(crate) mod util;
 
 pub(crate) trait EventLoopProxy {
-    fn request_redraw(&self);
+    fn to_state_machine(&self, event: ToStateMachine);
 }
 
 pub(crate) trait Frontend {
@@ -46,6 +48,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (params, extra) = cli::get_params();
     // println!("Command line args: {:?}, Extra: {:?}", &params, &extra);
 
+    let simulator = if let Some(dev_simulated_input) = params.dev_simulated_input {
+        let simulated_input = std::fs::read_to_string(&dev_simulated_input)?;
+        let simulated_input: SimulationFile = serde_json::from_str(&simulated_input)?;
+        Some(Simulator::new(simulated_input))
+    } else {
+        None
+    };
+
     // Create child
     let extra = match extra {
         Some(extra) => extra,
@@ -58,35 +68,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (inp, out) = create_child(extra);
 
     // Connect
-    let (state_machine, from_frontend_recv, from_frontend_notify_recv) = StateMachine::new();
-    let mut communicator = Communicator {
+    let (state_machine, comm_channel_recv) = StateMachine::new();
+    let mut connect_init = ConnectionInitiator {
         app_stdin: inp,
         app_stdout: out,
-        state_machine: &state_machine,
-        update_barrier: None,
-        from_frontend_recv,
-        from_frontend_notify_recv,
+        // update_barrier: None,
     };
-    communicator.connect()?;
-    communicator.send_open(params.uri.unwrap_or_else(|| "/".to_string()))?;
+    connect_init.connect()?;
+    connect_init.send_open(params.uri.unwrap_or_else(|| "/".to_string()))?;
 
-    let (mut frontend, wakeup_proxy, update_barrier) = match params.frontend.unwrap() {
+    let (mut frontend, event_proxy) = match params.frontend.unwrap() {
         FrontendType::Image => {
-            let (frontend, wakeup_proxy, update_barrier) =
-                ImageFrontend::new(Renderer {}, &state_machine);
-            (
-                Box::new(frontend) as Box<dyn Frontend>,
-                Box::new(wakeup_proxy) as Box<dyn EventLoopProxy + Send>,
-                Some(update_barrier),
-            )
+            let (frontend, event_proxy) = ImageFrontend::new(Renderer {}, state_machine, simulator);
+            (Box::new(frontend) as Box<dyn Frontend>, event_proxy)
         }
         FrontendType::Window => {
             unimplemented!()
         }
     };
 
-    state_machine.lock().wakeup_proxy = Some(wakeup_proxy);
-    communicator.update_barrier = update_barrier;
+    let mut communicator = connect_init.into_communicator(event_proxy, comm_channel_recv);
 
     crossbeam::scope(|scope| {
         scope.spawn(|_| {

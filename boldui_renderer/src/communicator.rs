@@ -1,26 +1,47 @@
-use crate::util::ReadExt;
-use crate::{SerdeSender, StateMachine};
+use crate::{EventLoopProxy, SerdeSender};
 use boldui_protocol::{bincode, A2RMessage, A2RUpdate, R2AReply, R2AUpdate};
 use byteorder::{ReadBytesExt, LE};
-use crossbeam::channel::Receiver;
+use crossbeam::channel::{Receiver, Sender};
+use eventfd::EventFD;
 use nix::sys::select::{select, FdSet};
-use parking_lot::Mutex;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::os::unix::io::AsRawFd;
-use std::sync::{Arc, Barrier};
-use std::time::Instant;
 
-pub(crate) struct Communicator<'a> {
-    pub app_stdin: File,
-    pub app_stdout: File,
-    pub state_machine: &'a Mutex<StateMachine>,
-    pub update_barrier: Option<Arc<Barrier>>,
-    pub from_frontend_recv: Receiver<Option<R2AReply>>,
-    pub from_frontend_notify_recv: File,
+pub(crate) enum ToStateMachine {
+    Quit,
+    Redraw,
+    Update(A2RUpdate),
 }
 
-impl<'a> Communicator<'a> {
+pub(crate) enum FromStateMachine {
+    Quit,
+    Reply(R2AReply),
+}
+
+pub(crate) struct CommChannelRecv {
+    pub recv: Receiver<FromStateMachine>,
+    pub notify_recv: EventFD,
+}
+
+pub(crate) struct CommChannelSend {
+    pub send: Sender<FromStateMachine>,
+    pub notify_send: EventFD,
+}
+
+pub(crate) struct ConnectionInitiator {
+    pub app_stdin: File,
+    pub app_stdout: File,
+}
+
+pub(crate) struct Communicator {
+    pub app_stdin: File,
+    pub app_stdout: File,
+    pub event_loop_proxy: Box<dyn EventLoopProxy + Send>,
+    pub comm_channel_recv: CommChannelRecv,
+}
+
+impl ConnectionInitiator {
     pub fn connect(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         // Send hello
         {
@@ -84,27 +105,45 @@ impl<'a> Communicator<'a> {
         Ok(())
     }
 
+    pub fn into_communicator(
+        self,
+        event_loop_proxy: Box<dyn EventLoopProxy + Send>,
+        comm_channel_recv: CommChannelRecv,
+    ) -> Communicator {
+        Communicator {
+            app_stdin: self.app_stdin,
+            app_stdout: self.app_stdout,
+            event_loop_proxy,
+            comm_channel_recv,
+        }
+    }
+}
+
+impl Communicator {
     pub fn main_loop(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let mut msg_buf = Vec::new();
         loop {
             let mut fds = FdSet::new();
             fds.insert(self.app_stdout.as_raw_fd());
-            fds.insert(self.from_frontend_notify_recv.as_raw_fd());
+            fds.insert(self.comm_channel_recv.notify_recv.as_raw_fd());
             select(None, Some(&mut fds), None, None, None).unwrap();
 
             // Check if replies are pending
-            if fds.contains(self.from_frontend_notify_recv.as_raw_fd()) {
-                self.from_frontend_notify_recv.discard_until_eof().unwrap();
+            if fds.contains(self.comm_channel_recv.notify_recv.as_raw_fd()) {
+                let _ = self.comm_channel_recv.notify_recv.read().unwrap();
 
                 // Send any pending replies
                 let mut replies = vec![];
-                while let Ok(reply) = self.from_frontend_recv.try_recv() {
-                    if let Some(reply) = reply {
-                        replies.push(reply);
-                    } else {
-                        // Got a None, this means we're closing the session!
-                        eprintln!("[rnd:dbg] done");
-                        return Ok(());
+                while let Ok(reply) = self.comm_channel_recv.recv.try_recv() {
+                    match reply {
+                        FromStateMachine::Quit => {
+                            // Got a Quit, closing the session!
+                            eprintln!("[rnd:dbg] done");
+                            return Ok(());
+                        }
+                        FromStateMachine::Reply(reply) => {
+                            replies.push(reply);
+                        }
                     }
                 }
                 if !replies.is_empty() {
@@ -123,23 +162,18 @@ impl<'a> Communicator<'a> {
 
                 // eprintln!("[rnd:dbg] A2R: {:#?}", &msg);
                 match msg {
-                    A2RMessage::Update(A2RUpdate {
-                        updated_scenes,
-                        run_blocks,
-                    }) => {
-                        // Some frontends (e.g. image frontend) want to run between _each_ update, so wait for it to finish
-                        if let Some(update_barrier) = &self.update_barrier {
-                            update_barrier.wait();
-                        }
-
-                        let start = Instant::now();
-                        let mut state = self.state_machine.lock();
-
-                        state.update_scenes_and_run_blocks(updated_scenes, run_blocks);
-                        eprintln!("[rnd:dbg] A2R update took {:?} to handle", start.elapsed());
+                    A2RMessage::Update(update) => {
+                        self.event_loop_proxy
+                            .to_state_machine(ToStateMachine::Update(update));
                     }
                     A2RMessage::Error(e) => {
-                        panic!("App Error: Code {}: {}", e.code, e.text);
+                        if e.code == 0 && e.text.is_empty() {
+                            eprintln!("[rnd:err] App Quit");
+                        } else {
+                            eprintln!("[rnd:err] App Error: Code {}: {}", e.code, e.text);
+                        }
+                        self.event_loop_proxy.to_state_machine(ToStateMachine::Quit);
+                        return Ok(());
                     }
                     A2RMessage::CompressedUpdate(_msg) => unimplemented!(
                         "TODO: Implement zstd compressed payloads (for small binary sizes)"

@@ -1,17 +1,13 @@
+use crate::communicator::{CommChannelRecv, CommChannelSend, FromStateMachine};
 use crate::op_interpreter::OpResults;
-use crate::EventLoopProxy;
+use crate::{EventLoopProxy, ToStateMachine};
 use boldui_protocol::{
     A2RReparentScene, A2RUpdateScene, HandlerBlock, HandlerCmd, OpsOperation, R2AReply, SceneId,
     Value,
 };
-use crossbeam::channel::{Receiver, Sender};
-use nix::fcntl::{fcntl, FcntlArg, OFlag};
-use nix::unistd::pipe;
-use parking_lot::Mutex;
+use eventfd::{EfdFlags, EventFD};
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::fs::File;
 use std::io::Write;
-use std::os::unix::io::FromRawFd;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub enum SceneParent {
@@ -51,33 +47,30 @@ pub(crate) struct StateMachine {
     pub op_results: OpResults,
     pub root_scene: Option<SceneId>,
     pub has_pending_replies: bool,
-    pub to_communicator_send: Sender<Option<R2AReply>>,
-    pub to_communicator_notify_send: File,
-    pub wakeup_proxy: Option<Box<dyn EventLoopProxy + Send>>,
+    pub comm_channel_send: CommChannelSend,
+    pub event_proxy: Option<Box<dyn EventLoopProxy + Send>>,
 }
 
 impl StateMachine {
-    pub fn new() -> (Mutex<Self>, Receiver<Option<R2AReply>>, File) {
-        let (to_communicator_send, from_frontend_recv) = crossbeam::channel::unbounded();
-        let (to_communicator_notify_send, from_frontend_notify_recv) = {
-            let fds = pipe().unwrap();
-            // Set the read fd to be non-blocking
-            fcntl(fds.0, FcntlArg::F_SETFL(OFlag::O_NONBLOCK)).unwrap();
-            // SAFETY: These files were just given to us by the `pipe` call, they are open.
-            unsafe { (File::from_raw_fd(fds.1), File::from_raw_fd(fds.0)) }
-        };
+    pub fn new() -> (Self, CommChannelRecv) {
+        let (comm_channel_send, comm_channel_recv) = crossbeam::channel::unbounded();
+        let notifier = EventFD::new(0, EfdFlags::empty()).unwrap();
         (
-            Mutex::new(Self {
+            Self {
                 scenes: HashMap::new(),
                 op_results: OpResults::new(),
                 root_scene: None,
                 has_pending_replies: false,
-                to_communicator_send,
-                to_communicator_notify_send,
-                wakeup_proxy: None,
-            }),
-            from_frontend_recv,
-            from_frontend_notify_recv,
+                comm_channel_send: CommChannelSend {
+                    send: comm_channel_send,
+                    notify_send: notifier.clone(),
+                },
+                event_proxy: None,
+            },
+            CommChannelRecv {
+                recv: comm_channel_recv,
+                notify_recv: notifier,
+            },
         )
     }
 
@@ -155,7 +148,7 @@ impl StateMachine {
 
         if self.has_pending_replies {
             // Sending a character on this pipe signifies the `reply_recv` end of the channel is ready for reading
-            self.to_communicator_notify_send.write_all(b".").unwrap();
+            self.comm_channel_send.notify_send.write(1).unwrap();
             self.has_pending_replies = false;
         }
     }
@@ -288,7 +281,10 @@ impl StateMachine {
                         .collect(),
                 };
                 eprintln!("[rnd:dbg] Replying: {:?}", reply);
-                self.to_communicator_send.send(Some(reply)).unwrap();
+                self.comm_channel_send
+                    .send
+                    .send(FromStateMachine::Reply(reply))
+                    .unwrap();
                 self.has_pending_replies = true;
             }
             HandlerCmd::If {
@@ -359,7 +355,7 @@ impl StateMachine {
 
         if self.has_pending_replies {
             // Sending a character on this pipe signifies the `reply_recv` end of the channel is ready for reading
-            self.to_communicator_notify_send.write_all(b".").unwrap();
+            self.comm_channel_send.notify_send.write(1).unwrap();
             self.has_pending_replies = false;
         }
 
@@ -368,7 +364,10 @@ impl StateMachine {
             .retain(|_scene_id, scene| scene.1.parent.has_parent());
 
         // Redraw
-        self.wakeup_proxy.as_ref().unwrap().request_redraw();
+        self.event_proxy
+            .as_ref()
+            .unwrap()
+            .to_state_machine(ToStateMachine::Redraw);
 
         // eprintln!("[rnd:dbg] New scenes: {:#?}", self.scenes);
     }

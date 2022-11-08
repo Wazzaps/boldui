@@ -1,8 +1,7 @@
 use crate::StateMachine;
 use boldui_protocol::{CmdsCommand, Color, Value};
 use skia_safe::{
-    Canvas, Color4f, ColorSpace, Font, FontStyle, Paint, Point, Rect, TextBlob, TextEncoding,
-    Typeface,
+    Canvas, Color4f, ColorSpace, Font, FontStyle, Paint, Point, Rect, TextBlob, Typeface,
 };
 
 pub trait IntoColor4f {
