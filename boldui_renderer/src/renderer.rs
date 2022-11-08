@@ -1,5 +1,5 @@
 use crate::StateMachine;
-use boldui_protocol::{CmdsCommand, Color, Value};
+use boldui_protocol::{CmdsCommand, Color, SceneId, Value};
 use skia_safe::{
     Canvas, Color4f, ColorSpace, Font, FontStyle, Paint, Point, Rect, TextBlob, Typeface,
 };
@@ -22,16 +22,14 @@ impl IntoColor4f for Color {
 pub(crate) struct Renderer {}
 
 impl Renderer {
-    pub fn render(&mut self, canvas: &mut Canvas, state: &mut StateMachine) {
+    pub fn render_scene(
+        &mut self,
+        canvas: &mut Canvas,
+        state: &mut StateMachine,
+        root_scene: SceneId,
+    ) {
         let color_space = ColorSpace::new_srgb();
         // let img_size = canvas.base_layer_size();
-        let root_scene = match state.root_scene {
-            None => {
-                canvas.clear(Color4f::new(0.5, 0.1, 0.1, 1.0));
-                return;
-            }
-            Some(root_scene) => root_scene,
-        };
 
         let (scene_desc, _scene_state) = state.scenes.get(&root_scene).unwrap();
         for cmd in scene_desc.cmds.iter() {

@@ -104,7 +104,15 @@ impl ImageFrontend {
                 img_size.height as i64,
             );
             eprintln!("[rnd:dbg] [{:?}] Updated", start.elapsed());
-            self.renderer.render(canvas, &mut self.state_machine);
+            match self.state_machine.root_scene {
+                None => {
+                    canvas.clear(Color4f::new(0.5, 0.1, 0.1, 1.0));
+                }
+                Some(root_scene) => {
+                    self.renderer
+                        .render_scene(canvas, &mut self.state_machine, root_scene);
+                }
+            }
             eprintln!("[rnd:dbg] [{:?}] Rendered", start.elapsed());
         }
         eprintln!("[rnd:dbg] Frame took {:?} to render", start.elapsed());
