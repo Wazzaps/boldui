@@ -7,7 +7,6 @@ use boldui_protocol::{
 };
 use eventfd::{EfdFlags, EventFD};
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::io::Write;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub enum SceneParent {

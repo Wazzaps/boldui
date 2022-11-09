@@ -1,0 +1,7 @@
+{
+  "format_version": "0",
+  "instructions": [
+    {"type": "sleep", "time_ms": 1000},
+    {"type": "quit"}
+  ]
+}

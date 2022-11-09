@@ -9,7 +9,7 @@ use boldui_protocol::{
 };
 use byteorder::{ReadBytesExt, LE};
 use std::collections::{BTreeMap, HashMap};
-use std::io::{Read, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::ops::Deref;
 use std::time::Instant;
 use uriparse::RelativeReference;
@@ -515,7 +515,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut msg_buf = Vec::new();
     loop {
-        let msg_len = stdin.read_u32::<LE>()?;
+        let msg_len = stdin.read_u32::<LE>();
+        let msg_len = match msg_len {
+            Ok(len) => len,
+            Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
+                eprintln!("[app:dbg] connection closed, bye!");
+                return Ok(());
+            }
+            Err(e) => Err(e)?,
+        };
+
         eprintln!("[app:dbg] reading msg of size {}", msg_len);
         msg_buf.resize(msg_len as usize, 0);
         stdin.read_exact(&mut msg_buf)?;
@@ -568,7 +577,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 open_window(raw_path, path_ref, params_map, &mut stdout)?;
             }
-            R2AMessage::Error(_) => {}
+            R2AMessage::Error(err) => {
+                eprintln!("[app:dbg] Renderer error: {:?}", err);
+            }
         }
     }
 }

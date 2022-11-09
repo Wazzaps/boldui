@@ -7,10 +7,12 @@ use nix::sys::select::{select, FdSet};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::os::unix::io::AsRawFd;
+use std::time::Instant;
 
 pub(crate) enum ToStateMachine {
     Quit,
     Redraw,
+    SleepUntil(Instant),
     Update(A2RUpdate),
 }
 

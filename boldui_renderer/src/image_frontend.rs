@@ -2,7 +2,7 @@ use crate::renderer::Renderer;
 use crate::simulator::Simulator;
 use crate::{EventLoopProxy, Frontend, StateMachine, ToStateMachine};
 use boldui_protocol::A2RUpdate;
-use crossbeam::channel::{Receiver, Sender};
+use crossbeam::channel::{Receiver, RecvTimeoutError, Sender};
 use skia_safe::{AlphaType, Color4f, ColorSpace, EncodedImageFormat, ISize, ImageInfo, Surface};
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -51,24 +51,57 @@ impl ImageFrontend {
 
 impl Frontend for ImageFrontend {
     fn main_loop(&mut self) {
+        let mut next_wakeup: Option<Instant> = None;
         loop {
-            let start = Instant::now();
+            let event = match next_wakeup {
+                // No wakeup scheduled, there must be an event coming next
+                None => self.event_recv.recv().unwrap_or(ToStateMachine::Quit),
 
-            match self.event_recv.recv() {
-                Ok(ToStateMachine::Update(A2RUpdate {
+                // Wakeup scheduled
+                Some(next_wakeup_instant) => {
+                    match self.event_recv.recv_deadline(next_wakeup_instant) {
+                        // Got an event before the wakeup
+                        Ok(e) => e,
+
+                        // Woke up before any event
+                        Err(RecvTimeoutError::Timeout) => {
+                            next_wakeup = None;
+                            ToStateMachine::Redraw
+                        }
+
+                        // Bye
+                        Err(RecvTimeoutError::Disconnected) => ToStateMachine::Quit,
+                    }
+                }
+            };
+
+            let start = Instant::now();
+            match event {
+                ToStateMachine::Update(A2RUpdate {
                     updated_scenes,
                     run_blocks,
-                })) => {
+                }) => {
                     self.state_machine
                         .update_scenes_and_run_blocks(updated_scenes, run_blocks);
                     eprintln!("[rnd:dbg] A2R update took {:?} to handle", start.elapsed());
                 }
-                Ok(ToStateMachine::Redraw) => {
+                ToStateMachine::Redraw => {
                     self.redraw(start);
+                    if let Some(simulator) = &mut self.simulator {
+                        if let Err(e) = simulator.tick(&mut self.state_machine) {
+                            eprintln!("[rnd:err] Error while running simulator: {:?}", e);
+                            break;
+                        }
+                    }
                 }
-                Ok(ToStateMachine::Quit) | Err(_) => {
+                ToStateMachine::Quit => {
                     eprintln!("State machine seems to be done, bye from frontend!");
                     break;
+                }
+                ToStateMachine::SleepUntil(instant) => {
+                    // Select the earliest wakeup time
+                    next_wakeup =
+                        next_wakeup.map_or(Some(instant), |before| Some(before.min(instant)));
                 }
             }
         }
@@ -126,7 +159,7 @@ impl ImageFrontend {
             .encode_to_data(EncodedImageFormat::PNG)
             .expect("Failed to encode as PNG");
         out.write_all(img.as_bytes()).expect("Failed to write PNG");
-        eprintln!("Wrote frame #{frame_num}");
+        eprintln!("[rnd:dbg] Wrote frame #{frame_num}");
         self.frame_num += 1;
     }
 }
