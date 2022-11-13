@@ -79,7 +79,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (mut frontend, event_proxy) = match params.frontend.unwrap() {
         FrontendType::Image => {
-            let (frontend, event_proxy) = ImageFrontend::new(Renderer {}, state_machine, simulator);
+            let (frontend, event_proxy) =
+                ImageFrontend::new(Renderer::new(), state_machine, simulator);
             (Box::new(frontend) as Box<dyn Frontend>, event_proxy)
         }
         FrontendType::Window => {

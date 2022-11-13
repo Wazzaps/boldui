@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 pub enum Instruction {
     Sleep { time_ms: u64 },
     Click { x: f64, y: f64, button: u8 },
+    Comment { contents: String },
     Quit,
 }
 
@@ -58,10 +59,7 @@ impl Simulator {
                     break;
                 }
                 Instruction::Click { x, y, button } => {
-                    dbg!(x);
-                    dbg!(y);
-                    dbg!(button);
-                    todo!();
+                    self.send_event(state_machine, ToStateMachine::Click { x, y, button });
                 }
                 Instruction::Quit => {
                     self.curr_insn += 1;
@@ -69,10 +67,11 @@ impl Simulator {
                     self.send_comm_event(state_machine, FromStateMachine::Quit)?;
                     break;
                 }
+                Instruction::Comment { .. } => {}
             }
 
-            // // Next opcode!
-            // self.curr_insn += 1;
+            // Next opcode!
+            self.curr_insn += 1;
         }
         Ok(())
     }

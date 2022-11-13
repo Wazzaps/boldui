@@ -4,7 +4,7 @@ mod util;
 
 use crate::util::SerdeSender;
 use boldui_protocol::{
-    A2RMessage, A2RReparentScene, A2RUpdate, A2RUpdateScene, CmdsCommand, Color, Error,
+    A2RMessage, A2RReparentScene, A2RUpdate, A2RUpdateScene, CmdsCommand, Color, Error, EventType,
     HandlerBlock, HandlerCmd, OpId, OpsOperation, R2AMessage, R2AOpen, R2AUpdate, Value, VarId,
 };
 use byteorder::{ReadBytesExt, LE};
@@ -105,6 +105,10 @@ impl<'a> OpFactory<'a> {
     pub fn push_cmd(&mut self, cmd: CmdsCommand) {
         self.0.cmds.push(cmd);
     }
+
+    pub fn push_event_handler(&mut self, evt_type: EventType, handler: HandlerBlock) {
+        self.0.event_handlers.push((evt_type, handler));
+    }
 }
 
 impl std::ops::Add for OpIdWrapper {
@@ -163,6 +167,7 @@ fn open_window(
                 cmds: vec![],
                 var_decls,
                 watches: vec![],
+                event_handlers: vec![],
             };
 
             {
@@ -232,12 +237,29 @@ fn open_window(
                         TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT) + 0.5 * BTN_HEIGHT,
                     )
                     .push(f);
-                    let text = OpFactory::new_string(text.to_string()).push(f);
+                    let text_op = OpFactory::new_string(text.to_string()).push(f);
                     f.push_cmd(CmdsCommand::DrawCenteredText {
-                        text: *text,
+                        text: *text_op,
                         paint: text_color,
                         center: *text_pos,
                     });
+
+                    // Click handler
+                    f.push_event_handler(
+                        EventType::Click { rect: *rect },
+                        HandlerBlock {
+                            ops: vec![],
+                            cmds: vec![
+                                HandlerCmd::DebugMessage {
+                                    msg: text.to_string(),
+                                },
+                                // HandlerCmd::Reply {
+                                //     path: "/".to_string(),
+                                //     params: vec![*text_op],
+                                // },
+                            ],
+                        },
+                    );
                 }
 
                 fn make_tall_btn(
@@ -272,12 +294,29 @@ fn open_window(
                         TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT) + 1.0 * BTN_HEIGHT,
                     )
                     .push(f);
-                    let text = OpFactory::new_string(text.to_string()).push(f);
+                    let text_op = OpFactory::new_string(text.to_string()).push(f);
                     f.push_cmd(CmdsCommand::DrawCenteredText {
-                        text: *text,
+                        text: *text_op,
                         paint: text_color,
                         center: *text_pos,
                     });
+
+                    // Click handler
+                    f.push_event_handler(
+                        EventType::Click { rect: *rect },
+                        HandlerBlock {
+                            ops: vec![],
+                            cmds: vec![
+                                HandlerCmd::DebugMessage {
+                                    msg: text.to_string(),
+                                },
+                                // HandlerCmd::Reply {
+                                //     path: "/".to_string(),
+                                //     params: vec![*text_op],
+                                // },
+                            ],
+                        },
+                    );
                 }
 
                 // Row 1

@@ -2,8 +2,8 @@ use crate::communicator::{CommChannelRecv, CommChannelSend, FromStateMachine};
 use crate::op_interpreter::OpResults;
 use crate::{EventLoopProxy, ToStateMachine};
 use boldui_protocol::{
-    A2RReparentScene, A2RUpdateScene, HandlerBlock, HandlerCmd, OpsOperation, R2AReply, SceneId,
-    Value,
+    A2RReparentScene, A2RUpdateScene, EventType, HandlerBlock, HandlerCmd, OpsOperation, R2AReply,
+    SceneId, Value,
 };
 use eventfd::{EfdFlags, EventFD};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -82,7 +82,7 @@ impl StateMachine {
         results
     }
 
-    pub fn update_and_evaluate(&mut self, time: f64, width: i64, height: i64) {
+    pub fn update_and_evaluate(&mut self, time: f64, scene_width: i64, scene_height: i64) {
         // TODO: Create utilities for some of the repeated code here
         {
             let vars = &mut self
@@ -92,8 +92,8 @@ impl StateMachine {
                 .1
                 .var_vals;
             vars.insert(":time".to_string(), Value::Double(time));
-            vars.insert(":width".to_string(), Value::Sint64(width));
-            vars.insert(":height".to_string(), Value::Sint64(height));
+            vars.insert(":width".to_string(), Value::Sint64(scene_width));
+            vars.insert(":height".to_string(), Value::Sint64(scene_height));
         }
 
         let mut stack = vec![(self.root_scene.unwrap(), 0)];
@@ -369,5 +369,98 @@ impl StateMachine {
             .to_state_machine(ToStateMachine::Redraw);
 
         // eprintln!("[rnd:dbg] New scenes: {:#?}", self.scenes);
+    }
+
+    pub(crate) fn handle_click(
+        &mut self,
+        // scene_id: SceneId,
+        time: f64,
+        scene_width: i64,
+        scene_height: i64,
+        x: f64,
+        y: f64,
+        button: u8,
+    ) {
+        // TODO: Create utilities for some of the repeated code here
+        {
+            let vars = &mut self
+                .scenes
+                .get_mut(&self.root_scene.unwrap())
+                .unwrap()
+                .1
+                .var_vals;
+            vars.insert(":time".to_string(), Value::Double(time));
+            vars.insert(":width".to_string(), Value::Sint64(scene_width));
+            vars.insert(":height".to_string(), Value::Sint64(scene_height));
+            vars.insert(":click_x".to_string(), Value::Double(x));
+            vars.insert(":click_y".to_string(), Value::Double(y));
+            vars.insert(":click_btn".to_string(), Value::Sint64(button as i64));
+        }
+
+        let mut stack = vec![(self.root_scene.unwrap(), 0)];
+        let mut event_handlers_to_run = vec![];
+
+        while !stack.is_empty() {
+            let (scene_id, child_id) = stack.pop().unwrap();
+            let (scene_desc, scene_state) = self.scenes.get(&scene_id).unwrap();
+
+            if child_id == 0 {
+                // Evaluate current scene
+                eprintln!("[rnd:dbg] Evaluating scene for inputs #{scene_id}");
+                let values = self.eval_ops_list(&scene_desc.ops, scene_id);
+                eprintln!("[rnd:dbg]  -> {values:?}");
+                self.op_results.vals.insert(scene_id, values);
+
+                for (i, (evt_type, _handler)) in scene_desc.event_handlers.iter().enumerate() {
+                    match evt_type {
+                        EventType::Click { rect } => {
+                            let rect = self.op_results.get(*rect, (0, &[]));
+                            let (left, top, right, bottom) = match rect {
+                                Value::Rect {
+                                    left,
+                                    top,
+                                    right,
+                                    bottom,
+                                } => (left, top, right, bottom),
+                                _ => panic!("Invalid type for 'rect' param of 'DrawRect' cmd"),
+                            };
+                            if x >= *left && x <= *right && y >= *top && y <= *bottom {
+                                event_handlers_to_run.push((scene_id, i))
+                            }
+                        }
+                    }
+                }
+            }
+            if child_id < scene_state.children.len() {
+                stack.push((scene_id, child_id + 1));
+                let child = scene_state.children[child_id];
+                stack.push((child, 0));
+            } else {
+                // no more children, bye
+            }
+        }
+
+        for (scene_id, evt_hnd_id) in event_handlers_to_run {
+            eprintln!("[rnd:dbg] Running event handler #{evt_hnd_id} of scene #{scene_id}");
+            let (_event_type, handler) = self
+                .scenes
+                .get(&scene_id)
+                .unwrap()
+                .0
+                .event_handlers
+                .get(evt_hnd_id)
+                .unwrap();
+            let op_results = self.eval_ops_list(&handler.ops, 0);
+            let cmds = handler.cmds.clone();
+            for cmd in cmds.iter() {
+                self.eval_handler_cmd(cmd, (0, &op_results));
+            }
+        }
+
+        if self.has_pending_replies {
+            // Sending a character on this pipe signifies the `reply_recv` end of the channel is ready for reading
+            self.comm_channel_send.notify_send.write(1).unwrap();
+            self.has_pending_replies = false;
+        }
     }
 }

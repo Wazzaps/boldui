@@ -197,6 +197,11 @@ pub struct Watch {
     pub handler: HandlerBlock,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
+pub enum EventType {
+    Click { rect: OpId },
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct A2RUpdateScene {
     pub id: SceneId,
@@ -210,6 +215,7 @@ pub struct A2RUpdateScene {
     pub cmds: Vec<CmdsCommand>,
     pub var_decls: BTreeMap<String, Value>,
     pub watches: Vec<Watch>,
+    pub event_handlers: Vec<(EventType, HandlerBlock)>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

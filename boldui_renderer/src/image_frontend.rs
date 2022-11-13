@@ -14,6 +14,7 @@ pub(crate) struct ImageFrontend {
     pub state_machine: StateMachine,
     pub simulator: Option<Simulator>,
     pub frame_num: u64,
+    pub last_scene_size: (i32, i32),
 }
 
 #[derive(Clone)]
@@ -43,6 +44,7 @@ impl ImageFrontend {
                 state_machine,
                 simulator,
                 frame_num: 0,
+                last_scene_size: (0, 0),
             },
             event_proxy,
         )
@@ -95,13 +97,34 @@ impl Frontend for ImageFrontend {
                     }
                 }
                 ToStateMachine::Quit => {
-                    eprintln!("State machine seems to be done, bye from frontend!");
+                    eprintln!("[rnd:ntc] State machine seems to be done, bye from frontend!");
                     break;
                 }
                 ToStateMachine::SleepUntil(instant) => {
                     // Select the earliest wakeup time
                     next_wakeup =
                         next_wakeup.map_or(Some(instant), |before| Some(before.min(instant)));
+                }
+                ToStateMachine::Click { x, y, button } => {
+                    self.state_machine.update_and_evaluate(
+                        0.0,
+                        self.last_scene_size.0 as i64,
+                        self.last_scene_size.1 as i64,
+                    );
+                    eprintln!("[rnd:dbg] [{:?}] Updated for click", start.elapsed());
+                    // TODO: Handle clicks per-scene
+                    if let Some(_root_scene) = self.state_machine.root_scene {
+                        self.state_machine.handle_click(
+                            // root_scene,
+                            0.0,
+                            self.last_scene_size.0 as i64,
+                            self.last_scene_size.1 as i64,
+                            x,
+                            y,
+                            button,
+                        );
+                    }
+                    eprintln!("[rnd:dbg] [{:?}] Handled click", start.elapsed());
                 }
             }
         }
@@ -118,6 +141,7 @@ impl ImageFrontend {
                 .get_default_window_size_for_scene(root_scene)
                 .unwrap_or(DEFAULT_WINDOW_SIZE)
         };
+        self.last_scene_size = window_size;
 
         // Create canvas
         let color_space = ColorSpace::new_srgb();

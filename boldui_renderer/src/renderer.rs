@@ -3,6 +3,7 @@ use boldui_protocol::{CmdsCommand, Color, SceneId, Value};
 use skia_safe::{
     Canvas, Color4f, ColorSpace, Font, FontStyle, Paint, Point, Rect, TextBlob, Typeface,
 };
+use std::collections::HashMap;
 
 pub trait IntoColor4f {
     fn into_color4f(self) -> Color4f;
@@ -19,9 +20,31 @@ impl IntoColor4f for Color {
     }
 }
 
-pub(crate) struct Renderer {}
+#[derive(Default)]
+struct TypefaceCache {
+    cache: HashMap<String, Typeface>,
+}
+
+impl TypefaceCache {
+    // FIXME: use font style in cache
+    pub fn get(&mut self, family_name: impl Into<String>, _font_style: FontStyle) -> &Typeface {
+        self.cache
+            .entry(family_name.into())
+            .or_insert_with(|| Typeface::new("Heebo", FontStyle::default()).unwrap())
+    }
+}
+
+pub(crate) struct Renderer {
+    typeface_cache: TypefaceCache,
+}
 
 impl Renderer {
+    pub fn new() -> Self {
+        Self {
+            typeface_cache: TypefaceCache::default(),
+        }
+    }
+
     pub fn render_scene(
         &mut self,
         canvas: &mut Canvas,
@@ -96,7 +119,7 @@ impl Renderer {
                         const FONT_RECT_DBG: bool = false;
 
                         let paint = Paint::new(paint.into_color4f(), &color_space);
-                        let typeface = Typeface::new("Heebo", FontStyle::default()).unwrap();
+                        let typeface = self.typeface_cache.get("Heebo", FontStyle::default());
                         let font = Font::from_typeface(typeface, Some(FONT_SIZE));
                         let width = font.measure_str(text, Some(&paint)).0;
                         let text = TextBlob::from_str(text, &font).unwrap();
