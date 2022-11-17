@@ -127,380 +127,450 @@ impl std::ops::Neg for OpIdWrapper {
     }
 }
 
-fn open_window(
-    raw_path: String,
-    path: &[&str],
-    params: HashMap<String, String>,
-    stdout: &mut impl SerdeSender,
-) -> Result<(), Box<dyn std::error::Error>> {
-    match path {
-        // Root
-        [""] => {
-            let start = Instant::now();
-            let mut var_decls = BTreeMap::new();
-            var_decls.insert("offset".to_string(), Value::Double(20.0));
-            var_decls.insert(
-                ":window_title".to_string(),
-                Value::String("BoldUI Example: Calculator".to_string()),
-            );
-            var_decls.insert(":window_initial_size_x".to_string(), Value::Sint64(334));
-            var_decls.insert(":window_initial_size_y".to_string(), Value::Sint64(327));
-            if let Some(window_id) = params.get("window_id") {
-                // Copy from input
+struct AppLogic {
+    a: f64,
+    b: f64,
+    curr_op: u8,
+    should_show_b: bool,
+}
+
+impl AppLogic {
+    fn new() -> Self {
+        Self {
+            a: 0.0,
+            b: 0.0,
+            curr_op: 0,
+            should_show_b: false,
+        }
+    }
+
+    fn open_window(
+        &mut self,
+        raw_path: String,
+        path: &[&str],
+        query_params: HashMap<String, String>,
+        stdout: &mut impl SerdeSender,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        match path {
+            // Root
+            [""] => {
+                let start = Instant::now();
+                let mut var_decls = BTreeMap::new();
+                var_decls.insert("result_bar".to_string(), Value::String(self.a.to_string()));
                 var_decls.insert(
-                    ":window_id".to_string(),
-                    Value::String(window_id.to_string()),
+                    ":window_title".to_string(),
+                    Value::String("BoldUI Example: Calculator".to_string()),
                 );
-            }
-
-            let mut scene = A2RUpdateScene {
-                id: 1,
-                paint: OpId::default(),
-                backdrop: OpId::default(),
-                transform: OpId::default(),
-                clip: OpId::default(),
-                uri: format!(
-                    "{}?session={}",
-                    raw_path, "131a4feb-fe40-4ba4-b18b-4435d2874467"
-                ),
-                ops: vec![],
-                cmds: vec![],
-                var_decls,
-                watches: vec![],
-                event_handlers: vec![],
-            };
-
-            {
-                let f = &mut OpFactory(&mut scene);
-
-                // Background
-                let bg_color = OpFactory::new_color(Color::from_hex(0x242424)).push(f);
-                f.push_cmd(CmdsCommand::Clear { color: *bg_color });
-
-                // Results box
-                let result_bg_color = OpFactory::new_color(Color::from_hex(0x363636)).push(f);
-                const RESULTS_WIDTH: f64 = 334.0;
-                const RESULTS_HEIGHT: f64 = 65.0;
-                let results_rect =
-                    OpFactory::new_rect(0.0, 1.0, RESULTS_WIDTH, RESULTS_HEIGHT + 1.0).push(f);
-                f.push_cmd(CmdsCommand::DrawRect {
-                    paint: *result_bg_color,
-                    rect: *results_rect,
-                });
-
-                let result_text_color = OpFactory::new_color(Color::from_hex(0xffffff)).push(f);
-                // const RESULT_LEFT_PADDING: f64 = 16.0;
-                let text_pos =
-                    OpFactory::new_point(RESULTS_WIDTH / 2.0, RESULTS_HEIGHT / 2.0).push(f);
-                let text = OpFactory::new_string("0".to_string()).push(f);
-                f.push_cmd(CmdsCommand::DrawCenteredText {
-                    text: *text,
-                    paint: *result_text_color,
-                    center: *text_pos,
-                });
-
-                // Buttons: Row 1
-                let action_button_color = OpFactory::new_color(Color::from_hex(0x3a3a3a)).push(f);
-                let number_button_color = OpFactory::new_color(Color::from_hex(0x505050)).push(f);
-                let equals_button_color = OpFactory::new_color(Color::from_hex(0xe66100)).push(f);
-                let button_text_color = OpFactory::new_color(Color::from_hex(0xffffff)).push(f);
-
-                fn make_btn(
-                    f: &mut OpFactory,
-                    color: OpId,
-                    x: i32,
-                    y: i32,
-                    text: &str,
-                    text_color: OpId,
-                ) {
-                    const TOP_PADDING: f64 = 79.0;
-                    const LEFT_PADDING: f64 = 12.0;
-                    const X_PADDING: f64 = 4.0;
-                    const Y_PADDING: f64 = 4.0;
-                    const BTN_WIDTH: f64 = 59.0;
-                    const BTN_HEIGHT: f64 = 44.0;
-
-                    let rect = OpFactory::new_rect(
-                        LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH),
-                        TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT),
-                        LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + BTN_WIDTH,
-                        TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT) + BTN_HEIGHT,
-                    )
-                    .push(f);
-                    f.push_cmd(CmdsCommand::DrawRect {
-                        paint: color,
-                        rect: *rect,
-                    });
-
-                    let text_pos = OpFactory::new_point(
-                        LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + 0.5 * BTN_WIDTH,
-                        TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT) + 0.5 * BTN_HEIGHT,
-                    )
-                    .push(f);
-                    let text_op = OpFactory::new_string(text.to_string()).push(f);
-                    f.push_cmd(CmdsCommand::DrawCenteredText {
-                        text: *text_op,
-                        paint: text_color,
-                        center: *text_pos,
-                    });
-
-                    // Click handler
-                    f.push_event_handler(
-                        EventType::Click { rect: *rect },
-                        HandlerBlock {
-                            ops: vec![],
-                            cmds: vec![
-                                HandlerCmd::DebugMessage {
-                                    msg: text.to_string(),
-                                },
-                                // HandlerCmd::Reply {
-                                //     path: "/".to_string(),
-                                //     params: vec![*text_op],
-                                // },
-                            ],
-                        },
+                var_decls.insert(":window_initial_size_x".to_string(), Value::Sint64(334));
+                var_decls.insert(":window_initial_size_y".to_string(), Value::Sint64(327));
+                if let Some(window_id) = query_params.get("window_id") {
+                    // Copy from input
+                    var_decls.insert(
+                        ":window_id".to_string(),
+                        Value::String(window_id.to_string()),
                     );
                 }
 
-                fn make_tall_btn(
-                    f: &mut OpFactory,
-                    color: OpId,
-                    x: i32,
-                    y: i32,
-                    text: &str,
-                    text_color: OpId,
-                ) {
-                    const TOP_PADDING: f64 = 79.0;
-                    const LEFT_PADDING: f64 = 12.0;
-                    const X_PADDING: f64 = 4.0;
-                    const Y_PADDING: f64 = 4.0;
-                    const BTN_WIDTH: f64 = 59.0;
-                    const BTN_HEIGHT: f64 = 44.0;
+                let mut scene = A2RUpdateScene {
+                    id: 1,
+                    paint: OpId::default(),
+                    backdrop: OpId::default(),
+                    transform: OpId::default(),
+                    clip: OpId::default(),
+                    uri: format!(
+                        "{}?session={}",
+                        raw_path, "131a4feb-fe40-4ba4-b18b-4435d2874467"
+                    ),
+                    ops: vec![],
+                    cmds: vec![],
+                    var_decls,
+                    watches: vec![],
+                    event_handlers: vec![],
+                };
 
-                    let rect = OpFactory::new_rect(
-                        LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH),
-                        TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT),
-                        LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + BTN_WIDTH,
-                        TOP_PADDING + ((y + 1) as f64) * (Y_PADDING + BTN_HEIGHT) + BTN_HEIGHT,
-                    )
-                    .push(f);
+                {
+                    let f = &mut OpFactory(&mut scene);
+
+                    // Background
+                    let bg_color = OpFactory::new_color(Color::from_hex(0x242424)).push(f);
+                    f.push_cmd(CmdsCommand::Clear { color: *bg_color });
+
+                    // Results box
+                    let result_bg_color = OpFactory::new_color(Color::from_hex(0x363636)).push(f);
+                    const RESULTS_WIDTH: f64 = 334.0;
+                    const RESULTS_HEIGHT: f64 = 65.0;
+                    let results_rect =
+                        OpFactory::new_rect(0.0, 1.0, RESULTS_WIDTH, RESULTS_HEIGHT + 1.0).push(f);
                     f.push_cmd(CmdsCommand::DrawRect {
-                        paint: color,
-                        rect: *rect,
+                        paint: *result_bg_color,
+                        rect: *results_rect,
                     });
 
-                    let text_pos = OpFactory::new_point(
-                        LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + 0.5 * BTN_WIDTH,
-                        TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT) + 1.0 * BTN_HEIGHT,
-                    )
-                    .push(f);
-                    let text_op = OpFactory::new_string(text.to_string()).push(f);
+                    let result_text_color = OpFactory::new_color(Color::from_hex(0xffffff)).push(f);
+                    // const RESULT_LEFT_PADDING: f64 = 16.0;
+                    let text_pos =
+                        OpFactory::new_point(RESULTS_WIDTH / 2.0, RESULTS_HEIGHT / 2.0).push(f);
+                    let text = f.var("result_bar").push(f);
                     f.push_cmd(CmdsCommand::DrawCenteredText {
-                        text: *text_op,
-                        paint: text_color,
+                        text: *text,
+                        paint: *result_text_color,
                         center: *text_pos,
                     });
 
-                    // Click handler
-                    f.push_event_handler(
-                        EventType::Click { rect: *rect },
-                        HandlerBlock {
-                            ops: vec![],
-                            cmds: vec![
-                                HandlerCmd::DebugMessage {
-                                    msg: text.to_string(),
-                                },
-                                // HandlerCmd::Reply {
-                                //     path: "/".to_string(),
-                                //     params: vec![*text_op],
-                                // },
-                            ],
-                        },
-                    );
+                    // Buttons: Row 1
+                    let action_button_color =
+                        OpFactory::new_color(Color::from_hex(0x3a3a3a)).push(f);
+                    let number_button_color =
+                        OpFactory::new_color(Color::from_hex(0x505050)).push(f);
+                    let equals_button_color =
+                        OpFactory::new_color(Color::from_hex(0xe66100)).push(f);
+                    let button_text_color = OpFactory::new_color(Color::from_hex(0xffffff)).push(f);
+
+                    fn make_btn(
+                        f: &mut OpFactory,
+                        color: OpId,
+                        x: i32,
+                        y: i32,
+                        text: &str,
+                        text_color: OpId,
+                    ) {
+                        const TOP_PADDING: f64 = 79.0;
+                        const LEFT_PADDING: f64 = 12.0;
+                        const X_PADDING: f64 = 4.0;
+                        const Y_PADDING: f64 = 4.0;
+                        const BTN_WIDTH: f64 = 59.0;
+                        const BTN_HEIGHT: f64 = 44.0;
+
+                        let rect = OpFactory::new_rect(
+                            LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH),
+                            TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT),
+                            LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + BTN_WIDTH,
+                            TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT) + BTN_HEIGHT,
+                        )
+                        .push(f);
+                        f.push_cmd(CmdsCommand::DrawRect {
+                            paint: color,
+                            rect: *rect,
+                        });
+
+                        let text_pos = OpFactory::new_point(
+                            LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + 0.5 * BTN_WIDTH,
+                            TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT) + 0.5 * BTN_HEIGHT,
+                        )
+                        .push(f);
+                        let text_op = OpFactory::new_string(text.to_string()).push(f);
+                        f.push_cmd(CmdsCommand::DrawCenteredText {
+                            text: *text_op,
+                            paint: text_color,
+                            center: *text_pos,
+                        });
+
+                        // Click handler
+                        f.push_event_handler(
+                            EventType::Click { rect: *rect },
+                            HandlerBlock {
+                                ops: vec![],
+                                cmds: vec![HandlerCmd::Reply {
+                                    path: "/".to_string(),
+                                    params: vec![*text_op],
+                                }],
+                            },
+                        );
+                    }
+
+                    fn make_tall_btn(
+                        f: &mut OpFactory,
+                        color: OpId,
+                        x: i32,
+                        y: i32,
+                        text: &str,
+                        text_color: OpId,
+                    ) {
+                        const TOP_PADDING: f64 = 79.0;
+                        const LEFT_PADDING: f64 = 12.0;
+                        const X_PADDING: f64 = 4.0;
+                        const Y_PADDING: f64 = 4.0;
+                        const BTN_WIDTH: f64 = 59.0;
+                        const BTN_HEIGHT: f64 = 44.0;
+
+                        let rect = OpFactory::new_rect(
+                            LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH),
+                            TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT),
+                            LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + BTN_WIDTH,
+                            TOP_PADDING + ((y + 1) as f64) * (Y_PADDING + BTN_HEIGHT) + BTN_HEIGHT,
+                        )
+                        .push(f);
+                        f.push_cmd(CmdsCommand::DrawRect {
+                            paint: color,
+                            rect: *rect,
+                        });
+
+                        let text_pos = OpFactory::new_point(
+                            LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + 0.5 * BTN_WIDTH,
+                            TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT) + 1.0 * BTN_HEIGHT,
+                        )
+                        .push(f);
+                        let text_op = OpFactory::new_string(text.to_string()).push(f);
+                        f.push_cmd(CmdsCommand::DrawCenteredText {
+                            text: *text_op,
+                            paint: text_color,
+                            center: *text_pos,
+                        });
+
+                        // Click handler
+                        f.push_event_handler(
+                            EventType::Click { rect: *rect },
+                            HandlerBlock {
+                                ops: vec![],
+                                cmds: vec![HandlerCmd::Reply {
+                                    path: "/".to_string(),
+                                    params: vec![*text_op],
+                                }],
+                            },
+                        );
+                    }
+
+                    // Row 1
+                    // Backspace
+                    make_btn(f, *action_button_color, 0, 0, "<x|", *button_text_color);
+
+                    // Left Bracket
+                    make_btn(f, *action_button_color, 1, 0, "(", *button_text_color);
+
+                    // Right Bracket
+                    make_btn(f, *action_button_color, 2, 0, ")", *button_text_color);
+
+                    // Mod
+                    make_btn(f, *action_button_color, 3, 0, "mod", *button_text_color);
+
+                    // Pi
+                    make_btn(f, *action_button_color, 4, 0, "pi", *button_text_color);
+
+                    // Row 2
+                    // 7
+                    make_btn(f, *number_button_color, 0, 1, "7", *button_text_color);
+
+                    // 8
+                    make_btn(f, *number_button_color, 1, 1, "8", *button_text_color);
+
+                    // 9
+                    make_btn(f, *number_button_color, 2, 1, "9", *button_text_color);
+
+                    // Div
+                    make_btn(f, *action_button_color, 3, 1, "/", *button_text_color);
+
+                    // Sqrt
+                    make_btn(f, *action_button_color, 4, 1, "sqrt", *button_text_color);
+
+                    // Row 3
+                    // 4
+                    make_btn(f, *number_button_color, 0, 2, "4", *button_text_color);
+
+                    // 5
+                    make_btn(f, *number_button_color, 1, 2, "5", *button_text_color);
+
+                    // 6
+                    make_btn(f, *number_button_color, 2, 2, "6", *button_text_color);
+
+                    // Mult
+                    make_btn(f, *action_button_color, 3, 2, "*", *button_text_color);
+
+                    // x^2
+                    make_btn(f, *action_button_color, 4, 2, "x^2", *button_text_color);
+
+                    // Row 4
+                    // 1
+                    make_btn(f, *number_button_color, 0, 3, "1", *button_text_color);
+
+                    // 2
+                    make_btn(f, *number_button_color, 1, 3, "2", *button_text_color);
+
+                    // 3
+                    make_btn(f, *number_button_color, 2, 3, "3", *button_text_color);
+
+                    // Sub
+                    make_btn(f, *action_button_color, 3, 3, "-", *button_text_color);
+
+                    // Equals
+                    make_tall_btn(f, *equals_button_color, 4, 3, "=", *button_text_color);
+
+                    // Row 5
+                    // 0
+                    make_btn(f, *number_button_color, 0, 4, "0", *button_text_color);
+
+                    // Dot
+                    make_btn(f, *action_button_color, 1, 4, ".", *button_text_color);
+
+                    // Percent
+                    make_btn(f, *action_button_color, 2, 4, "%", *button_text_color);
+
+                    // Plus
+                    make_btn(f, *action_button_color, 3, 4, "+", *button_text_color);
                 }
 
-                // Row 1
-                // Backspace
-                make_btn(f, *action_button_color, 0, 0, "<x|", *button_text_color);
+                stdout.send(&A2RMessage::Update(A2RUpdate {
+                    updated_scenes: vec![scene],
+                    run_blocks: vec![
+                        // Reparent the scene(s)
+                        HandlerBlock {
+                            ops: vec![],
+                            cmds: vec![HandlerCmd::ReparentScene {
+                                scene: 1,
+                                to: A2RReparentScene::Root,
+                            }],
+                        },
+                    ],
+                }))?;
 
-                // Left Bracket
-                make_btn(f, *action_button_color, 1, 0, "(", *button_text_color);
-
-                // Right Bracket
-                make_btn(f, *action_button_color, 2, 0, ")", *button_text_color);
-
-                // Mod
-                make_btn(f, *action_button_color, 3, 0, "mod", *button_text_color);
-
-                // Pi
-                make_btn(f, *action_button_color, 4, 0, "pi", *button_text_color);
-
-                // Row 2
-                // 7
-                make_btn(f, *number_button_color, 0, 1, "7", *button_text_color);
-
-                // 8
-                make_btn(f, *number_button_color, 1, 1, "8", *button_text_color);
-
-                // 9
-                make_btn(f, *number_button_color, 2, 1, "9", *button_text_color);
-
-                // Div
-                make_btn(f, *action_button_color, 3, 1, "/", *button_text_color);
-
-                // Sqrt
-                make_btn(f, *action_button_color, 4, 1, "sqrt", *button_text_color);
-
-                // Row 3
-                // 4
-                make_btn(f, *number_button_color, 0, 2, "4", *button_text_color);
-
-                // 5
-                make_btn(f, *number_button_color, 1, 2, "5", *button_text_color);
-
-                // 6
-                make_btn(f, *number_button_color, 2, 2, "6", *button_text_color);
-
-                // Mult
-                make_btn(f, *action_button_color, 3, 2, "*", *button_text_color);
-
-                // x^2
-                make_btn(f, *action_button_color, 4, 2, "x^2", *button_text_color);
-
-                // Row 4
-                // 1
-                make_btn(f, *number_button_color, 0, 3, "1", *button_text_color);
-
-                // 2
-                make_btn(f, *number_button_color, 1, 3, "2", *button_text_color);
-
-                // 3
-                make_btn(f, *number_button_color, 2, 3, "3", *button_text_color);
-
-                // Sub
-                make_btn(f, *action_button_color, 3, 3, "-", *button_text_color);
-
-                // Equals
-                make_tall_btn(f, *equals_button_color, 4, 3, "=", *button_text_color);
-
-                // Row 5
-                // 0
-                make_btn(f, *number_button_color, 0, 4, "0", *button_text_color);
-
-                // Dot
-                make_btn(f, *action_button_color, 1, 4, ".", *button_text_color);
-
-                // Percent
-                make_btn(f, *action_button_color, 2, 4, "%", *button_text_color);
-
-                // Plus
-                make_btn(f, *action_button_color, 3, 4, "+", *button_text_color);
-
-                // let rect_color = OpFactory::new_color(Color::from_hex(0x3A8DDA)).push(f);
-                //
-                // let offset = f.var("offset").push(f);
-                // let neg_offset = (-offset).push(f);
-                // let width = f.var(":width").push(f);
-                // let height = f.var(":height").push(f);
-                //
-                // let rect = OpFactory::make_rect_from_points(
-                //     OpFactory::make_point(offset, offset).push(f),
-                //     OpFactory::make_point(
-                //         (width + neg_offset).push(f),
-                //         (height + neg_offset).push(f),
-                //     )
-                //     .push(f),
-                // )
-                // .push(f);
-                //
-                // let offset_eq_100 = offset.equals(OpFactory::new_f64(100.0).push(f)).push(f);
-                //
-                // scene.cmds.push(CmdsCommand::DrawRect {
-                //     paint: *rect_color,
-                //     rect: *rect,
-                // });
-                // scene.watches.push(Watch {
-                //     condition: *offset_eq_100,
-                //     handler: HandlerBlock {
-                //         ops: vec![],
-                //         cmds: vec![
-                //             HandlerCmd::DebugMessage {
-                //                 msg: "Offset is 100.0, sending reply".to_string(),
-                //             },
-                //             HandlerCmd::Reply {
-                //                 path: "/".to_string(),
-                //                 params: vec![*width, *height],
-                //             },
-                //         ],
-                //     },
-                // });
-
-                // for i in 0..256 {
-                //     let color = OpFactory::new_color(Color::from_hex(0xe66100 + i)).push(f);
-                //     let rect =
-                //         OpFactory::new_rect(i as f64, i as f64, i as f64 + 30.0, i as f64 + 30.0)
-                //             .push(f);
-                //     f.push_cmd(CmdsCommand::DrawRect {
-                //         paint: *color,
-                //         rect: *rect,
-                //     });
-                // }
+                eprintln!("[app:dbg] Scene update took {:?} to make", start.elapsed());
             }
 
-            stdout.send(&A2RMessage::Update(A2RUpdate {
-                updated_scenes: vec![scene],
-                run_blocks: vec![
-                    // Reparent the scene(s)
-                    HandlerBlock {
-                        ops: vec![],
-                        cmds: vec![HandlerCmd::ReparentScene {
-                            scene: 1,
-                            to: A2RReparentScene::Root,
-                        }],
-                    },
-                ],
-            }))?;
+            // Not found
+            _ => {
+                stdout.send(&A2RMessage::Error(Error {
+                    code: 1,
+                    text: format!("Not found: {:?}", path),
+                }))?;
+            }
+        };
+        Ok(())
+    }
 
-            stdout.send(&A2RMessage::Update(A2RUpdate {
-                updated_scenes: vec![],
-                run_blocks: vec![],
-            }))?;
+    fn handle_reply(
+        &mut self,
+        _raw_path: String,
+        path: &[&str],
+        _query_params: HashMap<String, String>,
+        value_params: Vec<Value>,
+        stdout: &mut impl SerdeSender,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        match path {
+            // Root
+            [""] => {
+                if value_params.len() != 1 {
+                    return Err("Expected 1 parameter in reply".into());
+                }
+                let value = value_params.into_iter().next().unwrap();
+                let pressed_btn = match value {
+                    Value::String(value) => value,
+                    _ => return Err("Expected string parameter in reply".into()),
+                };
 
-            // stdout.send(&A2RMessage::Update(A2RUpdate {
-            //     updated_scenes: vec![],
-            //     run_blocks: vec![
-            //         // Change offset
-            //         HandlerBlock {
-            //             ops: vec![
-            //                 // Op #0
-            //                 OpsOperation::Value(Value::Double(100.0)),
-            //             ],
-            //             cmds: vec![HandlerCmd::UpdateVar {
-            //                 var: VarId {
-            //                     key: "offset".to_string(),
-            //                     scene: 1,
-            //                 },
-            //                 value: OpId {
-            //                     scene_id: 0,
-            //                     idx: 0,
-            //                 },
-            //             }],
-            //         },
-            //     ],
-            // }))?;
+                let pressed_btn = &*pressed_btn;
+                match pressed_btn {
+                    "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => {
+                        let digit = pressed_btn.parse::<f64>().unwrap();
+                        if self.curr_op == 0 {
+                            self.a = self.a * 10.0 + digit;
+                        } else {
+                            self.b = self.b * 10.0 + digit;
+                            self.should_show_b = true;
+                        }
+                    }
+                    "+" => {
+                        self.curr_op = b'+';
+                    }
+                    "-" => {
+                        self.curr_op = b'-';
+                    }
+                    "*" => {
+                        self.curr_op = b'*';
+                    }
+                    "/" => {
+                        self.curr_op = b'/';
+                    }
+                    "=" => {
+                        match self.curr_op {
+                            b'+' => {
+                                self.a += self.b;
+                                self.curr_op = 0;
+                            }
+                            b'-' => {
+                                self.a -= self.b;
+                                self.curr_op = 0;
+                            }
+                            b'*' => {
+                                self.a *= self.b;
+                                self.curr_op = 0;
+                            }
+                            b'/' => {
+                                self.a /= self.b;
+                                self.curr_op = 0;
+                            }
+                            _ => panic!("wtf"),
+                        }
+                        self.should_show_b = false;
+                    }
+                    _ => return Err("Unknown operation".into()),
+                }
 
-            eprintln!("[app:dbg] Scene update took {:?} to make", start.elapsed());
-        }
+                stdout.send(&A2RMessage::Update(A2RUpdate {
+                    updated_scenes: vec![],
+                    run_blocks: vec![
+                        // Reparent the scene(s)
+                        HandlerBlock {
+                            ops: vec![OpsOperation::Value(Value::String(if self.should_show_b {
+                                self.b.to_string()
+                            } else {
+                                self.a.to_string()
+                            }))],
+                            cmds: vec![HandlerCmd::UpdateVar {
+                                var: VarId {
+                                    key: "result_bar".to_string(),
+                                    scene: 1,
+                                },
+                                value: OpId {
+                                    scene_id: 0,
+                                    idx: 0,
+                                },
+                            }],
+                        },
+                    ],
+                }))?;
+            }
 
-        // Not found
-        _ => {
-            stdout.send(&A2RMessage::Error(Error {
-                code: 1,
-                text: format!("Not found: {:?}", path),
-            }))?;
-        }
-    };
-    Ok(())
+            // Not found
+            _ => {
+                stdout.send(&A2RMessage::Error(Error {
+                    code: 1,
+                    text: format!("Not found: {:?}", path),
+                }))?;
+            }
+        };
+        Ok(())
+    }
+}
+
+/// Parses the URI into:
+/// 1. A normalized form of it
+/// 2. A vector of each segment of the path
+/// 3. A vector of key-value entries of the query params
+fn parse_path(path: &str) -> (String, Vec<String>, Vec<(String, String)>) {
+    let reference = RelativeReference::try_from(path).unwrap();
+    let segments: Vec<String> = reference
+        .path()
+        .segments()
+        .iter()
+        .map(|s| {
+            let mut seg = s.to_owned();
+            seg.normalize();
+            seg.to_string()
+        })
+        .collect();
+
+    let query = reference
+        .query()
+        .map(|query| {
+            let mut query = query.to_owned();
+            query.normalize();
+            querystring::querify(query.as_str())
+                .into_iter()
+                .map(|q| (q.0.to_string(), q.1.to_string()))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_else(Vec::new);
+
+    (reference.path().to_string(), segments, query)
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -552,6 +622,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("[app:dbg] connected!");
     }
 
+    let mut app_logic = AppLogic::new();
     let mut msg_buf = Vec::new();
     loop {
         let msg_len = stdin.read_u32::<LE>();
@@ -573,36 +644,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match msg {
             R2AMessage::Update(R2AUpdate { replies }) => {
                 eprintln!("[app:dbg] Replies: {:?}", &replies);
+                for reply in replies {
+                    let (raw_path, path, params) = parse_path(&reply.path);
+
+                    let path_ref = &*path.iter().map(|p| p.as_str()).collect::<Vec<_>>();
+                    let params_map = {
+                        let mut map = HashMap::new();
+                        for (k, v) in params.into_iter() {
+                            map.insert(k, v);
+                        }
+                        map
+                    };
+
+                    app_logic.handle_reply(
+                        raw_path,
+                        path_ref,
+                        params_map,
+                        reply.params,
+                        &mut stdout,
+                    )?;
+                }
             }
             R2AMessage::Open(R2AOpen { path }) => {
-                fn parse_path(path: &str) -> (String, Vec<String>, Vec<(String, String)>) {
-                    let reference = RelativeReference::try_from(path).unwrap();
-                    let segments: Vec<String> = reference
-                        .path()
-                        .segments()
-                        .iter()
-                        .map(|s| {
-                            let mut seg = s.to_owned();
-                            seg.normalize();
-                            seg.to_string()
-                        })
-                        .collect();
-
-                    let query = reference
-                        .query()
-                        .map(|query| {
-                            let mut query = query.to_owned();
-                            query.normalize();
-                            querystring::querify(query.as_str())
-                                .into_iter()
-                                .map(|q| (q.0.to_string(), q.1.to_string()))
-                                .collect::<Vec<_>>()
-                        })
-                        .unwrap_or_else(Vec::new);
-
-                    (reference.path().to_string(), segments, query)
-                }
-
                 let (raw_path, path, params) = parse_path(&path);
 
                 let path_ref = &*path.iter().map(|p| p.as_str()).collect::<Vec<_>>();
@@ -614,7 +677,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     map
                 };
 
-                open_window(raw_path, path_ref, params_map, &mut stdout)?;
+                app_logic.open_window(raw_path, path_ref, params_map, &mut stdout)?;
             }
             R2AMessage::Error(err) => {
                 eprintln!("[app:dbg] Renderer error: {:?}", err);

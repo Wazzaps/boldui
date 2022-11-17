@@ -1,0 +1,22 @@
+format_version: "0"
+instructions:
+  - { type: "wait_for_update" }
+
+  # Click the '1' button
+  - { type: "click", x: 40, y: 250, button: 0 }
+  - { type: "wait_for_update" }
+
+  # Click the '+' button
+  - { type: "click", x: 230, y: 300, button: 0 }
+  - { type: "wait_for_update" }
+
+  # Click the '2' button
+  - { type: "click", x: 100, y: 250, button: 0 }
+  - { type: "wait_for_update" }
+
+  # Click the '=' button
+  - { type: "click", x: 300, y: 250, button: 0 }
+  - { type: "wait_for_update" }
+
+  # Wait for result
+  - { type: "quit" }

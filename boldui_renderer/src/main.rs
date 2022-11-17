@@ -50,7 +50,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let simulator = if let Some(dev_simulated_input) = params.dev_simulated_input {
         let simulated_input = std::fs::read_to_string(&dev_simulated_input)?;
-        let simulated_input: SimulationFile = serde_json::from_str(&simulated_input)?;
+        let simulated_input: SimulationFile = serde_yaml::from_str(&simulated_input)?;
         Some(Simulator::new(simulated_input))
     } else {
         None

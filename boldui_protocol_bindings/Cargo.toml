@@ -8,5 +8,5 @@ edition = "2021"
 [dependencies]
 boldui_protocol = { path = "../boldui_protocol" }
 serde-reflection = "0.3.6"
-serde_yaml = "0.9.13"
+serde_yaml = "0.9.14"
 serde-generate = "0.24.0"

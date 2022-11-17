@@ -5,11 +5,11 @@ use std::error::Error;
 use std::time::{Duration, Instant};
 
 #[derive(Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum Instruction {
     Sleep { time_ms: u64 },
     Click { x: f64, y: f64, button: u8 },
-    Comment { contents: String },
+    WaitForUpdate,
     Quit,
 }
 
@@ -28,6 +28,7 @@ pub(crate) struct Simulator {
 impl Simulator {
     pub fn new(src: SimulationFile) -> Self {
         assert_eq!(src.format_version, "0");
+        eprintln!("[rnd:dbg] simulator: opcode #0");
         Self {
             src,
             next_wakeup: None,
@@ -35,7 +36,11 @@ impl Simulator {
         }
     }
 
-    pub fn tick(&mut self, state_machine: &mut StateMachine) -> Result<(), Box<dyn Error>> {
+    pub fn tick(
+        &mut self,
+        state_machine: &mut StateMachine,
+        mut did_just_update: bool,
+    ) -> Result<(), Box<dyn Error>> {
         loop {
             if self.curr_insn >= self.src.instructions.len() {
                 // Program done
@@ -67,11 +72,18 @@ impl Simulator {
                     self.send_comm_event(state_machine, FromStateMachine::Quit)?;
                     break;
                 }
-                Instruction::Comment { .. } => {}
+                Instruction::WaitForUpdate => {
+                    if !did_just_update {
+                        break;
+                    } else {
+                        did_just_update = false;
+                    }
+                }
             }
 
             // Next opcode!
             self.curr_insn += 1;
+            eprintln!("[rnd:dbg] simulator: opcode #{}", self.curr_insn);
         }
         Ok(())
     }

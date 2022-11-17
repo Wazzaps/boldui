@@ -86,11 +86,23 @@ impl Frontend for ImageFrontend {
                     self.state_machine
                         .update_scenes_and_run_blocks(updated_scenes, run_blocks);
                     eprintln!("[rnd:dbg] A2R update took {:?} to handle", start.elapsed());
+                    self.state_machine
+                        .event_proxy
+                        .as_ref()
+                        .unwrap()
+                        .to_state_machine(ToStateMachine::SimulatorTick { from_update: true });
                 }
                 ToStateMachine::Redraw => {
                     self.redraw(start);
+                    self.state_machine
+                        .event_proxy
+                        .as_ref()
+                        .unwrap()
+                        .to_state_machine(ToStateMachine::SimulatorTick { from_update: false });
+                }
+                ToStateMachine::SimulatorTick { from_update } => {
                     if let Some(simulator) = &mut self.simulator {
-                        if let Err(e) = simulator.tick(&mut self.state_machine) {
+                        if let Err(e) = simulator.tick(&mut self.state_machine, from_update) {
                             eprintln!("[rnd:err] Error while running simulator: {:?}", e);
                             break;
                         }

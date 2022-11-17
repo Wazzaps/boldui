@@ -15,6 +15,9 @@ pub(crate) enum ToStateMachine {
     SleepUntil(Instant),
     Click { x: f64, y: f64, button: u8 },
     Update(A2RUpdate),
+    SimulatorTick {
+        from_update: bool,
+    },
 }
 
 pub(crate) enum FromStateMachine {
