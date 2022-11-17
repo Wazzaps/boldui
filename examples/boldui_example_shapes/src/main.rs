@@ -45,6 +45,9 @@ impl OpIdWrapper {
     fn equals(self, rhs: OpIdWrapper) -> OpWrapper {
         OpWrapper(OpsOperation::Eq { a: *self, b: *rhs })
     }
+    fn make_to_string(self) -> OpWrapper {
+        OpWrapper(OpsOperation::ToString { a: *self })
+    }
 }
 
 struct OpFactory<'a>(&'a mut A2RUpdateScene);

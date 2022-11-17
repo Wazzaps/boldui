@@ -173,6 +173,9 @@ pub enum OpsOperation {
         right: OpId,
         bottom: OpId,
     },
+    ToString {
+        a: OpId,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

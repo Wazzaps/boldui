@@ -41,6 +41,22 @@ impl OpResults {
         }
     }
 
+    pub fn as_string<'a>(&'a self, id: OpId, ctx: (SceneId, &'a [Value])) -> String {
+        match self.get(id, ctx) {
+            Value::Sint64(i) => i.to_string(),
+            Value::Double(f) => f.to_string(),
+            Value::String(s) => s.to_string(),
+            Value::Color(c) => format!("#{:02x}{:02x}{:02x}{:02x}", c.a, c.r, c.g, c.b),
+            Value::Point { left, top } => format!("({}, {})", left, top),
+            Value::Rect {
+                left,
+                top,
+                right,
+                bottom,
+            } => format!("(L={}, T={}, R={}, B={})", left, top, right, bottom),
+        }
+    }
+
     pub fn get_point<'a>(&'a self, id: OpId, ctx: (SceneId, &'a [Value])) -> (f64, f64) {
         match self.get(id, ctx) {
             Value::Point { left, top } => (*left, *top),
@@ -133,6 +149,7 @@ impl StateMachine {
                 right: self.op_results.get_f64(*right, ctx),
                 bottom: self.op_results.get_f64(*bottom, ctx),
             },
+            OpsOperation::ToString { a } => Value::String(self.op_results.as_string(*a, ctx)),
         }
     }
 }
