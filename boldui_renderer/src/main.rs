@@ -1,9 +1,12 @@
+#![allow(clippy::read_zero_byte_vec)] // False positives :(
+
 use crate::cli::FrontendType;
 use crate::communicator::{ConnectionInitiator, ToStateMachine};
 use crate::image_frontend::ImageFrontend;
 use crate::renderer::Renderer;
 use crate::simulator::{SimulationFile, Simulator};
 use crate::state_machine::StateMachine;
+use crate::window_frontend::WindowFrontend;
 use std::fs::File;
 use std::os::unix::io::{FromRawFd, IntoRawFd};
 use std::process::{Command, Stdio};
@@ -18,6 +21,9 @@ pub(crate) mod renderer;
 pub(crate) mod simulator;
 pub(crate) mod state_machine;
 pub(crate) mod util;
+pub(crate) mod window_frontend;
+
+pub static PER_FRAME_LOGGING: bool = false;
 
 pub(crate) trait EventLoopProxy {
     fn to_state_machine(&self, event: ToStateMachine);
@@ -49,7 +55,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // println!("Command line args: {:?}, Extra: {:?}", &params, &extra);
 
     let simulator = if let Some(dev_simulated_input) = params.dev_simulated_input {
-        let simulated_input = std::fs::read_to_string(&dev_simulated_input)?;
+        let simulated_input = std::fs::read_to_string(dev_simulated_input)?;
         let simulated_input: SimulationFile = serde_yaml::from_str(&simulated_input)?;
         Some(Simulator::new(simulated_input))
     } else {
@@ -61,7 +67,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(extra) => extra,
         None => {
             eprintln!("Please specify an app to run. Example:");
-            eprintln!("  cargo run -p boldui_renderer -- -- cargo run -p boldui_example_shapes");
+            eprintln!("  cargo run -p boldui_renderer -- -- cargo run -p boldui_example_rs_calc");
             std::process::exit(1);
         }
     };
@@ -81,10 +87,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         FrontendType::Image => {
             let (frontend, event_proxy) =
                 ImageFrontend::new(Renderer::new(), state_machine, simulator);
-            (Box::new(frontend) as Box<dyn Frontend>, event_proxy)
+            (
+                Box::new(frontend) as Box<dyn Frontend>,
+                event_proxy as Box<dyn EventLoopProxy + Send>,
+            )
         }
         FrontendType::Window => {
-            unimplemented!()
+            let (frontend, event_proxy) =
+                WindowFrontend::new(Renderer::new(), state_machine, simulator);
+            (
+                Box::new(frontend) as Box<dyn Frontend>,
+                event_proxy as Box<dyn EventLoopProxy + Send>,
+            )
         }
     };
 

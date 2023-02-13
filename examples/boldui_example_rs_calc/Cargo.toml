@@ -1,5 +1,5 @@
 [package]
-name = "boldui_example_shapes"
+name = "boldui_example_rs_calc"
 version = "0.1.0"
 edition = "2021"
 

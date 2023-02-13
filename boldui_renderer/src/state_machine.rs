@@ -1,6 +1,6 @@
 use crate::communicator::{CommChannelRecv, CommChannelSend, FromStateMachine};
 use crate::op_interpreter::OpResults;
-use crate::{EventLoopProxy, ToStateMachine};
+use crate::{EventLoopProxy, ToStateMachine, PER_FRAME_LOGGING};
 use boldui_protocol::{
     A2RReparentScene, A2RUpdateScene, EventType, HandlerBlock, HandlerCmd, OpsOperation, R2AReply,
     SceneId, Value,
@@ -83,6 +83,9 @@ impl StateMachine {
     }
 
     pub fn update_and_evaluate(&mut self, time: f64, scene_width: i64, scene_height: i64) {
+        if self.root_scene.is_none() {
+            return;
+        }
         // TODO: Create utilities for some of the repeated code here
         {
             let vars = &mut self
@@ -105,9 +108,13 @@ impl StateMachine {
 
             if child_id == 0 {
                 // Evaluate current scene
-                eprintln!("[rnd:dbg] Evaluating scene #{scene_id}");
+                if PER_FRAME_LOGGING {
+                    eprintln!("[rnd:dbg] Evaluating scene #{scene_id}");
+                }
                 let values = self.eval_ops_list(&scene_desc.ops, scene_id);
-                eprintln!("[rnd:dbg]  -> {values:?}");
+                if PER_FRAME_LOGGING {
+                    eprintln!("[rnd:dbg]  -> {values:?}");
+                }
                 self.op_results.vals.insert(scene_id, values);
 
                 for (i, watch) in scene_desc.watches.iter().enumerate() {
@@ -328,8 +335,8 @@ impl StateMachine {
             // Remove undeclared variables
             let var_decl_keys = scene_desc
                 .var_decls
-                .iter()
-                .map(|(key, _)| key.as_str())
+                .keys()
+                .map(|key| key.as_str())
                 .collect::<HashSet<_>>();
             scene_state
                 .var_vals
@@ -408,7 +415,9 @@ impl StateMachine {
                 // Evaluate current scene
                 eprintln!("[rnd:dbg] Evaluating scene for inputs #{scene_id}");
                 let values = self.eval_ops_list(&scene_desc.ops, scene_id);
-                eprintln!("[rnd:dbg]  -> {values:?}");
+                if PER_FRAME_LOGGING {
+                    eprintln!("[rnd:dbg]  -> {values:?}");
+                }
                 self.op_results.vals.insert(scene_id, values);
 
                 for (i, (evt_type, _handler)) in scene_desc.event_handlers.iter().enumerate() {

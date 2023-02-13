@@ -3,7 +3,7 @@ members = [
     "boldui_protocol",
     "boldui_protocol_bindings",
     "boldui_renderer",
-    "examples/boldui_example_shapes",
+    "examples/boldui_example_rs_calc",
 ]
 
 [profile.dev]

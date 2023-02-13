@@ -1,6 +1,6 @@
 use crate::renderer::Renderer;
 use crate::simulator::Simulator;
-use crate::{EventLoopProxy, Frontend, StateMachine, ToStateMachine};
+use crate::{EventLoopProxy, Frontend, StateMachine, ToStateMachine, PER_FRAME_LOGGING};
 use boldui_protocol::A2RUpdate;
 use crossbeam::channel::{Receiver, RecvTimeoutError, Sender};
 use skia_safe::{AlphaType, Color4f, ColorSpace, EncodedImageFormat, ISize, ImageInfo, Surface};
@@ -103,7 +103,7 @@ impl Frontend for ImageFrontend {
                 ToStateMachine::SimulatorTick { from_update } => {
                     if let Some(simulator) = &mut self.simulator {
                         if let Err(e) = simulator.tick(&mut self.state_machine, from_update) {
-                            eprintln!("[rnd:err] Error while running simulator: {:?}", e);
+                            eprintln!("[rnd:err] Error while running simulator: {e:?}");
                             break;
                         }
                     }
@@ -172,7 +172,9 @@ impl ImageFrontend {
                 img_size.width as i64,
                 img_size.height as i64,
             );
-            eprintln!("[rnd:dbg] [{:?}] Updated", start.elapsed());
+            if PER_FRAME_LOGGING {
+                eprintln!("[rnd:dbg] [{:?}] Updated", start.elapsed());
+            }
             match self.state_machine.root_scene {
                 None => {
                     canvas.clear(Color4f::new(0.5, 0.1, 0.1, 1.0));
@@ -182,9 +184,13 @@ impl ImageFrontend {
                         .render_scene(canvas, &mut self.state_machine, root_scene);
                 }
             }
-            eprintln!("[rnd:dbg] [{:?}] Rendered", start.elapsed());
+            if PER_FRAME_LOGGING {
+                eprintln!("[rnd:dbg] [{:?}] Rendered", start.elapsed());
+            }
         }
-        eprintln!("[rnd:dbg] Frame took {:?} to render", start.elapsed());
+        if PER_FRAME_LOGGING {
+            eprintln!("[rnd:dbg] Frame took {:?} to render", start.elapsed());
+        }
 
         // Encode it
         let frame_num = self.frame_num;

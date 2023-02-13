@@ -1,4 +1,5 @@
 #![allow(clippy::absurd_extreme_comparisons)]
+#![allow(clippy::read_zero_byte_vec)] // False positives :(
 
 mod util;
 
@@ -9,6 +10,7 @@ use boldui_protocol::{
 };
 use byteorder::{ReadBytesExt, LE};
 use std::collections::{BTreeMap, HashMap};
+use std::f64::consts::PI;
 use std::io::{ErrorKind, Read, Write};
 use std::ops::Deref;
 use std::time::Instant;
@@ -223,11 +225,15 @@ impl AppLogic {
                     // Buttons: Row 1
                     let action_button_color =
                         OpFactory::new_color(Color::from_hex(0x3a3a3a)).push(f);
+                    let action_button_disabled_color =
+                        OpFactory::new_color(Color::from_hex(0x2a2a2a)).push(f);
                     let number_button_color =
                         OpFactory::new_color(Color::from_hex(0x505050)).push(f);
                     let equals_button_color =
                         OpFactory::new_color(Color::from_hex(0xe66100)).push(f);
                     let button_text_color = OpFactory::new_color(Color::from_hex(0xffffff)).push(f);
+                    let button_text_disabled_color =
+                        OpFactory::new_color(Color::from_hex(0x808080)).push(f);
 
                     fn make_btn(
                         f: &mut OpFactory,
@@ -279,6 +285,46 @@ impl AppLogic {
                                 }],
                             },
                         );
+                    }
+
+                    fn make_disabled_btn(
+                        f: &mut OpFactory,
+                        color: OpId,
+                        x: i32,
+                        y: i32,
+                        text: &str,
+                        text_color: OpId,
+                    ) {
+                        const TOP_PADDING: f64 = 79.0;
+                        const LEFT_PADDING: f64 = 12.0;
+                        const X_PADDING: f64 = 4.0;
+                        const Y_PADDING: f64 = 4.0;
+                        const BTN_WIDTH: f64 = 59.0;
+                        const BTN_HEIGHT: f64 = 44.0;
+
+                        let rect = OpFactory::new_rect(
+                            LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH),
+                            TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT),
+                            LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + BTN_WIDTH,
+                            TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT) + BTN_HEIGHT,
+                        )
+                        .push(f);
+                        f.push_cmd(CmdsCommand::DrawRect {
+                            paint: color,
+                            rect: *rect,
+                        });
+
+                        let text_pos = OpFactory::new_point(
+                            LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + 0.5 * BTN_WIDTH,
+                            TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT) + 0.5 * BTN_HEIGHT,
+                        )
+                        .push(f);
+                        let text_op = OpFactory::new_string(text.to_string()).push(f);
+                        f.push_cmd(CmdsCommand::DrawCenteredText {
+                            text: *text_op,
+                            paint: text_color,
+                            center: *text_pos,
+                        });
                     }
 
                     fn make_tall_btn(
@@ -338,10 +384,24 @@ impl AppLogic {
                     make_btn(f, *action_button_color, 0, 0, "<x|", *button_text_color);
 
                     // Left Bracket
-                    make_btn(f, *action_button_color, 1, 0, "(", *button_text_color);
+                    make_disabled_btn(
+                        f,
+                        *action_button_disabled_color,
+                        1,
+                        0,
+                        "(",
+                        *button_text_disabled_color,
+                    );
 
                     // Right Bracket
-                    make_btn(f, *action_button_color, 2, 0, ")", *button_text_color);
+                    make_disabled_btn(
+                        f,
+                        *action_button_disabled_color,
+                        2,
+                        0,
+                        ")",
+                        *button_text_disabled_color,
+                    );
 
                     // Mod
                     make_btn(f, *action_button_color, 3, 0, "mod", *button_text_color);
@@ -432,7 +492,7 @@ impl AppLogic {
             _ => {
                 stdout.send(&A2RMessage::Error(Error {
                     code: 1,
-                    text: format!("Not found: {:?}", path),
+                    text: format!("Not found: {path:?}"),
                 }))?;
             }
         };
@@ -482,6 +542,9 @@ impl AppLogic {
                     "/" => {
                         self.curr_op = b'/';
                     }
+                    "mod" => {
+                        self.curr_op = b'%';
+                    }
                     "=" => {
                         match self.curr_op {
                             b'+' => {
@@ -500,8 +563,41 @@ impl AppLogic {
                                 self.a /= self.b;
                                 self.curr_op = 0;
                             }
-                            _ => panic!("wtf"),
+                            b'%' => {
+                                self.a %= self.b;
+                                self.curr_op = 0;
+                            }
+                            0 => { /* No operation, do nothing */ }
+                            op => panic!("wtf: {op}"),
                         }
+                        self.should_show_b = false;
+                    }
+                    "x^2" => {
+                        if self.should_show_b {
+                            self.b = self.b * self.b
+                        } else {
+                            self.a = self.a * self.a
+                        }
+                    }
+                    "sqrt" => {
+                        if self.should_show_b {
+                            self.b = self.b.sqrt()
+                        } else {
+                            self.a = self.a.sqrt()
+                        }
+                    }
+                    "pi" => {
+                        if self.curr_op == 0 {
+                            self.a = PI;
+                        } else {
+                            self.b = PI;
+                            self.should_show_b = true;
+                        }
+                    }
+                    "<x|" => {
+                        self.a = 0.0;
+                        self.b = 0.0;
+                        self.curr_op = 0;
                         self.should_show_b = false;
                     }
                     _ => return Err("Unknown operation".into()),
@@ -536,7 +632,7 @@ impl AppLogic {
             _ => {
                 stdout.send(&A2RMessage::Error(Error {
                     code: 1,
-                    text: format!("Not found: {:?}", path),
+                    text: format!("Not found: {path:?}"),
                 }))?;
             }
         };
@@ -579,7 +675,7 @@ fn parse_path(path: &str) -> (String, Vec<String>, Vec<(String, String)>) {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     if atty::is(atty::Stream::Stdout) || atty::is(atty::Stream::Stdin) {
         eprintln!("Run this app like so:");
-        eprintln!("  cargo run -p boldui_renderer -- -- cargo run -p boldui_example_shapes");
+        eprintln!("  cargo run -p boldui_renderer -- -- cargo run -p boldui_example_rs_calc");
         std::process::exit(1);
     }
 
@@ -638,7 +734,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Err(e) => Err(e)?,
         };
 
-        eprintln!("[app:dbg] reading msg of size {}", msg_len);
+        eprintln!("[app:dbg] reading msg of size {msg_len}");
         msg_buf.resize(msg_len as usize, 0);
         stdin.read_exact(&mut msg_buf)?;
         let msg = bincode::deserialize::<R2AMessage>(&msg_buf)?;
@@ -683,7 +779,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 app_logic.open_window(raw_path, path_ref, params_map, &mut stdout)?;
             }
             R2AMessage::Error(err) => {
-                eprintln!("[app:dbg] Renderer error: {:?}", err);
+                eprintln!("[app:dbg] Renderer error: {err:?}");
             }
         }
     }

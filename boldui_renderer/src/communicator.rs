@@ -9,15 +9,14 @@ use std::io::{Read, Write};
 use std::os::unix::io::AsRawFd;
 use std::time::Instant;
 
+#[derive(Debug)]
 pub(crate) enum ToStateMachine {
     Quit,
     Redraw,
     SleepUntil(Instant),
     Click { x: f64, y: f64, button: u8 },
     Update(A2RUpdate),
-    SimulatorTick {
-        from_update: bool,
-    },
+    SimulatorTick { from_update: bool },
 }
 
 pub(crate) enum FromStateMachine {
@@ -160,10 +159,26 @@ impl Communicator {
 
             // Check if new app inputs are pending
             if fds.contains(self.app_stdout.as_raw_fd()) {
-                let msg_len = self.app_stdout.read_u32::<LE>()?;
-                eprintln!("[rnd:dbg] reading msg of size {}", msg_len);
+                // Common quit logic
+                let do_quit = || {
+                    eprintln!("[rnd:err] Failed to read message from app, quitting");
+                    self.event_loop_proxy.to_state_machine(ToStateMachine::Quit);
+                };
+
+                // Read message
+                let msg_len = match self.app_stdout.read_u32::<LE>() {
+                    Err(_) => {
+                        do_quit();
+                        return Ok(());
+                    }
+                    Ok(v) => v,
+                };
+                eprintln!("[rnd:dbg] reading msg of size {msg_len}");
                 msg_buf.resize(msg_len as usize, 0);
-                self.app_stdout.read_exact(&mut msg_buf)?;
+                if self.app_stdout.read_exact(&mut msg_buf).is_err() {
+                    do_quit();
+                    return Ok(());
+                };
                 let msg = bincode::deserialize::<A2RMessage>(&msg_buf)?;
 
                 // eprintln!("[rnd:dbg] A2R: {:#?}", &msg);
