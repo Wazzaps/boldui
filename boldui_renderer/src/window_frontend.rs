@@ -5,6 +5,8 @@ use boldui_protocol::A2RUpdate;
 use glutin::dpi::PhysicalPosition;
 use glutin::event::ElementState;
 use glutin::event_loop::{EventLoop, EventLoopBuilder};
+use glutin::platform::unix::WindowExtUnix;
+use glutin::window::Theme;
 use skia_safe::{Canvas, Color4f, ColorType, Surface};
 use std::time::Instant;
 
@@ -105,10 +107,7 @@ impl Frontend for WindowFrontend {
         window.set_min_inner_size(Some(glutin::dpi::Size::new(glutin::dpi::LogicalSize::new(
             100.0, 100.0,
         ))));
-        // window.set_inner_size(glutin::dpi::Size::new(glutin::dpi::LogicalSize::new(
-        //     1280.0, 720.0,
-        // )));
-        // windowed_context.resize(glutin::dpi::PhysicalSize::new(1280, 720));
+        window.wayland_set_csd_theme(Theme::Dark);
 
         fn create_surface(
             windowed_context: &WindowedContext,
@@ -172,6 +171,10 @@ impl Frontend for WindowFrontend {
                 Event::LoopDestroyed => {}
                 Event::WindowEvent { event, .. } => match event {
                     WindowEvent::Resized(physical_size) => {
+                        eprintln!(
+                            "[rnd:dbg] Resized: {}, {}",
+                            physical_size.width, physical_size.height,
+                        );
                         env.surface =
                             create_surface(&env.windowed_context, &fb_info, &mut env.gr_context);
                         env.windowed_context.resize(physical_size)
@@ -191,7 +194,6 @@ impl Frontend for WindowFrontend {
                                 *control_flow = ControlFlow::Exit;
                             }
                         }
-                        env.windowed_context.window().request_redraw();
                     }
                     WindowEvent::MouseInput { state, .. } => {
                         if state == ElementState::Pressed {
@@ -216,18 +218,37 @@ impl Frontend for WindowFrontend {
                 },
                 Event::RedrawRequested(_) => {
                     {
-                        let canvas = env.surface.canvas();
+                        let new_scene_size = Self::get_scene_size(&mut state_machine);
+                        if new_scene_size != last_scene_size {
+                            eprintln!(
+                                "[rnd:dbg] Resize: {:?} -> {:?}",
+                                last_scene_size, new_scene_size
+                            );
 
-                        Self::redraw(
-                            &mut state_machine,
-                            &mut renderer,
-                            &mut last_scene_size,
-                            canvas,
-                        );
+                            state_machine
+                                .event_proxy
+                                .as_ref()
+                                .unwrap()
+                                .to_state_machine(ToStateMachine::Resize(
+                                    new_scene_size.0 as u32,
+                                    new_scene_size.1 as u32,
+                                ));
 
-                        canvas.flush();
+                            last_scene_size = new_scene_size;
+                        } else {
+                            let canvas = env.surface.canvas();
+
+                            Self::redraw(
+                                &mut state_machine,
+                                &mut renderer,
+                                last_scene_size,
+                                canvas,
+                            );
+
+                            canvas.flush();
+                            env.windowed_context.swap_buffers().unwrap();
+                        }
                     }
-                    env.windowed_context.swap_buffers().unwrap();
 
                     // let now = Instant::now();
                     // let framerate = 1.0 / ((now - last_frame).as_millis() as f64 / 1_000.0);
@@ -235,6 +256,7 @@ impl Frontend for WindowFrontend {
                     // last_frame = now;
                 }
                 Event::MainEventsCleared => {
+                    // TODO: Make this more efficient, don't redraw every frame
                     env.windowed_context.window().request_redraw();
                 }
                 Event::UserEvent(e) => {
@@ -303,6 +325,20 @@ impl Frontend for WindowFrontend {
                             }
                             // eprintln!("[rnd:dbg] [{:?}] Handled click", start.elapsed());
                         }
+                        ToStateMachine::Resize(w, h) => {
+                            env.windowed_context
+                                .window()
+                                .set_inner_size(glutin::dpi::Size::new(
+                                    glutin::dpi::LogicalSize::new(w, h),
+                                ));
+                            env.surface = create_surface(
+                                &env.windowed_context,
+                                &fb_info,
+                                &mut env.gr_context,
+                            );
+                            env.windowed_context
+                                .resize(glutin::dpi::PhysicalSize::new(w, h));
+                        }
                     }
                 }
                 _ => (),
@@ -312,31 +348,30 @@ impl Frontend for WindowFrontend {
 }
 
 impl WindowFrontend {
+    fn get_scene_size(state_machine: &mut StateMachine) -> (i32, i32) {
+        // Get window size
+        const DEFAULT_WINDOW_SIZE: (i32, i32) = (1280, 720);
+        state_machine
+            .root_scene
+            .map(|root_scene| {
+                state_machine
+                    .get_default_window_size_for_scene(root_scene)
+                    .unwrap_or(DEFAULT_WINDOW_SIZE)
+            })
+            .unwrap_or(DEFAULT_WINDOW_SIZE)
+    }
+
     fn redraw(
         state_machine: &mut StateMachine,
         renderer: &mut Renderer,
-        last_scene_size: &mut (i32, i32),
+        scene_size: (i32, i32),
         canvas: &mut Canvas,
     ) {
         let start = Instant::now();
 
-        // Get window size
-        let window_size = {
-            const DEFAULT_WINDOW_SIZE: (i32, i32) = (1280, 720);
-            state_machine
-                .root_scene
-                .map(|root_scene| {
-                    state_machine
-                        .get_default_window_size_for_scene(root_scene)
-                        .unwrap_or(DEFAULT_WINDOW_SIZE)
-                })
-                .unwrap_or(DEFAULT_WINDOW_SIZE)
-        };
-        *last_scene_size = window_size;
-
         // Create canvas
         // let color_space = ColorSpace::new_srgb();
-        // let img_size = ISize::new(window_size.0, window_size.1);
+        // let img_size = ISize::new(scene_size.0, scene_size.1);
         // let image_info = ImageInfo::new_n32(img_size, AlphaType::Unpremul, color_space);
         // let mut surface = Surface::new_raster(&image_info, image_info.min_row_bytes(), None)
         //     .expect("Failed to create surface");
@@ -348,7 +383,7 @@ impl WindowFrontend {
         // Render
         canvas.clear(Color4f::new(0.0, 0.0, 0.0, 0.0));
         {
-            state_machine.update_and_evaluate(0.0, window_size.0 as i64, window_size.1 as i64);
+            state_machine.update_and_evaluate(0.0, scene_size.0 as i64, scene_size.1 as i64);
             if PER_FRAME_LOGGING {
                 eprintln!("[rnd:dbg] [{:?}] Updated", start.elapsed());
             }

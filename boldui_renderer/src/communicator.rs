@@ -13,6 +13,7 @@ use std::time::Instant;
 pub(crate) enum ToStateMachine {
     Quit,
     Redraw,
+    Resize(u32, u32),
     SleepUntil(Instant),
     Click { x: f64, y: f64, button: u8 },
     Update(A2RUpdate),

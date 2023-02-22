@@ -138,6 +138,7 @@ impl Frontend for ImageFrontend {
                     }
                     eprintln!("[rnd:dbg] [{:?}] Handled click", start.elapsed());
                 }
+                ToStateMachine::Resize(_, _) => unimplemented!(),
             }
         }
     }
