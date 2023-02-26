@@ -1,7 +1,7 @@
 use crate::renderer::Renderer;
 use crate::simulator::Simulator;
 use crate::{Frontend, StateMachine, ToStateMachine, PER_FRAME_LOGGING};
-use boldui_protocol::A2RUpdate;
+use boldui_protocol::{A2RUpdate, SceneId};
 use glutin::dpi::PhysicalPosition;
 use glutin::event::ElementState;
 use glutin::event_loop::{EventLoop, EventLoopBuilder};
@@ -162,6 +162,7 @@ impl Frontend for WindowFrontend {
         let mut current_mouse_pos = PhysicalPosition::default();
         let mut last_frame = Instant::now();
         let mut last_scene_size: (i32, i32) = (0, 0);
+        let mut active_scene_id = None;
 
         el.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Wait;
@@ -205,6 +206,7 @@ impl Frontend for WindowFrontend {
                                 .as_ref()
                                 .unwrap()
                                 .to_state_machine(ToStateMachine::Click {
+                                    window_id: 1,
                                     x: current_mouse_pos.x,
                                     y: current_mouse_pos.y,
                                     button: 0,
@@ -218,7 +220,12 @@ impl Frontend for WindowFrontend {
                 },
                 Event::RedrawRequested(_) => {
                     {
-                        let new_scene_size = Self::get_scene_size(&mut state_machine);
+                        if active_scene_id.is_none() {
+                            return;
+                        }
+                        let active_scene_id = active_scene_id.unwrap();
+                        let new_scene_size =
+                            Self::get_scene_size(&mut state_machine, active_scene_id);
                         if new_scene_size != last_scene_size {
                             eprintln!(
                                 "[rnd:dbg] Resize: {:?} -> {:?}",
@@ -229,10 +236,11 @@ impl Frontend for WindowFrontend {
                                 .event_proxy
                                 .as_ref()
                                 .unwrap()
-                                .to_state_machine(ToStateMachine::Resize(
-                                    new_scene_size.0 as u32,
-                                    new_scene_size.1 as u32,
-                                ));
+                                .to_state_machine(ToStateMachine::Resize {
+                                    window_id: 1,
+                                    width: new_scene_size.0 as u32,
+                                    height: new_scene_size.1 as u32,
+                                });
 
                             last_scene_size = new_scene_size;
                         } else {
@@ -240,6 +248,7 @@ impl Frontend for WindowFrontend {
 
                             Self::redraw(
                                 &mut state_machine,
+                                active_scene_id,
                                 &mut renderer,
                                 last_scene_size,
                                 canvas,
@@ -276,7 +285,7 @@ impl Frontend for WindowFrontend {
                                     from_update: true,
                                 });
                         }
-                        ToStateMachine::Redraw => {
+                        ToStateMachine::Redraw { window_id: _ } => {
                             // self.redraw(start);
                             // self.state_machine
                             //     .event_proxy
@@ -304,32 +313,42 @@ impl Frontend for WindowFrontend {
                             // next_wakeup = next_wakeup
                             //     .map_or(Some(instant), |before| Some(before.min(instant)));
                         }
-                        ToStateMachine::Click { x, y, button } => {
+                        ToStateMachine::Click {
+                            window_id,
+                            x,
+                            y,
+                            button,
+                        } => {
+                            assert_eq!(window_id, 1);
                             state_machine.update_and_evaluate(
+                                active_scene_id.unwrap(),
                                 0.0,
                                 last_scene_size.0 as i64,
                                 last_scene_size.1 as i64,
                             );
                             // eprintln!("[rnd:dbg] [{:?}] Updated for click", start.elapsed());
                             // TODO: Handle clicks per-scene
-                            if let Some(_root_scene) = state_machine.root_scene {
-                                state_machine.handle_click(
-                                    // root_scene,
-                                    0.0,
-                                    last_scene_size.0 as i64,
-                                    last_scene_size.1 as i64,
-                                    x,
-                                    y,
-                                    button,
-                                );
-                            }
+                            state_machine.handle_click(
+                                active_scene_id.unwrap(),
+                                0.0,
+                                last_scene_size.0 as i64,
+                                last_scene_size.1 as i64,
+                                x,
+                                y,
+                                button,
+                            );
                             // eprintln!("[rnd:dbg] [{:?}] Handled click", start.elapsed());
                         }
-                        ToStateMachine::Resize(w, h) => {
+                        ToStateMachine::Resize {
+                            window_id,
+                            width,
+                            height,
+                        } => {
+                            assert_eq!(window_id, 1);
                             env.windowed_context
                                 .window()
                                 .set_inner_size(glutin::dpi::Size::new(
-                                    glutin::dpi::LogicalSize::new(w, h),
+                                    glutin::dpi::LogicalSize::new(width, height),
                                 ));
                             env.surface = create_surface(
                                 &env.windowed_context,
@@ -337,7 +356,11 @@ impl Frontend for WindowFrontend {
                                 &mut env.gr_context,
                             );
                             env.windowed_context
-                                .resize(glutin::dpi::PhysicalSize::new(w, h));
+                                .resize(glutin::dpi::PhysicalSize::new(width, height));
+                        }
+                        ToStateMachine::AllocWindow(scene_id) => {
+                            active_scene_id = Some(scene_id);
+                            state_machine.register_window_for_scene(scene_id, 1);
                         }
                     }
                 }
@@ -348,21 +371,17 @@ impl Frontend for WindowFrontend {
 }
 
 impl WindowFrontend {
-    fn get_scene_size(state_machine: &mut StateMachine) -> (i32, i32) {
+    fn get_scene_size(state_machine: &mut StateMachine, scene_id: SceneId) -> (i32, i32) {
         // Get window size
         const DEFAULT_WINDOW_SIZE: (i32, i32) = (1280, 720);
         state_machine
-            .root_scene
-            .map(|root_scene| {
-                state_machine
-                    .get_default_window_size_for_scene(root_scene)
-                    .unwrap_or(DEFAULT_WINDOW_SIZE)
-            })
+            .get_default_window_size_for_scene(scene_id)
             .unwrap_or(DEFAULT_WINDOW_SIZE)
     }
 
     fn redraw(
         state_machine: &mut StateMachine,
+        scene_id: SceneId,
         renderer: &mut Renderer,
         scene_size: (i32, i32),
         canvas: &mut Canvas,
@@ -383,18 +402,16 @@ impl WindowFrontend {
         // Render
         canvas.clear(Color4f::new(0.0, 0.0, 0.0, 0.0));
         {
-            state_machine.update_and_evaluate(0.0, scene_size.0 as i64, scene_size.1 as i64);
+            state_machine.update_and_evaluate(
+                scene_id,
+                0.0,
+                scene_size.0 as i64,
+                scene_size.1 as i64,
+            );
             if PER_FRAME_LOGGING {
                 eprintln!("[rnd:dbg] [{:?}] Updated", start.elapsed());
             }
-            match state_machine.root_scene {
-                None => {
-                    canvas.clear(Color4f::new(0.5, 0.1, 0.1, 1.0));
-                }
-                Some(root_scene) => {
-                    renderer.render_scene(canvas, state_machine, root_scene);
-                }
-            }
+            renderer.render_scene(canvas, state_machine, scene_id);
             if PER_FRAME_LOGGING {
                 eprintln!("[rnd:dbg] [{:?}] Rendered", start.elapsed());
             }

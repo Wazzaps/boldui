@@ -1,0 +1,15 @@
+[package]
+name = "bimap_plus_map"
+version = "0.2.0"
+authors = [
+    "jekto_vatimeliju <jekto.vatimeliju@gmail.com>",
+    "David Shlemayev <david.shlemayev@gmail.com>",
+]
+edition = "2018"
+license = "MIT OR Apache-2.0"
+description = "`BiMapPlusMap<L, R, V>` is made up of `BiMap<L, R>` and `HashMap<L, V>`; you can look up L from R, R from L, V from L and V from R. It is guaranteed that HashMap<L, V> contains an element if and only if BiMap<L, R> contain it."
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bimap = "0.6.2"

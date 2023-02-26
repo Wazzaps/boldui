@@ -64,7 +64,16 @@ impl Simulator {
                     break;
                 }
                 Instruction::Click { x, y, button } => {
-                    self.send_event(state_machine, ToStateMachine::Click { x, y, button });
+                    // FIXME: Always clicks in first window
+                    self.send_event(
+                        state_machine,
+                        ToStateMachine::Click {
+                            window_id: 0,
+                            x,
+                            y,
+                            button,
+                        },
+                    );
                 }
                 Instruction::Quit => {
                     self.curr_insn += 1;

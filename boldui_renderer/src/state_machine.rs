@@ -1,6 +1,7 @@
 use crate::communicator::{CommChannelRecv, CommChannelSend, FromStateMachine};
 use crate::op_interpreter::OpResults;
 use crate::{EventLoopProxy, ToStateMachine, PER_FRAME_LOGGING};
+use bimap_plus_map::BiMapPlusMap;
 use boldui_protocol::{
     A2RReparentScene, A2RUpdateScene, EventType, HandlerBlock, HandlerCmd, OpsOperation, R2AReply,
     SceneId, Value,
@@ -40,11 +41,17 @@ pub struct SceneState {
 }
 
 pub type Scene = (A2RUpdateScene, SceneState);
+pub type WindowId = u64;
+
+#[derive(Default)]
+pub struct WindowState {
+    pub last_scene_size: (i32, i32),
+}
 
 pub(crate) struct StateMachine {
     pub scenes: HashMap<SceneId, Scene>,
     pub op_results: OpResults,
-    pub root_scene: Option<SceneId>,
+    pub root_scenes: BiMapPlusMap<SceneId, WindowId, WindowState>,
     pub has_pending_replies: bool,
     pub comm_channel_send: CommChannelSend,
     pub event_proxy: Option<Box<dyn EventLoopProxy + Send>>,
@@ -58,7 +65,7 @@ impl StateMachine {
             Self {
                 scenes: HashMap::new(),
                 op_results: OpResults::new(),
-                root_scene: None,
+                root_scenes: BiMapPlusMap::new(),
                 has_pending_replies: false,
                 comm_channel_send: CommChannelSend {
                     send: comm_channel_send,
@@ -82,24 +89,29 @@ impl StateMachine {
         results
     }
 
-    pub fn update_and_evaluate(&mut self, time: f64, scene_width: i64, scene_height: i64) {
-        if self.root_scene.is_none() {
+    pub fn update_and_evaluate(
+        &mut self,
+        scene_id: SceneId,
+        time: f64,
+        scene_width: i64,
+        scene_height: i64,
+    ) {
+        if self.root_scenes.bimap_get_by_left(&scene_id).is_none() {
+            eprintln!(
+                "[rnd:wrn] Tried to update scene id {} which is not a root scene",
+                scene_id
+            );
             return;
         }
         // TODO: Create utilities for some of the repeated code here
         {
-            let vars = &mut self
-                .scenes
-                .get_mut(&self.root_scene.unwrap())
-                .unwrap()
-                .1
-                .var_vals;
+            let vars = &mut self.scenes.get_mut(&scene_id).unwrap().1.var_vals;
             vars.insert(":time".to_string(), Value::Double(time));
             vars.insert(":width".to_string(), Value::Sint64(scene_width));
             vars.insert(":height".to_string(), Value::Sint64(scene_height));
         }
 
-        let mut stack = vec![(self.root_scene.unwrap(), 0)];
+        let mut stack = vec![(scene_id, 0)];
         let mut watches_to_run = vec![];
 
         while !stack.is_empty() {
@@ -180,7 +192,6 @@ impl StateMachine {
         match cmd {
             HandlerCmd::Nop => {}
             HandlerCmd::ReparentScene { scene, to } => {
-                let root_scene = &mut self.root_scene;
                 let scenes = &mut self.scenes;
                 let parent = scenes.get(scene).unwrap().1.parent;
 
@@ -189,7 +200,7 @@ impl StateMachine {
                     SceneParent::NoParent | SceneParent::Hidden => {} // Already disconnected / hidden
                     SceneParent::Root => {
                         // Is Root
-                        *root_scene = None;
+                        self.root_scenes.remove_by_left(scene);
                     }
                     SceneParent::Parent(prev_parent) => {
                         let parent = scenes.get_mut(&prev_parent).unwrap();
@@ -233,12 +244,11 @@ impl StateMachine {
                             self.scenes.get(after_what).unwrap().1.parent;
                     }
                     A2RReparentScene::Root => {
-                        if let Some(root_scene) = self.root_scene {
-                            self.scenes.get_mut(&root_scene).unwrap().1.parent =
-                                SceneParent::NoParent;
-                        }
-                        self.root_scene = Some(*scene);
                         self.scenes.get_mut(scene).unwrap().1.parent = SceneParent::Root;
+                        self.event_proxy
+                            .as_ref()
+                            .unwrap()
+                            .to_state_machine(ToStateMachine::AllocWindow(*scene));
                     }
                     A2RReparentScene::Disconnect => {} // Was already disconnected
                     A2RReparentScene::Hide => {
@@ -369,18 +379,24 @@ impl StateMachine {
         self.scenes
             .retain(|_scene_id, scene| scene.1.parent.has_parent());
 
-        // Redraw
-        self.event_proxy
-            .as_ref()
-            .unwrap()
-            .to_state_machine(ToStateMachine::Redraw);
+        // Redraw all scenes
+        // TODO: Only redraw affected scenes
+        for window_id in self.root_scenes.right_keys_iter() {
+            self.event_proxy
+                .as_ref()
+                .unwrap()
+                .to_state_machine(ToStateMachine::Redraw {
+                    window_id: *window_id,
+                });
+        }
 
         // eprintln!("[rnd:dbg] New scenes: {:#?}", self.scenes);
     }
 
+    // Only supports root scenes
     pub(crate) fn handle_click(
         &mut self,
-        // scene_id: SceneId,
+        scene_id: SceneId,
         time: f64,
         scene_width: i64,
         scene_height: i64,
@@ -390,12 +406,7 @@ impl StateMachine {
     ) {
         // TODO: Create utilities for some of the repeated code here
         {
-            let vars = &mut self
-                .scenes
-                .get_mut(&self.root_scene.unwrap())
-                .unwrap()
-                .1
-                .var_vals;
+            let vars = &mut self.scenes.get_mut(&scene_id).unwrap().1.var_vals;
             vars.insert(":time".to_string(), Value::Double(time));
             vars.insert(":width".to_string(), Value::Sint64(scene_width));
             vars.insert(":height".to_string(), Value::Sint64(scene_height));
@@ -404,7 +415,7 @@ impl StateMachine {
             vars.insert(":click_btn".to_string(), Value::Sint64(button as i64));
         }
 
-        let mut stack = vec![(self.root_scene.unwrap(), 0)];
+        let mut stack = vec![(scene_id, 0)];
         let mut event_handlers_to_run = vec![];
 
         while !stack.is_empty() {
@@ -471,5 +482,10 @@ impl StateMachine {
             self.comm_channel_send.notify_send.write(1).unwrap();
             self.has_pending_replies = false;
         }
+    }
+
+    pub fn register_window_for_scene(&mut self, scene: SceneId, window_id: WindowId) {
+        self.root_scenes
+            .insert(scene, window_id, WindowState::default());
     }
 }

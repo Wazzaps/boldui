@@ -1,20 +1,27 @@
 use crate::renderer::Renderer;
 use crate::simulator::Simulator;
+use crate::state_machine::WindowId;
 use crate::{EventLoopProxy, Frontend, StateMachine, ToStateMachine, PER_FRAME_LOGGING};
 use boldui_protocol::A2RUpdate;
 use crossbeam::channel::{Receiver, RecvTimeoutError, Sender};
 use skia_safe::{AlphaType, Color4f, ColorSpace, EncodedImageFormat, ISize, ImageInfo, Surface};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::time::Instant;
+
+#[derive(Default)]
+pub(crate) struct InternalWindowState {
+    pub frame_num: u64,
+}
 
 pub(crate) struct ImageFrontend {
     pub event_recv: Receiver<ToStateMachine>,
     pub renderer: Renderer,
     pub state_machine: StateMachine,
     pub simulator: Option<Simulator>,
-    pub frame_num: u64,
-    pub last_scene_size: (i32, i32),
+    pub window_counter: u64,
+    pub windows: HashMap<u64, InternalWindowState>,
 }
 
 #[derive(Clone)]
@@ -43,8 +50,8 @@ impl ImageFrontend {
                 renderer,
                 state_machine,
                 simulator,
-                frame_num: 0,
-                last_scene_size: (0, 0),
+                window_counter: 0,
+                windows: HashMap::new(),
             },
             event_proxy,
         )
@@ -68,7 +75,8 @@ impl Frontend for ImageFrontend {
                         // Woke up before any event
                         Err(RecvTimeoutError::Timeout) => {
                             next_wakeup = None;
-                            ToStateMachine::Redraw
+                            // FIXME: Always redraws first window
+                            ToStateMachine::Redraw { window_id: 0 }
                         }
 
                         // Bye
@@ -92,8 +100,8 @@ impl Frontend for ImageFrontend {
                         .unwrap()
                         .to_state_machine(ToStateMachine::SimulatorTick { from_update: true });
                 }
-                ToStateMachine::Redraw => {
-                    self.redraw(start);
+                ToStateMachine::Redraw { window_id } => {
+                    self.redraw(start, window_id);
                     self.state_machine
                         .event_proxy
                         .as_ref()
@@ -117,44 +125,78 @@ impl Frontend for ImageFrontend {
                     next_wakeup =
                         next_wakeup.map_or(Some(instant), |before| Some(before.min(instant)));
                 }
-                ToStateMachine::Click { x, y, button } => {
+                ToStateMachine::Click {
+                    window_id,
+                    x,
+                    y,
+                    button,
+                } => {
+                    let scene_id = *self
+                        .state_machine
+                        .root_scenes
+                        .bimap_get_by_right(&window_id)
+                        .unwrap();
+                    let last_scene_size = self
+                        .state_machine
+                        .root_scenes
+                        .hashmap_get_by_right(&window_id)
+                        .unwrap()
+                        .last_scene_size;
+
                     self.state_machine.update_and_evaluate(
+                        scene_id,
                         0.0,
-                        self.last_scene_size.0 as i64,
-                        self.last_scene_size.1 as i64,
+                        last_scene_size.0 as i64,
+                        last_scene_size.1 as i64,
                     );
                     eprintln!("[rnd:dbg] [{:?}] Updated for click", start.elapsed());
-                    // TODO: Handle clicks per-scene
-                    if let Some(_root_scene) = self.state_machine.root_scene {
-                        self.state_machine.handle_click(
-                            // root_scene,
-                            0.0,
-                            self.last_scene_size.0 as i64,
-                            self.last_scene_size.1 as i64,
-                            x,
-                            y,
-                            button,
-                        );
-                    }
+
+                    self.state_machine.handle_click(
+                        scene_id,
+                        0.0,
+                        last_scene_size.0 as i64,
+                        last_scene_size.1 as i64,
+                        x,
+                        y,
+                        button,
+                    );
                     eprintln!("[rnd:dbg] [{:?}] Handled click", start.elapsed());
                 }
-                ToStateMachine::Resize(_, _) => unimplemented!(),
+                ToStateMachine::Resize { .. } => { /* Nothing to do */ }
+                ToStateMachine::AllocWindow(scene_id) => {
+                    eprintln!("[rnd:nfo] Allocating window for scene #{}", scene_id);
+                    self.windows
+                        .insert(self.window_counter, InternalWindowState::default());
+                    self.state_machine
+                        .register_window_for_scene(scene_id, self.window_counter);
+                    self.window_counter += 1;
+                }
             }
         }
     }
 }
 
 impl ImageFrontend {
-    fn redraw(&mut self, start: Instant) {
-        // Get window size
+    fn redraw(&mut self, start: Instant, window_id: WindowId) {
+        let scene_id = *self
+            .state_machine
+            .root_scenes
+            .bimap_get_by_right(&window_id)
+            .unwrap();
+
         let window_size = {
             const DEFAULT_WINDOW_SIZE: (i32, i32) = (1280, 720);
-            let root_scene = self.state_machine.root_scene.unwrap();
             self.state_machine
-                .get_default_window_size_for_scene(root_scene)
+                .get_default_window_size_for_scene(scene_id)
                 .unwrap_or(DEFAULT_WINDOW_SIZE)
         };
-        self.last_scene_size = window_size;
+
+        let window_state = self
+            .state_machine
+            .root_scenes
+            .hashmap_get_mut_by_right(&window_id)
+            .unwrap();
+        window_state.last_scene_size = window_size;
 
         // Create canvas
         let color_space = ColorSpace::new_srgb();
@@ -169,6 +211,7 @@ impl ImageFrontend {
         canvas.clear(Color4f::new(0.0, 0.0, 0.0, 0.0));
         {
             self.state_machine.update_and_evaluate(
+                scene_id,
                 0.0,
                 img_size.width as i64,
                 img_size.height as i64,
@@ -176,15 +219,8 @@ impl ImageFrontend {
             if PER_FRAME_LOGGING {
                 eprintln!("[rnd:dbg] [{:?}] Updated", start.elapsed());
             }
-            match self.state_machine.root_scene {
-                None => {
-                    canvas.clear(Color4f::new(0.5, 0.1, 0.1, 1.0));
-                }
-                Some(root_scene) => {
-                    self.renderer
-                        .render_scene(canvas, &mut self.state_machine, root_scene);
-                }
-            }
+            self.renderer
+                .render_scene(canvas, &mut self.state_machine, scene_id);
             if PER_FRAME_LOGGING {
                 eprintln!("[rnd:dbg] [{:?}] Rendered", start.elapsed());
             }
@@ -194,15 +230,17 @@ impl ImageFrontend {
         }
 
         // Encode it
-        let frame_num = self.frame_num;
-        let mut out =
-            BufWriter::new(File::create(format!("target/result-{frame_num}.png")).unwrap());
+        let frame_num_ref = &mut self.windows.get_mut(&window_id).unwrap().frame_num;
+        let frame_num = *frame_num_ref;
+        let mut out = BufWriter::new(
+            File::create(format!("target/result-wnd{window_id}-frm{frame_num}.png")).unwrap(),
+        );
         let img = surface
             .image_snapshot()
             .encode_to_data(EncodedImageFormat::PNG)
             .expect("Failed to encode as PNG");
         out.write_all(img.as_bytes()).expect("Failed to write PNG");
-        eprintln!("[rnd:dbg] Wrote frame #{frame_num}");
-        self.frame_num += 1;
+        eprintln!("[rnd:dbg] Wrote frame #{frame_num} for window #{window_id}");
+        *frame_num_ref += 1;
     }
 }

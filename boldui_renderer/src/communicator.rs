@@ -1,5 +1,6 @@
+use crate::state_machine::WindowId;
 use crate::{EventLoopProxy, SerdeSender};
-use boldui_protocol::{bincode, A2RMessage, A2RUpdate, R2AReply, R2AUpdate};
+use boldui_protocol::{bincode, A2RMessage, A2RUpdate, R2AReply, R2AUpdate, SceneId};
 use byteorder::{ReadBytesExt, LE};
 use crossbeam::channel::{Receiver, Sender};
 use eventfd::EventFD;
@@ -12,12 +13,26 @@ use std::time::Instant;
 #[derive(Debug)]
 pub(crate) enum ToStateMachine {
     Quit,
-    Redraw,
-    Resize(u32, u32),
+    Redraw {
+        window_id: WindowId,
+    },
+    Resize {
+        window_id: WindowId,
+        width: u32,
+        height: u32,
+    },
+    AllocWindow(SceneId),
     SleepUntil(Instant),
-    Click { x: f64, y: f64, button: u8 },
+    Click {
+        window_id: WindowId,
+        x: f64,
+        y: f64,
+        button: u8,
+    },
     Update(A2RUpdate),
-    SimulatorTick { from_update: bool },
+    SimulatorTick {
+        from_update: bool,
+    },
 }
 
 pub(crate) enum FromStateMachine {
