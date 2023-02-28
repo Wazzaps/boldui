@@ -19,9 +19,13 @@ eventfd = "0.2.0"
 bimap_plus_map = { path="../utils/bimap_plus_map" }
 
 # Graphics
-glutin = "0.29.1"
+gtk = {package = "gtk4", version = "0.6.2", features = ["v4_6"]}
+adw = {package = "libadwaita", version = "0.3.1", features = ["v1_1"]}
+glib = "0.17.2"
 skia-safe = { version = "0.46.0", features = ["wayland"] }
 gl = "0.14.0"
+epoxy = "0.1.0"
+libloading = "0.7.4"
 
 # Devtools related
 #imgui = "0.8.2"

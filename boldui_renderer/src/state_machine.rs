@@ -188,6 +188,17 @@ impl StateMachine {
         }
     }
 
+    pub fn get_window_title_for_scene(&mut self, scene: SceneId) -> Option<String> {
+        let root_vars = &self.scenes.get(&scene).unwrap().1.var_vals;
+        match root_vars.get(":window_title") {
+            Some(title) => match title {
+                Value::String(s) => Some(s.clone()),
+                _ => panic!("Window title must be of type String, not: {:?}", title),
+            },
+            _ => None,
+        }
+    }
+
     pub fn eval_handler_cmd(&mut self, cmd: &HandlerCmd, ctx: (SceneId, &[Value])) {
         match cmd {
             HandlerCmd::Nop => {}

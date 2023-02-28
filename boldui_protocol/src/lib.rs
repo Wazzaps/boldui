@@ -155,6 +155,10 @@ pub enum OpsOperation {
     Neg {
         a: OpId,
     },
+    Div {
+        a: OpId,
+        b: OpId,
+    },
     Eq {
         a: OpId,
         b: OpId,

@@ -132,6 +132,14 @@ impl std::ops::Neg for OpIdWrapper {
     }
 }
 
+impl std::ops::Div for OpIdWrapper {
+    type Output = OpWrapper;
+
+    fn div(self, rhs: Self) -> Self::Output {
+        OpWrapper(OpsOperation::Div { a: *self, b: *rhs })
+    }
+}
+
 struct AppLogic {
     a: f64,
     b: f64,
@@ -202,10 +210,18 @@ impl AppLogic {
 
                     // Results box
                     let result_bg_color = OpFactory::new_color(Color::from_hex(0x363636)).push(f);
-                    const RESULTS_WIDTH: f64 = 334.0;
+                    let results_width = f.var(":width").push(f);
                     const RESULTS_HEIGHT: f64 = 65.0;
-                    let results_rect =
-                        OpFactory::new_rect(0.0, 1.0, RESULTS_WIDTH, RESULTS_HEIGHT + 1.0).push(f);
+                    let results_rect = OpFactory::make_rect_from_points(
+                        OpFactory::new_point(0.0, 1.0).push(f),
+                        OpFactory::make_point(
+                            results_width,
+                            OpFactory::new_f64(RESULTS_HEIGHT + 1.0).push(f),
+                        )
+                        .push(f),
+                    )
+                    .push(f);
+
                     f.push_cmd(CmdsCommand::DrawRect {
                         paint: *result_bg_color,
                         rect: *results_rect,
@@ -213,8 +229,11 @@ impl AppLogic {
 
                     let result_text_color = OpFactory::new_color(Color::from_hex(0xffffff)).push(f);
                     // const RESULT_LEFT_PADDING: f64 = 16.0;
-                    let text_pos =
-                        OpFactory::new_point(RESULTS_WIDTH / 2.0, RESULTS_HEIGHT / 2.0).push(f);
+                    let text_pos = OpFactory::make_point(
+                        (results_width / OpFactory::new_f64(2.0).push(f)).push(f),
+                        OpFactory::new_f64(RESULTS_HEIGHT / 2.0).push(f),
+                    )
+                    .push(f);
                     let text = f.var("result_bar").push(f);
                     f.push_cmd(CmdsCommand::DrawCenteredText {
                         text: *text,

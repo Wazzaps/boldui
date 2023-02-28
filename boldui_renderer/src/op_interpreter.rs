@@ -111,6 +111,10 @@ impl StateMachine {
                 Value::Double(val) => Value::Double(-*val),
                 val => panic!("Tried to convert {:?} into a number", val),
             },
+            OpsOperation::Div { a, b } => match self.op_results.get_num_pair(*a, ctx, *b, ctx) {
+                IntOrFloatPair::Int(a, b) => Value::Sint64(a / b),
+                IntOrFloatPair::Float(a, b) => Value::Double(a / b),
+            },
             OpsOperation::Eq { a, b } => {
                 match (self.op_results.get(*a, ctx), self.op_results.get(*b, ctx)) {
                     (Value::Sint64(a), Value::Sint64(b)) => Value::Sint64((a == b) as i64),
