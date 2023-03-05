@@ -6,6 +6,7 @@ members = [
     "utils/bimap_plus_map",
     "examples/boldui_example_rs_calc",
 ]
+default-members = ["boldui_renderer"]
 
 [profile.dev]
 incremental = true
