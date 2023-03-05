@@ -11,11 +11,11 @@ use gtk::{gio, GLArea};
 use skia_safe::gpu::gl::FramebufferInfo;
 use skia_safe::gpu::{BackendRenderTarget, RecordingContext, SurfaceOrigin};
 use skia_safe::{Canvas, Color4f, ColorType, Surface};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ptr;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
 use std::time::Instant;
 
 pub(crate) struct WindowFrontend {
@@ -60,8 +60,8 @@ struct WindowState {
 impl WindowState {
     pub(crate) fn new(
         app: &Application,
-        renderer: Rc<Mutex<Renderer>>,
-        state_machine: Rc<Mutex<StateMachine>>,
+        renderer: Rc<RefCell<Renderer>>,
+        state_machine: Rc<RefCell<StateMachine>>,
         window_id: WindowId,
         scene_id: SceneId,
     ) -> Self {
@@ -121,7 +121,7 @@ impl WindowState {
             )
             .unwrap();
             let canvas = surface.canvas();
-            let state_machine = &mut state_machine2.lock().unwrap();
+            let state_machine = &mut state_machine2.borrow_mut();
 
             // Update last scene size
             {
@@ -140,8 +140,7 @@ impl WindowState {
             );
             canvas.clear(Color4f::new(0.2, 0.2, 0.2, 1.0));
             renderer
-                .lock()
-                .unwrap()
+                .borrow_mut()
                 .render_scene(canvas, state_machine, scene_id);
             surface.flush();
 
@@ -152,12 +151,18 @@ impl WindowState {
             max_frametime_us.fetch_max(elapsed_us, Ordering::SeqCst);
             if frame_num % 100 == 0 {
                 println!(
-                    "Min: {}us\tAvg: {}us\tMax: {}us",
+                    "[rnd:dbg] Render Timings: Min: {}us\tAvg: {}us\tMax: {}us",
                     min_frametime_us.load(Ordering::SeqCst),
                     total_frametime_us.load(Ordering::SeqCst) / total_frames.load(Ordering::SeqCst),
                     max_frametime_us.load(Ordering::SeqCst)
                 );
             }
+
+            state_machine
+                .event_proxy
+                .as_ref()
+                .unwrap()
+                .to_state_machine(ToStateMachine::SimulatorTick { from_update: false });
 
             glib::signal::Inhibit(false)
         });
@@ -166,7 +171,7 @@ impl WindowState {
         let event_controller = gtk::GestureClick::new();
 
         event_controller.connect_released(move |_controller, button, x, y| {
-            let mut state_machine = state_machine.lock().unwrap();
+            let mut state_machine = state_machine.borrow_mut();
             state_machine
                 .event_proxy
                 .as_mut()
@@ -201,11 +206,11 @@ impl WindowState {
 
 impl Frontend for WindowFrontend {
     fn main_loop(&mut self) {
-        let state_machine = Rc::new(Mutex::new(self.state_machine.take().unwrap()));
-        let renderer = Rc::new(Mutex::new(self.renderer.take().unwrap()));
+        let state_machine = Rc::new(RefCell::new(self.state_machine.take().unwrap()));
+        let renderer = Rc::new(RefCell::new(self.renderer.take().unwrap()));
         let mut simulator = self.simulator.take();
         let event_recv = self.event_recv.take().unwrap();
-        let windows: Mutex<HashMap<u64, WindowState>> = Mutex::new(HashMap::new());
+        let windows: RefCell<HashMap<u64, WindowState>> = RefCell::new(HashMap::new());
         let window_counter = AtomicU64::new(10);
 
         let application = Application::builder()
@@ -215,7 +220,6 @@ impl Frontend for WindowFrontend {
 
         let app = application.clone();
         event_recv.attach(None, move |event| {
-            eprintln!("--- event");
             match event {
                 ToStateMachine::Update(A2RUpdate {
                     updated_scenes,
@@ -223,28 +227,19 @@ impl Frontend for WindowFrontend {
                 }) => {
                     let start = Instant::now();
                     state_machine
-                        .lock()
-                        .unwrap()
+                        .borrow_mut()
                         .update_scenes_and_run_blocks(updated_scenes, run_blocks);
                     eprintln!("[rnd:dbg] A2R update took {:?} to handle", start.elapsed());
                     state_machine
-                        .lock()
-                        .unwrap()
+                        .borrow_mut()
                         .event_proxy
                         .as_ref()
                         .unwrap()
                         .to_state_machine(ToStateMachine::SimulatorTick { from_update: true });
                 }
                 ToStateMachine::Redraw { window_id } => {
-                    // self.redraw(start);
-                    // self.state_machine
-                    //     .event_proxy
-                    //     .as_ref()
-                    //     .unwrap()
-                    //     .to_state_machine(ToStateMachine::SimulatorTick { from_update: false });
                     windows
-                        .lock()
-                        .unwrap()
+                        .borrow_mut()
                         .get(&window_id)
                         .unwrap()
                         .gl_area
@@ -252,8 +247,7 @@ impl Frontend for WindowFrontend {
                 }
                 ToStateMachine::SimulatorTick { from_update } => {
                     if let Some(simulator) = &mut simulator {
-                        if let Err(e) =
-                            simulator.tick(&mut state_machine.lock().unwrap(), from_update)
+                        if let Err(e) = simulator.tick(&mut state_machine.borrow_mut(), from_update)
                         {
                             eprintln!("[rnd:err] Error while running simulator: {e:?}");
                             app.quit();
@@ -277,7 +271,7 @@ impl Frontend for WindowFrontend {
                     y,
                     button,
                 } => {
-                    let mut state_machine = state_machine.lock().unwrap();
+                    let mut state_machine = state_machine.borrow_mut();
                     let scene_id = *state_machine
                         .root_scenes
                         .bimap_get_by_right(&window_id)
@@ -294,7 +288,6 @@ impl Frontend for WindowFrontend {
                         last_scene_size.1 as i64,
                     );
                     // eprintln!("[rnd:dbg] [{:?}] Updated for click", start.elapsed());
-                    // TODO: Handle clicks per-scene
                     state_machine.handle_click(
                         scene_id,
                         0.0,
@@ -305,12 +298,6 @@ impl Frontend for WindowFrontend {
                         button,
                     );
                     // eprintln!("[rnd:dbg] [{:?}] Handled click", start.elapsed());
-
-                    state_machine
-                        .event_proxy
-                        .as_ref()
-                        .unwrap()
-                        .to_state_machine(ToStateMachine::Redraw { window_id })
                 }
                 ToStateMachine::Resize {
                     window_id,
@@ -330,13 +317,15 @@ impl Frontend for WindowFrontend {
                 }
                 ToStateMachine::AllocWindow(scene_id) => {
                     let window_id = window_counter.fetch_add(1, Ordering::SeqCst);
-                    eprintln!("Allocated window #{} for scene #{}", window_id, scene_id);
+                    eprintln!(
+                        "[rnd:dbg] Allocated window #{} for scene #{}",
+                        window_id, scene_id
+                    );
                     state_machine
-                        .lock()
-                        .unwrap()
+                        .borrow_mut()
                         .register_window_for_scene(scene_id, window_id);
 
-                    let mut windows = windows.lock().unwrap();
+                    let mut windows = windows.borrow_mut();
                     let window_state = WindowState::new(
                         &app,
                         renderer.clone(),
@@ -345,7 +334,7 @@ impl Frontend for WindowFrontend {
                         scene_id,
                     );
                     let (scene_size, scene_title) = {
-                        let state_machine = &mut state_machine.lock().unwrap();
+                        let state_machine = &mut state_machine.borrow_mut();
                         (
                             WindowFrontend::get_scene_size(state_machine, scene_id),
                             WindowFrontend::get_scene_title(state_machine, scene_id),
@@ -392,47 +381,5 @@ impl WindowFrontend {
         state_machine
             .get_window_title_for_scene(scene_id)
             .unwrap_or_else(|| "Window".to_string())
-    }
-
-    fn redraw(
-        state_machine: &mut StateMachine,
-        scene_id: SceneId,
-        renderer: &mut Renderer,
-        scene_size: (i32, i32),
-        canvas: &mut Canvas,
-    ) {
-        let start = Instant::now();
-
-        // Create canvas
-        // let color_space = ColorSpace::new_srgb();
-        // let img_size = ISize::new(scene_size.0, scene_size.1);
-        // let image_info = ImageInfo::new_n32(img_size, AlphaType::Unpremul, color_space);
-        // let mut surface = Surface::new_raster(&image_info, image_info.min_row_bytes(), None)
-        //     .expect("Failed to create surface");
-        // let canvas = surface.canvas();
-        if PER_FRAME_LOGGING {
-            eprintln!("[rnd:dbg] [{:?}] Created canvas", start.elapsed());
-        }
-
-        // Render
-        canvas.clear(Color4f::new(0.0, 0.0, 0.0, 0.0));
-        {
-            state_machine.update_and_evaluate(
-                scene_id,
-                0.0,
-                scene_size.0 as i64,
-                scene_size.1 as i64,
-            );
-            if PER_FRAME_LOGGING {
-                eprintln!("[rnd:dbg] [{:?}] Updated", start.elapsed());
-            }
-            renderer.render_scene(canvas, state_machine, scene_id);
-            if PER_FRAME_LOGGING {
-                eprintln!("[rnd:dbg] [{:?}] Rendered", start.elapsed());
-            }
-        }
-        if PER_FRAME_LOGGING {
-            eprintln!("[rnd:dbg] Frame took {:?} to render", start.elapsed());
-        }
     }
 }
