@@ -998,7 +998,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     map
                 };
 
-                for i in 0..100 {
+                for i in 0..3 {
                     app_logic.open_window(
                         i + 1,
                         format!("131a4feb-fe40-4ba4-b18b-4435{:08x}", i),
