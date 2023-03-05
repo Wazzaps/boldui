@@ -6,11 +6,13 @@ mod util;
 use crate::util::SerdeSender;
 use boldui_protocol::{
     A2RMessage, A2RReparentScene, A2RUpdate, A2RUpdateScene, CmdsCommand, Color, Error, EventType,
-    HandlerBlock, HandlerCmd, OpId, OpsOperation, R2AMessage, R2AOpen, R2AUpdate, Value, VarId,
+    HandlerBlock, HandlerCmd, OpId, OpsOperation, R2AMessage, R2AOpen, R2AUpdate, SceneId, Value,
+    VarId,
 };
 use byteorder::{ReadBytesExt, LE};
 use std::collections::{BTreeMap, HashMap};
 use std::f64::consts::PI;
+use std::fmt::format;
 use std::io::{ErrorKind, Read, Write};
 use std::ops::Deref;
 use std::time::Instant;
@@ -140,15 +142,15 @@ impl std::ops::Div for OpIdWrapper {
     }
 }
 
-struct AppLogic {
+struct WindowState {
     a: f64,
     b: f64,
     curr_op: u8,
     should_show_b: bool,
 }
 
-impl AppLogic {
-    fn new() -> Self {
+impl Default for WindowState {
+    fn default() -> Self {
         Self {
             a: 0.0,
             b: 0.0,
@@ -156,20 +158,43 @@ impl AppLogic {
             should_show_b: false,
         }
     }
+}
+
+struct AppLogic {
+    window_states: HashMap<SceneId, WindowState>,
+    sessions: HashMap<String, SceneId>,
+}
+
+impl AppLogic {
+    fn new() -> Self {
+        Self {
+            window_states: HashMap::new(),
+            sessions: HashMap::new(),
+        }
+    }
 
     fn open_window(
         &mut self,
+        scene_id: SceneId,
+        session_id: String,
         raw_path: String,
         path: &[&str],
         query_params: HashMap<String, String>,
         stdout: &mut impl SerdeSender,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        self.window_states.insert(scene_id, WindowState::default());
+        self.sessions.insert(session_id.to_string(), scene_id);
+        let state = self.window_states.get(&scene_id).unwrap();
+        eprintln!(
+            "[app:dbg] Opening window with scene id #{} and session id #{}",
+            scene_id, &session_id
+        );
         match path {
             // Root
             [""] => {
                 let start = Instant::now();
                 let mut var_decls = BTreeMap::new();
-                var_decls.insert("result_bar".to_string(), Value::String(self.a.to_string()));
+                var_decls.insert("result_bar".to_string(), Value::String(state.a.to_string()));
                 var_decls.insert(
                     ":window_title".to_string(),
                     Value::String("BoldUI Example: Calculator".to_string()),
@@ -185,15 +210,12 @@ impl AppLogic {
                 }
 
                 let mut scene = A2RUpdateScene {
-                    id: 1,
+                    id: scene_id,
                     paint: OpId::default(),
                     backdrop: OpId::default(),
                     transform: OpId::default(),
                     clip: OpId::default(),
-                    uri: format!(
-                        "{}?session={}",
-                        raw_path, "131a4feb-fe40-4ba4-b18b-4435d2874467"
-                    ),
+                    uri: format!("{}?session={}", raw_path, &session_id),
                     ops: vec![],
                     cmds: vec![],
                     var_decls,
@@ -256,6 +278,7 @@ impl AppLogic {
 
                     fn make_btn(
                         f: &mut OpFactory,
+                        session_id: &str,
                         color: OpId,
                         x: i32,
                         y: i32,
@@ -299,7 +322,7 @@ impl AppLogic {
                             HandlerBlock {
                                 ops: vec![],
                                 cmds: vec![HandlerCmd::Reply {
-                                    path: "/".to_string(),
+                                    path: format!("/?session={}", session_id),
                                     params: vec![*text_op],
                                 }],
                             },
@@ -348,6 +371,7 @@ impl AppLogic {
 
                     fn make_tall_btn(
                         f: &mut OpFactory,
+                        session_id: &str,
                         color: OpId,
                         x: i32,
                         y: i32,
@@ -391,7 +415,7 @@ impl AppLogic {
                             HandlerBlock {
                                 ops: vec![],
                                 cmds: vec![HandlerCmd::Reply {
-                                    path: "/".to_string(),
+                                    path: format!("/?session={}", session_id),
                                     params: vec![*text_op],
                                 }],
                             },
@@ -400,7 +424,15 @@ impl AppLogic {
 
                     // Row 1
                     // Backspace
-                    make_btn(f, *action_button_color, 0, 0, "<x|", *button_text_color);
+                    make_btn(
+                        f,
+                        &session_id,
+                        *action_button_color,
+                        0,
+                        0,
+                        "<x|",
+                        *button_text_color,
+                    );
 
                     // Left Bracket
                     make_disabled_btn(
@@ -423,71 +455,239 @@ impl AppLogic {
                     );
 
                     // Mod
-                    make_btn(f, *action_button_color, 3, 0, "mod", *button_text_color);
+                    make_btn(
+                        f,
+                        &session_id,
+                        *action_button_color,
+                        3,
+                        0,
+                        "mod",
+                        *button_text_color,
+                    );
 
                     // Pi
-                    make_btn(f, *action_button_color, 4, 0, "pi", *button_text_color);
+                    make_btn(
+                        f,
+                        &session_id,
+                        *action_button_color,
+                        4,
+                        0,
+                        "pi",
+                        *button_text_color,
+                    );
 
                     // Row 2
                     // 7
-                    make_btn(f, *number_button_color, 0, 1, "7", *button_text_color);
+                    make_btn(
+                        f,
+                        &session_id,
+                        *number_button_color,
+                        0,
+                        1,
+                        "7",
+                        *button_text_color,
+                    );
 
                     // 8
-                    make_btn(f, *number_button_color, 1, 1, "8", *button_text_color);
+                    make_btn(
+                        f,
+                        &session_id,
+                        *number_button_color,
+                        1,
+                        1,
+                        "8",
+                        *button_text_color,
+                    );
 
                     // 9
-                    make_btn(f, *number_button_color, 2, 1, "9", *button_text_color);
+                    make_btn(
+                        f,
+                        &session_id,
+                        *number_button_color,
+                        2,
+                        1,
+                        "9",
+                        *button_text_color,
+                    );
 
                     // Div
-                    make_btn(f, *action_button_color, 3, 1, "/", *button_text_color);
+                    make_btn(
+                        f,
+                        &session_id,
+                        *action_button_color,
+                        3,
+                        1,
+                        "/",
+                        *button_text_color,
+                    );
 
                     // Sqrt
-                    make_btn(f, *action_button_color, 4, 1, "sqrt", *button_text_color);
+                    make_btn(
+                        f,
+                        &session_id,
+                        *action_button_color,
+                        4,
+                        1,
+                        "sqrt",
+                        *button_text_color,
+                    );
 
                     // Row 3
                     // 4
-                    make_btn(f, *number_button_color, 0, 2, "4", *button_text_color);
+                    make_btn(
+                        f,
+                        &session_id,
+                        *number_button_color,
+                        0,
+                        2,
+                        "4",
+                        *button_text_color,
+                    );
 
                     // 5
-                    make_btn(f, *number_button_color, 1, 2, "5", *button_text_color);
+                    make_btn(
+                        f,
+                        &session_id,
+                        *number_button_color,
+                        1,
+                        2,
+                        "5",
+                        *button_text_color,
+                    );
 
                     // 6
-                    make_btn(f, *number_button_color, 2, 2, "6", *button_text_color);
+                    make_btn(
+                        f,
+                        &session_id,
+                        *number_button_color,
+                        2,
+                        2,
+                        "6",
+                        *button_text_color,
+                    );
 
                     // Mult
-                    make_btn(f, *action_button_color, 3, 2, "*", *button_text_color);
+                    make_btn(
+                        f,
+                        &session_id,
+                        *action_button_color,
+                        3,
+                        2,
+                        "*",
+                        *button_text_color,
+                    );
 
                     // x^2
-                    make_btn(f, *action_button_color, 4, 2, "x^2", *button_text_color);
+                    make_btn(
+                        f,
+                        &session_id,
+                        *action_button_color,
+                        4,
+                        2,
+                        "x^2",
+                        *button_text_color,
+                    );
 
                     // Row 4
                     // 1
-                    make_btn(f, *number_button_color, 0, 3, "1", *button_text_color);
+                    make_btn(
+                        f,
+                        &session_id,
+                        *number_button_color,
+                        0,
+                        3,
+                        "1",
+                        *button_text_color,
+                    );
 
                     // 2
-                    make_btn(f, *number_button_color, 1, 3, "2", *button_text_color);
+                    make_btn(
+                        f,
+                        &session_id,
+                        *number_button_color,
+                        1,
+                        3,
+                        "2",
+                        *button_text_color,
+                    );
 
                     // 3
-                    make_btn(f, *number_button_color, 2, 3, "3", *button_text_color);
+                    make_btn(
+                        f,
+                        &session_id,
+                        *number_button_color,
+                        2,
+                        3,
+                        "3",
+                        *button_text_color,
+                    );
 
                     // Sub
-                    make_btn(f, *action_button_color, 3, 3, "-", *button_text_color);
+                    make_btn(
+                        f,
+                        &session_id,
+                        *action_button_color,
+                        3,
+                        3,
+                        "-",
+                        *button_text_color,
+                    );
 
                     // Equals
-                    make_tall_btn(f, *equals_button_color, 4, 3, "=", *button_text_color);
+                    make_tall_btn(
+                        f,
+                        &session_id,
+                        *equals_button_color,
+                        4,
+                        3,
+                        "=",
+                        *button_text_color,
+                    );
 
                     // Row 5
                     // 0
-                    make_btn(f, *number_button_color, 0, 4, "0", *button_text_color);
+                    make_btn(
+                        f,
+                        &session_id,
+                        *number_button_color,
+                        0,
+                        4,
+                        "0",
+                        *button_text_color,
+                    );
 
                     // Dot
-                    make_btn(f, *action_button_color, 1, 4, ".", *button_text_color);
+                    make_btn(
+                        f,
+                        &session_id,
+                        *action_button_color,
+                        1,
+                        4,
+                        ".",
+                        *button_text_color,
+                    );
 
                     // Percent
-                    make_btn(f, *action_button_color, 2, 4, "%", *button_text_color);
+                    make_btn(
+                        f,
+                        &session_id,
+                        *action_button_color,
+                        2,
+                        4,
+                        "%",
+                        *button_text_color,
+                    );
 
                     // Plus
-                    make_btn(f, *action_button_color, 3, 4, "+", *button_text_color);
+                    make_btn(
+                        f,
+                        &session_id,
+                        *action_button_color,
+                        3,
+                        4,
+                        "+",
+                        *button_text_color,
+                    );
                 }
 
                 stdout.send(&A2RMessage::Update(A2RUpdate {
@@ -497,7 +697,7 @@ impl AppLogic {
                         HandlerBlock {
                             ops: vec![],
                             cmds: vec![HandlerCmd::ReparentScene {
-                                scene: 1,
+                                scene: scene_id,
                                 to: A2RReparentScene::Root,
                             }],
                         },
@@ -522,10 +722,13 @@ impl AppLogic {
         &mut self,
         _raw_path: String,
         path: &[&str],
-        _query_params: HashMap<String, String>,
+        query_params: HashMap<String, String>,
         value_params: Vec<Value>,
         stdout: &mut impl SerdeSender,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let session_num = query_params.get("session").unwrap();
+        let scene_id = self.sessions.get(session_num).unwrap();
+        let state = self.window_states.get_mut(scene_id).unwrap();
         match path {
             // Root
             [""] => {
@@ -542,82 +745,82 @@ impl AppLogic {
                 match pressed_btn {
                     "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" => {
                         let digit = pressed_btn.parse::<f64>().unwrap();
-                        if self.curr_op == 0 {
-                            self.a = self.a * 10.0 + digit;
+                        if state.curr_op == 0 {
+                            state.a = state.a * 10.0 + digit;
                         } else {
-                            self.b = self.b * 10.0 + digit;
-                            self.should_show_b = true;
+                            state.b = state.b * 10.0 + digit;
+                            state.should_show_b = true;
                         }
                     }
                     "+" => {
-                        self.curr_op = b'+';
+                        state.curr_op = b'+';
                     }
                     "-" => {
-                        self.curr_op = b'-';
+                        state.curr_op = b'-';
                     }
                     "*" => {
-                        self.curr_op = b'*';
+                        state.curr_op = b'*';
                     }
                     "/" => {
-                        self.curr_op = b'/';
+                        state.curr_op = b'/';
                     }
-                    "mod" => {
-                        self.curr_op = b'%';
+                    "%" => {
+                        state.curr_op = b'%';
                     }
                     "=" => {
-                        match self.curr_op {
+                        match state.curr_op {
                             b'+' => {
-                                self.a += self.b;
-                                self.curr_op = 0;
+                                state.a += state.b;
+                                state.curr_op = 0;
                             }
                             b'-' => {
-                                self.a -= self.b;
-                                self.curr_op = 0;
+                                state.a -= state.b;
+                                state.curr_op = 0;
                             }
                             b'*' => {
-                                self.a *= self.b;
-                                self.curr_op = 0;
+                                state.a *= state.b;
+                                state.curr_op = 0;
                             }
                             b'/' => {
-                                self.a /= self.b;
-                                self.curr_op = 0;
+                                state.a /= state.b;
+                                state.curr_op = 0;
                             }
                             b'%' => {
-                                self.a %= self.b;
-                                self.curr_op = 0;
+                                state.a %= state.b;
+                                state.curr_op = 0;
                             }
                             0 => { /* No operation, do nothing */ }
                             op => panic!("wtf: {op}"),
                         }
-                        self.should_show_b = false;
+                        state.should_show_b = false;
                     }
                     "x^2" => {
-                        if self.should_show_b {
-                            self.b = self.b * self.b
+                        if state.should_show_b {
+                            state.b = state.b * state.b
                         } else {
-                            self.a = self.a * self.a
+                            state.a = state.a * state.a
                         }
                     }
                     "sqrt" => {
-                        if self.should_show_b {
-                            self.b = self.b.sqrt()
+                        if state.should_show_b {
+                            state.b = state.b.sqrt()
                         } else {
-                            self.a = self.a.sqrt()
+                            state.a = state.a.sqrt()
                         }
                     }
                     "pi" => {
-                        if self.curr_op == 0 {
-                            self.a = PI;
+                        if state.curr_op == 0 {
+                            state.a = PI;
                         } else {
-                            self.b = PI;
-                            self.should_show_b = true;
+                            state.b = PI;
+                            state.should_show_b = true;
                         }
                     }
                     "<x|" => {
-                        self.a = 0.0;
-                        self.b = 0.0;
-                        self.curr_op = 0;
-                        self.should_show_b = false;
+                        state.a = 0.0;
+                        state.b = 0.0;
+                        state.curr_op = 0;
+                        state.should_show_b = false;
                     }
                     _ => return Err("Unknown operation".into()),
                 }
@@ -625,17 +828,17 @@ impl AppLogic {
                 stdout.send(&A2RMessage::Update(A2RUpdate {
                     updated_scenes: vec![],
                     run_blocks: vec![
-                        // Reparent the scene(s)
+                        // Update the relevant vars
                         HandlerBlock {
-                            ops: vec![OpsOperation::Value(Value::String(if self.should_show_b {
-                                self.b.to_string()
+                            ops: vec![OpsOperation::Value(Value::String(if state.should_show_b {
+                                state.b.to_string()
                             } else {
-                                self.a.to_string()
+                                state.a.to_string()
                             }))],
                             cmds: vec![HandlerCmd::UpdateVar {
                                 var: VarId {
                                     key: "result_bar".to_string(),
-                                    scene: 1,
+                                    scene: *scene_id,
                                 },
                                 value: OpId {
                                     scene_id: 0,
@@ -795,7 +998,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     map
                 };
 
-                app_logic.open_window(raw_path, path_ref, params_map, &mut stdout)?;
+                for i in 0..100 {
+                    app_logic.open_window(
+                        i + 1,
+                        format!("131a4feb-fe40-4ba4-b18b-4435{:08x}", i),
+                        raw_path.clone(),
+                        path_ref,
+                        params_map.clone(),
+                        &mut stdout,
+                    )?;
+                }
             }
             R2AMessage::Error(err) => {
                 eprintln!("[app:dbg] Renderer error: {err:?}");
