@@ -8,6 +8,7 @@ use boldui_protocol::{
 };
 use eventfd::{EfdFlags, EventFD};
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::time::Instant;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub enum SceneParent {
@@ -55,6 +56,7 @@ pub(crate) struct StateMachine {
     pub has_pending_replies: bool,
     pub comm_channel_send: CommChannelSend,
     pub event_proxy: Option<Box<dyn EventLoopProxy + Send>>,
+    pub start_time: Instant,
 }
 
 impl StateMachine {
@@ -72,6 +74,7 @@ impl StateMachine {
                     notify_send: notifier.clone(),
                 },
                 event_proxy: None,
+                start_time: Instant::now(),
             },
             CommChannelRecv {
                 recv: comm_channel_recv,

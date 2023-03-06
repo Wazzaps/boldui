@@ -1,3 +1,4 @@
+use crate::util::FloatExt;
 use crate::StateMachine;
 use boldui_protocol::{OpId, OpsOperation, SceneId, Value, VarId};
 use std::collections::HashMap;
@@ -111,6 +112,10 @@ impl StateMachine {
                 Value::Double(val) => Value::Double(-*val),
                 val => panic!("Tried to convert {:?} into a number", val),
             },
+            OpsOperation::Mul { a, b } => match self.op_results.get_num_pair(*a, ctx, *b, ctx) {
+                IntOrFloatPair::Int(a, b) => Value::Sint64(a * b),
+                IntOrFloatPair::Float(a, b) => Value::Double(a * b),
+            },
             OpsOperation::Div { a, b } => match self.op_results.get_num_pair(*a, ctx, *b, ctx) {
                 IntOrFloatPair::Int(a, b) => Value::Sint64(a / b),
                 IntOrFloatPair::Float(a, b) => Value::Double(a / b),
@@ -122,8 +127,18 @@ impl StateMachine {
                     val => todo!("Unimpl type for eq: {:?}", val),
                 }
             }
-            OpsOperation::GetTime { .. } => {
-                todo!()
+            OpsOperation::GetTime {
+                low_clamp,
+                high_clamp,
+            } => {
+                let curr_time = self.start_time.elapsed().as_secs_f64();
+                Value::Double(if low_clamp.is_nan() && high_clamp.is_nan() {
+                    // No clamping
+                    curr_time
+                } else {
+                    // Clamp
+                    curr_time.clamp(*low_clamp, *high_clamp)
+                })
             }
             OpsOperation::MakePoint { left, top } => Value::Point {
                 left: self.op_results.get_f64(*left, ctx),
@@ -154,6 +169,20 @@ impl StateMachine {
                 bottom: self.op_results.get_f64(*bottom, ctx),
             },
             OpsOperation::ToString { a } => Value::String(self.op_results.as_string(*a, ctx)),
+            OpsOperation::Min { a, b } => Value::Double({
+                self.op_results.get_f64(*a, ctx).map_non_nan(|a| {
+                    self.op_results
+                        .get_f64(*b, ctx)
+                        .map_non_nan(|b| if a < b { a } else { b })
+                })
+            }),
+            OpsOperation::Max { a, b } => Value::Double({
+                self.op_results.get_f64(*a, ctx).map_non_nan(|a| {
+                    self.op_results
+                        .get_f64(*b, ctx)
+                        .map_non_nan(|b| if a > b { a } else { b })
+                })
+            }),
         }
     }
 }

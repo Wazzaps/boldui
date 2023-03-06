@@ -193,6 +193,7 @@ dependencies = [
  "libadwaita",
  "libloading 0.7.4",
  "nix 0.25.0",
+ "num-traits",
  "parking_lot",
  "serde",
  "serde_json",
@@ -1111,6 +1112,15 @@ checksum = "a8903e5a29a317527874d0402f867152a3d21c908bb0b933e416c65e301d4c36"
 dependencies = [
  "memchr",
  "minimal-lexical",
+]
+
+[[package]]
+name = "num-traits"
+version = "0.2.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "578ede34cf02f8924ab9447f50c28075b4d3e5b269972345e7e0372b38c6cdcd"
+dependencies = [
+ "autocfg",
 ]
 
 [[package]]

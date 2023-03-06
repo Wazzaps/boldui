@@ -1,6 +1,7 @@
 use boldui_protocol::{bincode, serde};
 use byteorder::{WriteBytesExt, LE};
 use nix::libc::{EAGAIN, EWOULDBLOCK};
+use num_traits::Float;
 use std::io::{Read, Write};
 
 pub(crate) trait SerdeSender {
@@ -48,3 +49,16 @@ impl ReadExt for std::fs::File {
         Ok(counter)
     }
 }
+
+pub(crate) trait FloatExt: Float {
+    fn map_non_nan<F: Fn(Self) -> Self>(self, f: F) -> Self {
+        if self.is_nan() {
+            self
+        } else {
+            f(self)
+        }
+    }
+}
+
+impl FloatExt for f32 {}
+impl FloatExt for f64 {}

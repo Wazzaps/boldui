@@ -144,6 +144,7 @@ pub struct VarId {
 pub enum OpsOperation {
     Value(Value),
     Var(VarId),
+    // TODO: Replace with `OpId`s
     GetTime {
         low_clamp: f64,
         high_clamp: f64,
@@ -155,11 +156,23 @@ pub enum OpsOperation {
     Neg {
         a: OpId,
     },
+    Mul {
+        a: OpId,
+        b: OpId,
+    },
     Div {
         a: OpId,
         b: OpId,
     },
     Eq {
+        a: OpId,
+        b: OpId,
+    },
+    Min {
+        a: OpId,
+        b: OpId,
+    },
+    Max {
         a: OpId,
         b: OpId,
     },

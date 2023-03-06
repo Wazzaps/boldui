@@ -1,7 +1,7 @@
 use crate::renderer::Renderer;
 use crate::simulator::Simulator;
 use crate::state_machine::WindowId;
-use crate::{Frontend, StateMachine, ToStateMachine, PER_FRAME_LOGGING};
+use crate::{Frontend, StateMachine, ToStateMachine};
 use adw::prelude::{ApplicationExt, ApplicationExtManual};
 use adw::{Application, HeaderBar};
 use boldui_protocol::{A2RUpdate, SceneId};
@@ -10,7 +10,7 @@ use gtk::prelude::{BoxExt, GLAreaExt, GtkWindowExt, WidgetExt};
 use gtk::{gio, GLArea};
 use skia_safe::gpu::gl::FramebufferInfo;
 use skia_safe::gpu::{BackendRenderTarget, RecordingContext, SurfaceOrigin};
-use skia_safe::{Canvas, Color4f, ColorType, Surface};
+use skia_safe::{Color4f, ColorType, Surface};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ptr;
@@ -164,10 +164,16 @@ impl WindowState {
                 .unwrap()
                 .to_state_machine(ToStateMachine::SimulatorTick { from_update: false });
 
+            // FIXME: remove forced rerender
+            state_machine
+                .event_proxy
+                .as_ref()
+                .unwrap()
+                .to_state_machine(ToStateMachine::Redraw { window_id });
+
             glib::signal::Inhibit(false)
         });
 
-        // let gesture = gtk::Even
         let event_controller = gtk::GestureClick::new();
 
         event_controller.connect_released(move |_controller, button, x, y| {

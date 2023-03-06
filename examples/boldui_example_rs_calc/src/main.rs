@@ -52,12 +52,38 @@ impl OpIdWrapper {
     fn make_to_string(self) -> OpWrapper {
         OpWrapper(OpsOperation::ToString { a: *self })
     }
+    fn min(self, other: OpIdWrapper) -> OpWrapper {
+        OpWrapper(OpsOperation::Min {
+            a: *self,
+            b: *other,
+        })
+    }
+    fn max(self, other: OpIdWrapper) -> OpWrapper {
+        OpWrapper(OpsOperation::Max {
+            a: *self,
+            b: *other,
+        })
+    }
 }
 
 struct OpFactory<'a>(&'a mut A2RUpdateScene);
 
 #[allow(dead_code)]
 impl<'a> OpFactory<'a> {
+    pub fn get_time() -> OpWrapper {
+        OpWrapper(OpsOperation::GetTime {
+            low_clamp: f64::NAN,
+            high_clamp: f64::NAN,
+        })
+    }
+
+    pub fn get_time_with_bounds(min: f64, max: f64) -> OpWrapper {
+        OpWrapper(OpsOperation::GetTime {
+            low_clamp: min,
+            high_clamp: max,
+        })
+    }
+
     pub fn new_i64(val: i64) -> OpWrapper {
         OpWrapper(OpsOperation::Value(Value::Sint64(val)))
     }
@@ -142,6 +168,14 @@ impl std::ops::Div for OpIdWrapper {
     }
 }
 
+impl std::ops::Mul for OpIdWrapper {
+    type Output = OpWrapper;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        OpWrapper(OpsOperation::Mul { a: *self, b: *rhs })
+    }
+}
+
 struct WindowState {
     a: f64,
     b: f64,
@@ -218,7 +252,7 @@ impl AppLogic {
                     uri: format!("{}?session={}", raw_path, &session_id),
                     ops: vec![],
                     cmds: vec![],
-                    var_decls,
+                    var_decls: Default::default(),
                     watches: vec![],
                     event_handlers: vec![],
                 };
@@ -276,9 +310,37 @@ impl AppLogic {
                     let button_text_disabled_color =
                         OpFactory::new_color(Color::from_hex(0x808080)).push(f);
 
-                    fn make_btn(
+                    struct MakeWidgetContext<'a> {
+                        f: &'a mut OpFactory<'a>,
+                        session_id: &'a str,
+                        scene_id: SceneId,
+                        var_decls: &'a mut BTreeMap<String, Value>,
+                    }
+
+                    fn pyramid_curve(
                         f: &mut OpFactory,
-                        session_id: &str,
+                        neg_start_time: OpIdWrapper,
+                        total_animation_time: f64,
+                        magnitude: f64,
+                    ) -> OpIdWrapper {
+                        let animation_clock = (((OpFactory::get_time().push(f) + neg_start_time)
+                            .push(f)
+                            .min(OpFactory::new_f64(total_animation_time).push(f))
+                            .push(f)
+                            .max(OpFactory::new_f64(0.0).push(f))
+                            .push(f))
+                            * (OpFactory::new_f64(magnitude * 2.0 / total_animation_time).push(f)))
+                        .push(f);
+
+                        let neg_curve = ((-animation_clock).push(f)
+                            + OpFactory::new_f64(magnitude * 2.0).push(f))
+                        .push(f);
+
+                        animation_clock.min(neg_curve).push(f)
+                    }
+
+                    fn make_btn(
+                        ctx: &mut MakeWidgetContext,
                         color: OpId,
                         x: i32,
                         y: i32,
@@ -292,14 +354,49 @@ impl AppLogic {
                         const BTN_WIDTH: f64 = 59.0;
                         const BTN_HEIGHT: f64 = 44.0;
 
-                        let rect = OpFactory::new_rect(
-                            LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH),
-                            TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT),
-                            LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + BTN_WIDTH,
-                            TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT) + BTN_HEIGHT,
+                        let animation_neg_start_time =
+                            ctx.f.var(format!("btn_t_{text}")).push(ctx.f);
+                        let click_anim_offset =
+                            pyramid_curve(&mut ctx.f, animation_neg_start_time, 0.2, 4.0);
+                        let neg_click_anim_offset = (-click_anim_offset).push(ctx.f);
+
+                        let rect = OpFactory::make_rect_from_points(
+                            OpFactory::make_point(
+                                (OpFactory::new_f64(
+                                    LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH),
+                                )
+                                .push(ctx.f)
+                                    + click_anim_offset)
+                                    .push(ctx.f),
+                                (OpFactory::new_f64(
+                                    TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT),
+                                )
+                                .push(ctx.f)
+                                    + click_anim_offset)
+                                    .push(ctx.f),
+                            )
+                            .push(ctx.f),
+                            OpFactory::make_point(
+                                (OpFactory::new_f64(
+                                    LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + BTN_WIDTH,
+                                )
+                                .push(ctx.f)
+                                    + neg_click_anim_offset)
+                                    .push(ctx.f),
+                                (OpFactory::new_f64(
+                                    TOP_PADDING
+                                        + (y as f64) * (Y_PADDING + BTN_HEIGHT)
+                                        + BTN_HEIGHT,
+                                )
+                                .push(ctx.f)
+                                    + neg_click_anim_offset)
+                                    .push(ctx.f),
+                            )
+                            .push(ctx.f),
                         )
-                        .push(f);
-                        f.push_cmd(CmdsCommand::DrawRect {
+                        .push(ctx.f);
+
+                        ctx.f.push_cmd(CmdsCommand::DrawRect {
                             paint: color,
                             rect: *rect,
                         });
@@ -308,29 +405,58 @@ impl AppLogic {
                             LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + 0.5 * BTN_WIDTH,
                             TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT) + 0.5 * BTN_HEIGHT,
                         )
-                        .push(f);
-                        let text_op = OpFactory::new_string(text.to_string()).push(f);
-                        f.push_cmd(CmdsCommand::DrawCenteredText {
+                        .push(ctx.f);
+                        let text_op = OpFactory::new_string(text.to_string()).push(ctx.f);
+                        ctx.f.push_cmd(CmdsCommand::DrawCenteredText {
                             text: *text_op,
                             paint: text_color,
                             center: *text_pos,
                         });
 
                         // Click handler
-                        f.push_event_handler(
+                        ctx.f.push_event_handler(
                             EventType::Click { rect: *rect },
                             HandlerBlock {
-                                ops: vec![],
-                                cmds: vec![HandlerCmd::Reply {
-                                    path: format!("/?session={}", session_id),
-                                    params: vec![*text_op],
-                                }],
+                                ops: vec![
+                                    // Get the time
+                                    OpsOperation::GetTime {
+                                        low_clamp: f64::NAN,
+                                        high_clamp: f64::NAN,
+                                    },
+                                    // Negate it
+                                    OpsOperation::Neg {
+                                        a: OpId {
+                                            scene_id: 0,
+                                            idx: 0,
+                                        },
+                                    },
+                                ],
+                                cmds: vec![
+                                    HandlerCmd::Reply {
+                                        path: format!("/?session={}", ctx.session_id),
+                                        params: vec![*text_op],
+                                    },
+                                    HandlerCmd::UpdateVar {
+                                        var: VarId {
+                                            key: format!("btn_t_{text}"),
+                                            scene: ctx.scene_id,
+                                        },
+                                        value: OpId {
+                                            scene_id: 0,
+                                            idx: 1,
+                                        },
+                                    },
+                                ],
                             },
                         );
+
+                        // Start as if we pressed the button 100 secs ago
+                        ctx.var_decls
+                            .insert(format!("btn_t_{text}"), Value::Double(100.0));
                     }
 
                     fn make_disabled_btn(
-                        f: &mut OpFactory,
+                        ctx: &mut MakeWidgetContext,
                         color: OpId,
                         x: i32,
                         y: i32,
@@ -350,8 +476,8 @@ impl AppLogic {
                             LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + BTN_WIDTH,
                             TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT) + BTN_HEIGHT,
                         )
-                        .push(f);
-                        f.push_cmd(CmdsCommand::DrawRect {
+                        .push(ctx.f);
+                        ctx.f.push_cmd(CmdsCommand::DrawRect {
                             paint: color,
                             rect: *rect,
                         });
@@ -360,9 +486,9 @@ impl AppLogic {
                             LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + 0.5 * BTN_WIDTH,
                             TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT) + 0.5 * BTN_HEIGHT,
                         )
-                        .push(f);
-                        let text_op = OpFactory::new_string(text.to_string()).push(f);
-                        f.push_cmd(CmdsCommand::DrawCenteredText {
+                        .push(ctx.f);
+                        let text_op = OpFactory::new_string(text.to_string()).push(ctx.f);
+                        ctx.f.push_cmd(CmdsCommand::DrawCenteredText {
                             text: *text_op,
                             paint: text_color,
                             center: *text_pos,
@@ -370,8 +496,7 @@ impl AppLogic {
                     }
 
                     fn make_tall_btn(
-                        f: &mut OpFactory,
-                        session_id: &str,
+                        ctx: &mut MakeWidgetContext,
                         color: OpId,
                         x: i32,
                         y: i32,
@@ -391,8 +516,8 @@ impl AppLogic {
                             LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + BTN_WIDTH,
                             TOP_PADDING + ((y + 1) as f64) * (Y_PADDING + BTN_HEIGHT) + BTN_HEIGHT,
                         )
-                        .push(f);
-                        f.push_cmd(CmdsCommand::DrawRect {
+                        .push(ctx.f);
+                        ctx.f.push_cmd(CmdsCommand::DrawRect {
                             paint: color,
                             rect: *rect,
                         });
@@ -401,32 +526,41 @@ impl AppLogic {
                             LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + 0.5 * BTN_WIDTH,
                             TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT) + 1.0 * BTN_HEIGHT,
                         )
-                        .push(f);
-                        let text_op = OpFactory::new_string(text.to_string()).push(f);
-                        f.push_cmd(CmdsCommand::DrawCenteredText {
+                        .push(ctx.f);
+                        let text_op = OpFactory::new_string(text.to_string()).push(ctx.f);
+                        ctx.f.push_cmd(CmdsCommand::DrawCenteredText {
                             text: *text_op,
                             paint: text_color,
                             center: *text_pos,
                         });
 
                         // Click handler
-                        f.push_event_handler(
+                        ctx.f.push_event_handler(
                             EventType::Click { rect: *rect },
                             HandlerBlock {
                                 ops: vec![],
                                 cmds: vec![HandlerCmd::Reply {
-                                    path: format!("/?session={}", session_id),
+                                    path: format!("/?session={}", ctx.session_id),
                                     params: vec![*text_op],
                                 }],
                             },
                         );
+
+                        ctx.var_decls
+                            .insert(format!("btn_t_{text}"), Value::Double(-100.0));
                     }
+
+                    let mut ctx = MakeWidgetContext {
+                        f,
+                        session_id: &session_id,
+                        scene_id,
+                        var_decls: &mut var_decls,
+                    };
 
                     // Row 1
                     // Backspace
                     make_btn(
-                        f,
-                        &session_id,
+                        &mut ctx,
                         *action_button_color,
                         0,
                         0,
@@ -436,7 +570,7 @@ impl AppLogic {
 
                     // Left Bracket
                     make_disabled_btn(
-                        f,
+                        &mut ctx,
                         *action_button_disabled_color,
                         1,
                         0,
@@ -446,7 +580,7 @@ impl AppLogic {
 
                     // Right Bracket
                     make_disabled_btn(
-                        f,
+                        &mut ctx,
                         *action_button_disabled_color,
                         2,
                         0,
@@ -456,8 +590,7 @@ impl AppLogic {
 
                     // Mod
                     make_btn(
-                        f,
-                        &session_id,
+                        &mut ctx,
                         *action_button_color,
                         3,
                         0,
@@ -467,8 +600,7 @@ impl AppLogic {
 
                     // Pi
                     make_btn(
-                        f,
-                        &session_id,
+                        &mut ctx,
                         *action_button_color,
                         4,
                         0,
@@ -479,8 +611,7 @@ impl AppLogic {
                     // Row 2
                     // 7
                     make_btn(
-                        f,
-                        &session_id,
+                        &mut ctx,
                         *number_button_color,
                         0,
                         1,
@@ -490,8 +621,7 @@ impl AppLogic {
 
                     // 8
                     make_btn(
-                        f,
-                        &session_id,
+                        &mut ctx,
                         *number_button_color,
                         1,
                         1,
@@ -501,8 +631,7 @@ impl AppLogic {
 
                     // 9
                     make_btn(
-                        f,
-                        &session_id,
+                        &mut ctx,
                         *number_button_color,
                         2,
                         1,
@@ -512,8 +641,7 @@ impl AppLogic {
 
                     // Div
                     make_btn(
-                        f,
-                        &session_id,
+                        &mut ctx,
                         *action_button_color,
                         3,
                         1,
@@ -523,8 +651,7 @@ impl AppLogic {
 
                     // Sqrt
                     make_btn(
-                        f,
-                        &session_id,
+                        &mut ctx,
                         *action_button_color,
                         4,
                         1,
@@ -535,8 +662,7 @@ impl AppLogic {
                     // Row 3
                     // 4
                     make_btn(
-                        f,
-                        &session_id,
+                        &mut ctx,
                         *number_button_color,
                         0,
                         2,
@@ -546,8 +672,7 @@ impl AppLogic {
 
                     // 5
                     make_btn(
-                        f,
-                        &session_id,
+                        &mut ctx,
                         *number_button_color,
                         1,
                         2,
@@ -557,8 +682,7 @@ impl AppLogic {
 
                     // 6
                     make_btn(
-                        f,
-                        &session_id,
+                        &mut ctx,
                         *number_button_color,
                         2,
                         2,
@@ -568,8 +692,7 @@ impl AppLogic {
 
                     // Mult
                     make_btn(
-                        f,
-                        &session_id,
+                        &mut ctx,
                         *action_button_color,
                         3,
                         2,
@@ -579,8 +702,7 @@ impl AppLogic {
 
                     // x^2
                     make_btn(
-                        f,
-                        &session_id,
+                        &mut ctx,
                         *action_button_color,
                         4,
                         2,
@@ -591,8 +713,7 @@ impl AppLogic {
                     // Row 4
                     // 1
                     make_btn(
-                        f,
-                        &session_id,
+                        &mut ctx,
                         *number_button_color,
                         0,
                         3,
@@ -602,8 +723,7 @@ impl AppLogic {
 
                     // 2
                     make_btn(
-                        f,
-                        &session_id,
+                        &mut ctx,
                         *number_button_color,
                         1,
                         3,
@@ -613,8 +733,7 @@ impl AppLogic {
 
                     // 3
                     make_btn(
-                        f,
-                        &session_id,
+                        &mut ctx,
                         *number_button_color,
                         2,
                         3,
@@ -624,8 +743,7 @@ impl AppLogic {
 
                     // Sub
                     make_btn(
-                        f,
-                        &session_id,
+                        &mut ctx,
                         *action_button_color,
                         3,
                         3,
@@ -635,8 +753,7 @@ impl AppLogic {
 
                     // Equals
                     make_tall_btn(
-                        f,
-                        &session_id,
+                        &mut ctx,
                         *equals_button_color,
                         4,
                         3,
@@ -647,8 +764,7 @@ impl AppLogic {
                     // Row 5
                     // 0
                     make_btn(
-                        f,
-                        &session_id,
+                        &mut ctx,
                         *number_button_color,
                         0,
                         4,
@@ -658,8 +774,7 @@ impl AppLogic {
 
                     // Dot
                     make_btn(
-                        f,
-                        &session_id,
+                        &mut ctx,
                         *action_button_color,
                         1,
                         4,
@@ -669,8 +784,7 @@ impl AppLogic {
 
                     // Percent
                     make_btn(
-                        f,
-                        &session_id,
+                        &mut ctx,
                         *action_button_color,
                         2,
                         4,
@@ -680,8 +794,7 @@ impl AppLogic {
 
                     // Plus
                     make_btn(
-                        f,
-                        &session_id,
+                        &mut ctx,
                         *action_button_color,
                         3,
                         4,
@@ -689,6 +802,8 @@ impl AppLogic {
                         *button_text_color,
                     );
                 }
+
+                scene.var_decls = var_decls;
 
                 stdout.send(&A2RMessage::Update(A2RUpdate {
                     updated_scenes: vec![scene],
@@ -822,7 +937,9 @@ impl AppLogic {
                         state.curr_op = 0;
                         state.should_show_b = false;
                     }
-                    _ => return Err("Unknown operation".into()),
+                    op => {
+                        eprintln!("unimpl: {op}");
+                    } // op => return Err(format!("Unknown operation: {op}").into()),
                 }
 
                 stdout.send(&A2RMessage::Update(A2RUpdate {
