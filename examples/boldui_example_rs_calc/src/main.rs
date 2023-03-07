@@ -10,169 +10,203 @@ use boldui_protocol::{
     VarId,
 };
 use byteorder::{ReadBytesExt, LE};
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::f64::consts::PI;
-use std::fmt::format;
 use std::io::{ErrorKind, Read, Write};
 use std::ops::Deref;
+use std::rc::Rc;
 use std::time::Instant;
 use uriparse::RelativeReference;
 
 #[derive(Clone)]
-struct OpWrapper(OpsOperation);
-
-impl OpWrapper {
-    pub fn push(self, scene: &mut OpFactory) -> OpIdWrapper {
-        let scene_id = scene.0.id;
-        let op_id = scene.0.ops.len() as u32;
-        scene.0.ops.push(self.0);
-        OpIdWrapper(OpId {
-            scene_id,
-            idx: op_id,
-        })
-    }
+struct OpIdWrapper<'a> {
+    op_id: OpId,
+    f: OpFactory<'a>,
 }
 
-#[derive(Copy, Clone)]
-struct OpIdWrapper(OpId);
-
-impl Deref for OpIdWrapper {
+impl<'a> Deref for OpIdWrapper<'a> {
     type Target = OpId;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.op_id
     }
 }
 
 #[allow(dead_code)]
-impl OpIdWrapper {
-    fn equals(self, rhs: OpIdWrapper) -> OpWrapper {
-        OpWrapper(OpsOperation::Eq { a: *self, b: *rhs })
+impl<'a> OpIdWrapper<'a> {
+    fn push_op(op: OpsOperation, scene: &OpFactory<'a>) -> Self {
+        let mut scene_ref = (*(scene.0)).borrow_mut();
+        let scene_id = scene_ref.id;
+        let op_id = scene_ref.ops.len() as u32;
+        scene_ref.ops.push(op);
+        OpIdWrapper {
+            op_id: OpId {
+                scene_id,
+                idx: op_id,
+            },
+            f: scene.clone(),
+        }
     }
-    fn make_to_string(self) -> OpWrapper {
-        OpWrapper(OpsOperation::ToString { a: *self })
+    fn equals(self, rhs: OpIdWrapper) -> Self {
+        OpIdWrapper::push_op(OpsOperation::Eq { a: *self, b: *rhs }, &self.f)
     }
-    fn min(self, other: OpIdWrapper) -> OpWrapper {
-        OpWrapper(OpsOperation::Min {
-            a: *self,
-            b: *other,
-        })
+    fn make_to_string(self) -> Self {
+        OpIdWrapper::push_op(OpsOperation::ToString { a: *self }, &self.f)
     }
-    fn max(self, other: OpIdWrapper) -> OpWrapper {
-        OpWrapper(OpsOperation::Max {
-            a: *self,
-            b: *other,
-        })
+    fn min(self, other: Self) -> Self {
+        OpIdWrapper::push_op(
+            OpsOperation::Min {
+                a: *self,
+                b: *other,
+            },
+            &self.f,
+        )
+    }
+    fn max(self, other: Self) -> Self {
+        OpIdWrapper::push_op(
+            OpsOperation::Max {
+                a: *self,
+                b: *other,
+            },
+            &self.f,
+        )
     }
 }
 
-struct OpFactory<'a>(&'a mut A2RUpdateScene);
+#[derive(Clone)]
+struct OpFactory<'a>(Rc<RefCell<&'a mut A2RUpdateScene>>);
 
 #[allow(dead_code)]
 impl<'a> OpFactory<'a> {
-    pub fn get_time() -> OpWrapper {
-        OpWrapper(OpsOperation::GetTime {
-            low_clamp: f64::NAN,
-            high_clamp: f64::NAN,
-        })
+    pub fn get_time(&self) -> OpIdWrapper<'a> {
+        OpIdWrapper::push_op(
+            OpsOperation::GetTime {
+                low_clamp: f64::NAN,
+                high_clamp: f64::NAN,
+            },
+            self,
+        )
     }
 
-    pub fn get_time_with_bounds(min: f64, max: f64) -> OpWrapper {
-        OpWrapper(OpsOperation::GetTime {
-            low_clamp: min,
-            high_clamp: max,
-        })
+    pub fn get_time_with_bounds(&self, min: f64, max: f64) -> OpIdWrapper<'a> {
+        OpIdWrapper::push_op(
+            OpsOperation::GetTime {
+                low_clamp: min,
+                high_clamp: max,
+            },
+            self,
+        )
     }
 
-    pub fn new_i64(val: i64) -> OpWrapper {
-        OpWrapper(OpsOperation::Value(Value::Sint64(val)))
+    pub fn new_i64(&self, val: i64) -> OpIdWrapper<'a> {
+        OpIdWrapper::push_op(OpsOperation::Value(Value::Sint64(val)), self)
     }
 
-    pub fn new_f64(val: f64) -> OpWrapper {
-        OpWrapper(OpsOperation::Value(Value::Double(val)))
+    pub fn new_f64(&self, val: f64) -> OpIdWrapper<'a> {
+        OpIdWrapper::push_op(OpsOperation::Value(Value::Double(val)), self)
     }
 
-    pub fn new_string(val: String) -> OpWrapper {
-        OpWrapper(OpsOperation::Value(Value::String(val)))
+    pub fn new_string(&self, val: String) -> OpIdWrapper<'a> {
+        OpIdWrapper::push_op(OpsOperation::Value(Value::String(val)), self)
     }
 
-    pub fn new_color(val: Color) -> OpWrapper {
-        OpWrapper(OpsOperation::Value(Value::Color(val)))
+    pub fn new_color(&self, val: Color) -> OpIdWrapper<'a> {
+        OpIdWrapper::push_op(OpsOperation::Value(Value::Color(val)), self)
     }
 
-    pub fn new_point(left: f64, top: f64) -> OpWrapper {
-        OpWrapper(OpsOperation::Value(Value::Point { left, top }))
+    pub fn new_point(&self, left: f64, top: f64) -> OpIdWrapper<'a> {
+        OpIdWrapper::push_op(OpsOperation::Value(Value::Point { left, top }), self)
     }
 
-    pub fn make_point(left: OpIdWrapper, top: OpIdWrapper) -> OpWrapper {
-        OpWrapper(OpsOperation::MakePoint {
-            left: *left,
-            top: *top,
-        })
+    pub fn make_point(&self, left: OpIdWrapper, top: OpIdWrapper) -> OpIdWrapper<'a> {
+        OpIdWrapper::push_op(
+            OpsOperation::MakePoint {
+                left: *left,
+                top: *top,
+            },
+            self,
+        )
     }
 
-    pub fn new_rect(left: f64, top: f64, right: f64, bottom: f64) -> OpWrapper {
-        OpWrapper(OpsOperation::Value(Value::Rect {
-            left,
-            top,
-            right,
-            bottom,
-        }))
+    pub fn new_rect(&self, left: f64, top: f64, right: f64, bottom: f64) -> OpIdWrapper<'a> {
+        OpIdWrapper::push_op(
+            OpsOperation::Value(Value::Rect {
+                left,
+                top,
+                right,
+                bottom,
+            }),
+            self,
+        )
     }
 
-    pub fn make_rect_from_points(left_top: OpIdWrapper, right_bottom: OpIdWrapper) -> OpWrapper {
-        OpWrapper(OpsOperation::MakeRectFromPoints {
-            left_top: *left_top,
-            right_bottom: *right_bottom,
-        })
+    pub fn make_rect_from_points(
+        &self,
+        left_top: OpIdWrapper,
+        right_bottom: OpIdWrapper,
+    ) -> OpIdWrapper<'a> {
+        OpIdWrapper::push_op(
+            OpsOperation::MakeRectFromPoints {
+                left_top: *left_top,
+                right_bottom: *right_bottom,
+            },
+            self,
+        )
     }
 
-    pub fn var<S: Into<String>>(&self, key: S) -> OpWrapper {
-        let scene_id = self.0.id;
-        OpWrapper(OpsOperation::Var(VarId {
-            key: key.into(),
-            scene: scene_id,
-        }))
+    pub fn var<S: Into<String>>(&self, key: S) -> OpIdWrapper<'a> {
+        let scene_id = (*self.0).borrow().id;
+        OpIdWrapper::push_op(
+            OpsOperation::Var(VarId {
+                key: key.into(),
+                scene: scene_id,
+            }),
+            self,
+        )
     }
 
-    pub fn push_cmd(&mut self, cmd: CmdsCommand) {
-        self.0.cmds.push(cmd);
+    pub fn push_cmd(&self, cmd: CmdsCommand) {
+        (*self.0).borrow_mut().cmds.push(cmd);
     }
 
-    pub fn push_event_handler(&mut self, evt_type: EventType, handler: HandlerBlock) {
-        self.0.event_handlers.push((evt_type, handler));
+    pub fn push_event_handler(&self, evt_type: EventType, handler: HandlerBlock) {
+        (*self.0)
+            .borrow_mut()
+            .event_handlers
+            .push((evt_type, handler));
     }
 }
 
-impl std::ops::Add for OpIdWrapper {
-    type Output = OpWrapper;
+impl<'a> std::ops::Add for OpIdWrapper<'a> {
+    type Output = OpIdWrapper<'a>;
 
     fn add(self, rhs: Self) -> Self::Output {
-        OpWrapper(OpsOperation::Add { a: *self, b: *rhs })
+        OpIdWrapper::push_op(OpsOperation::Add { a: *self, b: *rhs }, &self.f)
     }
 }
 
-impl std::ops::Neg for OpIdWrapper {
-    type Output = OpWrapper;
+impl<'a> std::ops::Neg for OpIdWrapper<'a> {
+    type Output = OpIdWrapper<'a>;
 
     fn neg(self) -> Self::Output {
-        OpWrapper(OpsOperation::Neg { a: *self })
+        OpIdWrapper::push_op(OpsOperation::Neg { a: *self }, &self.f)
     }
 }
 
-impl std::ops::Div for OpIdWrapper {
-    type Output = OpWrapper;
+impl<'a> std::ops::Div for OpIdWrapper<'a> {
+    type Output = OpIdWrapper<'a>;
 
     fn div(self, rhs: Self) -> Self::Output {
-        OpWrapper(OpsOperation::Div { a: *self, b: *rhs })
+        OpIdWrapper::push_op(OpsOperation::Div { a: *self, b: *rhs }, &self.f)
     }
 }
 
-impl std::ops::Mul for OpIdWrapper {
-    type Output = OpWrapper;
+impl<'a> std::ops::Mul for OpIdWrapper<'a> {
+    type Output = OpIdWrapper<'a>;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        OpWrapper(OpsOperation::Mul { a: *self, b: *rhs })
+        OpIdWrapper::push_op(OpsOperation::Mul { a: *self, b: *rhs }, &self.f)
     }
 }
 
@@ -258,39 +292,33 @@ impl AppLogic {
                 };
 
                 {
-                    let f = &mut OpFactory(&mut scene);
+                    let f = OpFactory(Rc::new(RefCell::new(&mut scene)));
 
                     // Background
-                    let bg_color = OpFactory::new_color(Color::from_hex(0x242424)).push(f);
+                    let bg_color = f.new_color(Color::from_hex(0x242424));
                     f.push_cmd(CmdsCommand::Clear { color: *bg_color });
 
                     // Results box
-                    let result_bg_color = OpFactory::new_color(Color::from_hex(0x363636)).push(f);
-                    let results_width = f.var(":width").push(f);
+                    let result_bg_color = f.new_color(Color::from_hex(0x363636));
+                    let results_width = f.var(":width");
                     const RESULTS_HEIGHT: f64 = 65.0;
-                    let results_rect = OpFactory::make_rect_from_points(
-                        OpFactory::new_point(0.0, 1.0).push(f),
-                        OpFactory::make_point(
-                            results_width,
-                            OpFactory::new_f64(RESULTS_HEIGHT + 1.0).push(f),
-                        )
-                        .push(f),
-                    )
-                    .push(f);
+                    let results_rect = f.make_rect_from_points(
+                        f.new_point(0.0, 1.0),
+                        f.make_point(results_width.clone(), f.new_f64(RESULTS_HEIGHT + 1.0)),
+                    );
 
                     f.push_cmd(CmdsCommand::DrawRect {
                         paint: *result_bg_color,
                         rect: *results_rect,
                     });
 
-                    let result_text_color = OpFactory::new_color(Color::from_hex(0xffffff)).push(f);
+                    let result_text_color = f.new_color(Color::from_hex(0xffffff));
                     // const RESULT_LEFT_PADDING: f64 = 16.0;
-                    let text_pos = OpFactory::make_point(
-                        (results_width / OpFactory::new_f64(2.0).push(f)).push(f),
-                        OpFactory::new_f64(RESULTS_HEIGHT / 2.0).push(f),
-                    )
-                    .push(f);
-                    let text = f.var("result_bar").push(f);
+                    let text_pos = f.make_point(
+                        results_width.clone() / f.new_f64(2.0),
+                        f.new_f64(RESULTS_HEIGHT / 2.0),
+                    );
+                    let text = f.var("result_bar");
                     f.push_cmd(CmdsCommand::DrawCenteredText {
                         text: *text,
                         paint: *result_text_color,
@@ -298,45 +326,34 @@ impl AppLogic {
                     });
 
                     // Buttons: Row 1
-                    let action_button_color =
-                        OpFactory::new_color(Color::from_hex(0x3a3a3a)).push(f);
-                    let action_button_disabled_color =
-                        OpFactory::new_color(Color::from_hex(0x2a2a2a)).push(f);
-                    let number_button_color =
-                        OpFactory::new_color(Color::from_hex(0x505050)).push(f);
-                    let equals_button_color =
-                        OpFactory::new_color(Color::from_hex(0xe66100)).push(f);
-                    let button_text_color = OpFactory::new_color(Color::from_hex(0xffffff)).push(f);
-                    let button_text_disabled_color =
-                        OpFactory::new_color(Color::from_hex(0x808080)).push(f);
+                    let action_button_color = f.new_color(Color::from_hex(0x3a3a3a));
+                    let action_button_disabled_color = f.new_color(Color::from_hex(0x2a2a2a));
+                    let number_button_color = f.new_color(Color::from_hex(0x505050));
+                    let equals_button_color = f.new_color(Color::from_hex(0xe66100));
+                    let button_text_color = f.new_color(Color::from_hex(0xffffff));
+                    let button_text_disabled_color = f.new_color(Color::from_hex(0x808080));
 
                     struct MakeWidgetContext<'a> {
-                        f: &'a mut OpFactory<'a>,
+                        f: OpFactory<'a>,
                         session_id: &'a str,
                         scene_id: SceneId,
                         var_decls: &'a mut BTreeMap<String, Value>,
                     }
 
-                    fn pyramid_curve(
-                        f: &mut OpFactory,
-                        neg_start_time: OpIdWrapper,
+                    fn pyramid_curve<'a>(
+                        f: OpFactory<'a>,
+                        neg_start_time: OpIdWrapper<'a>,
                         total_animation_time: f64,
                         magnitude: f64,
-                    ) -> OpIdWrapper {
-                        let animation_clock = (((OpFactory::get_time().push(f) + neg_start_time)
-                            .push(f)
-                            .min(OpFactory::new_f64(total_animation_time).push(f))
-                            .push(f)
-                            .max(OpFactory::new_f64(0.0).push(f))
-                            .push(f))
-                            * (OpFactory::new_f64(magnitude * 2.0 / total_animation_time).push(f)))
-                        .push(f);
+                    ) -> OpIdWrapper<'a> {
+                        let animation_clock = ((f.get_time() + neg_start_time)
+                            .min(f.new_f64(total_animation_time))
+                            .max(f.new_f64(0.0)))
+                            * (f.new_f64(magnitude * 2.0 / total_animation_time));
 
-                        let neg_curve = ((-animation_clock).push(f)
-                            + OpFactory::new_f64(magnitude * 2.0).push(f))
-                        .push(f);
+                        let neg_curve = (-animation_clock.clone()) + f.new_f64(magnitude * 2.0);
 
-                        animation_clock.min(neg_curve).push(f)
+                        animation_clock.min(neg_curve)
                     }
 
                     fn make_btn(
@@ -354,59 +371,42 @@ impl AppLogic {
                         const BTN_WIDTH: f64 = 59.0;
                         const BTN_HEIGHT: f64 = 44.0;
 
-                        let animation_neg_start_time =
-                            ctx.f.var(format!("btn_t_{text}")).push(ctx.f);
+                        let animation_neg_start_time = ctx.f.var(format!("btn_t_{text}"));
                         let click_anim_offset =
-                            pyramid_curve(&mut ctx.f, animation_neg_start_time, 0.2, 4.0);
-                        let neg_click_anim_offset = (-click_anim_offset).push(ctx.f);
+                            pyramid_curve(ctx.f.clone(), animation_neg_start_time, 0.2, 4.0);
+                        let neg_click_anim_offset = -click_anim_offset.clone();
 
-                        let rect = OpFactory::make_rect_from_points(
-                            OpFactory::make_point(
-                                (OpFactory::new_f64(
-                                    LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH),
-                                )
-                                .push(ctx.f)
-                                    + click_anim_offset)
-                                    .push(ctx.f),
-                                (OpFactory::new_f64(
-                                    TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT),
-                                )
-                                .push(ctx.f)
-                                    + click_anim_offset)
-                                    .push(ctx.f),
-                            )
-                            .push(ctx.f),
-                            OpFactory::make_point(
-                                (OpFactory::new_f64(
+                        let rect = ctx.f.clone().make_rect_from_points(
+                            ctx.f.clone().make_point(
+                                ctx.f
+                                    .new_f64(LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH))
+                                    + click_anim_offset.clone(),
+                                ctx.f
+                                    .new_f64(TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT))
+                                    + click_anim_offset,
+                            ),
+                            ctx.f.clone().make_point(
+                                ctx.f.new_f64(
                                     LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + BTN_WIDTH,
-                                )
-                                .push(ctx.f)
-                                    + neg_click_anim_offset)
-                                    .push(ctx.f),
-                                (OpFactory::new_f64(
+                                ) + neg_click_anim_offset.clone(),
+                                ctx.f.new_f64(
                                     TOP_PADDING
                                         + (y as f64) * (Y_PADDING + BTN_HEIGHT)
                                         + BTN_HEIGHT,
-                                )
-                                .push(ctx.f)
-                                    + neg_click_anim_offset)
-                                    .push(ctx.f),
-                            )
-                            .push(ctx.f),
-                        )
-                        .push(ctx.f);
+                                ) + neg_click_anim_offset,
+                            ),
+                        );
 
                         ctx.f.push_cmd(CmdsCommand::DrawRect {
                             paint: color,
                             rect: *rect,
                         });
 
-                        let text_pos = OpFactory::new_point(
+                        let text_pos = ctx.f.new_point(
                             LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + 0.5 * BTN_WIDTH,
                             TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT) + 0.5 * BTN_HEIGHT,
-                        )
-                        .push(ctx.f);
-                        let text_op = OpFactory::new_string(text.to_string()).push(ctx.f);
+                        );
+                        let text_op = ctx.f.new_string(text.to_string());
                         ctx.f.push_cmd(CmdsCommand::DrawCenteredText {
                             text: *text_op,
                             paint: text_color,
@@ -470,24 +470,22 @@ impl AppLogic {
                         const BTN_WIDTH: f64 = 59.0;
                         const BTN_HEIGHT: f64 = 44.0;
 
-                        let rect = OpFactory::new_rect(
+                        let rect = ctx.f.new_rect(
                             LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH),
                             TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT),
                             LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + BTN_WIDTH,
                             TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT) + BTN_HEIGHT,
-                        )
-                        .push(ctx.f);
+                        );
                         ctx.f.push_cmd(CmdsCommand::DrawRect {
                             paint: color,
                             rect: *rect,
                         });
 
-                        let text_pos = OpFactory::new_point(
+                        let text_pos = ctx.f.new_point(
                             LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + 0.5 * BTN_WIDTH,
                             TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT) + 0.5 * BTN_HEIGHT,
-                        )
-                        .push(ctx.f);
-                        let text_op = OpFactory::new_string(text.to_string()).push(ctx.f);
+                        );
+                        let text_op = ctx.f.new_string(text.to_string());
                         ctx.f.push_cmd(CmdsCommand::DrawCenteredText {
                             text: *text_op,
                             paint: text_color,
@@ -510,24 +508,22 @@ impl AppLogic {
                         const BTN_WIDTH: f64 = 59.0;
                         const BTN_HEIGHT: f64 = 44.0;
 
-                        let rect = OpFactory::new_rect(
+                        let rect = ctx.f.new_rect(
                             LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH),
                             TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT),
                             LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + BTN_WIDTH,
                             TOP_PADDING + ((y + 1) as f64) * (Y_PADDING + BTN_HEIGHT) + BTN_HEIGHT,
-                        )
-                        .push(ctx.f);
+                        );
                         ctx.f.push_cmd(CmdsCommand::DrawRect {
                             paint: color,
                             rect: *rect,
                         });
 
-                        let text_pos = OpFactory::new_point(
+                        let text_pos = ctx.f.new_point(
                             LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + 0.5 * BTN_WIDTH,
                             TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT) + 1.0 * BTN_HEIGHT,
-                        )
-                        .push(ctx.f);
-                        let text_op = OpFactory::new_string(text.to_string()).push(ctx.f);
+                        );
+                        let text_op = ctx.f.new_string(text.to_string());
                         ctx.f.push_cmd(CmdsCommand::DrawCenteredText {
                             text: *text_op,
                             paint: text_color,
@@ -551,7 +547,7 @@ impl AppLogic {
                     }
 
                     let mut ctx = MakeWidgetContext {
-                        f,
+                        f: f.clone(),
                         session_id: &session_id,
                         scene_id,
                         var_decls: &mut var_decls,
