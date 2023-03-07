@@ -1,18 +1,23 @@
 use crate::util::FloatExt;
 use crate::StateMachine;
 use boldui_protocol::{OpId, OpsOperation, SceneId, Value, VarId};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
-pub struct TimeManager {
+/// Tracks requested wakeup times and var dependencies
+pub struct DepTracker {
     next_wakeup: f64,
     current_frame_time: f64,
+    var_deps: BTreeSet<VarId>,
+    updated_vars: BTreeSet<VarId>,
 }
 
-impl TimeManager {
+impl DepTracker {
     pub fn new(current_frame_time: f64) -> Self {
         Self {
             next_wakeup: f64::INFINITY,
             current_frame_time,
+            var_deps: BTreeSet::new(),
+            updated_vars: BTreeSet::new(),
         }
     }
 
@@ -28,6 +33,29 @@ impl TimeManager {
 
     pub fn current_frame_time(&self) -> f64 {
         self.current_frame_time
+    }
+
+    pub fn get_updated_vars(&self) -> &BTreeSet<VarId> {
+        &self.updated_vars
+    }
+
+    /// Returns (var_deps, updated_vars)
+    pub fn into_var_info(self) -> (BTreeSet<VarId>, BTreeSet<VarId>) {
+        (self.var_deps, self.updated_vars)
+    }
+
+    pub fn add_var_dep(&mut self, scene_id: SceneId, var_name: String) {
+        self.var_deps.insert(VarId {
+            key: var_name,
+            scene: scene_id,
+        });
+    }
+
+    pub fn add_updated_var(&mut self, scene_id: SceneId, var_name: String) {
+        self.updated_vars.insert(VarId {
+            key: var_name,
+            scene: scene_id,
+        });
     }
 }
 
@@ -123,19 +151,21 @@ impl StateMachine {
         &self,
         op: &OpsOperation,
         ctx: (SceneId, &[Value]),
-        time_manager: &mut TimeManager,
+        dep_tracker: &mut DepTracker,
     ) -> Value {
         match op {
             OpsOperation::Value(val) => val.to_owned(),
-            OpsOperation::Var(VarId { key, scene }) => self
-                .scenes
-                .get(scene)
-                .unwrap()
-                .1
-                .var_vals
-                .get(key)
-                .unwrap()
-                .to_owned(),
+            OpsOperation::Var(VarId { key, scene }) => {
+                dep_tracker.add_var_dep(*scene, key.to_owned());
+                self.scenes
+                    .get(scene)
+                    .unwrap()
+                    .1
+                    .var_vals
+                    .get(key)
+                    .unwrap()
+                    .to_owned()
+            }
             OpsOperation::Add { a, b } => match self.op_results.get_num_pair(*a, ctx, *b, ctx) {
                 IntOrFloatPair::Int(a, b) => Value::Sint64(a + b),
                 IntOrFloatPair::Float(a, b) => Value::Double(a + b),
@@ -162,17 +192,17 @@ impl StateMachine {
             }
             OpsOperation::GetTime => {
                 // No bounds set, just redraw now
-                time_manager.reduce_next_wakeup(time_manager.current_frame_time());
+                dep_tracker.reduce_next_wakeup(dep_tracker.current_frame_time());
                 Value::Double(self.timebase.elapsed().as_secs_f64())
             }
             OpsOperation::GetTimeAndClamp { low, high } => {
-                let curr_time = time_manager.current_frame_time();
+                let curr_time = dep_tracker.current_frame_time();
                 let low = self.op_results.get_f64(*low, ctx);
                 let high = self.op_results.get_f64(*high, ctx);
                 if curr_time < low {
-                    time_manager.reduce_next_wakeup(low);
+                    dep_tracker.reduce_next_wakeup(low);
                 } else if curr_time < high {
-                    time_manager.reduce_next_wakeup(curr_time);
+                    dep_tracker.reduce_next_wakeup(curr_time);
                 }
                 Value::Double(curr_time.clamp(low, high))
             }

@@ -1,7 +1,7 @@
 use crate::renderer::Renderer;
 use crate::simulator::Simulator;
 use crate::state_machine::WindowId;
-use crate::{Frontend, StateMachine, ToStateMachine};
+use crate::{Frontend, StateMachine, ToStateMachine, PER_FRAME_LOGGING};
 use adw::prelude::{ApplicationExt, ApplicationExtManual};
 use adw::{Application, HeaderBar};
 use boldui_protocol::{A2RUpdate, SceneId};
@@ -93,7 +93,9 @@ impl WindowState {
         gl_area.connect_render(move |widget, _gl_ctx| {
             use gl::types::*;
 
-            eprintln!("[rnd:dbg] rendering scn #{}", scene_id);
+            if PER_FRAME_LOGGING {
+                eprintln!("[rnd:dbg] rendering scn #{}", scene_id);
+            }
             let start = Instant::now();
             let fb_info = {
                 let mut fboid: GLint = 0;
@@ -134,6 +136,7 @@ impl WindowState {
                 window_state.last_scene_size = (widget.width(), widget.height());
             }
 
+            // TODO: Decouple updates and re-renders, because watches might need to be triggered without re-rendering
             state_machine.update_and_evaluate(
                 scene_id,
                 widget.width() as i64,
@@ -295,12 +298,6 @@ impl Frontend for WindowFrontend {
                         y,
                         button,
                     );
-                    // FIXME: Replace with var dep tracking
-                    state_machine
-                        .event_proxy
-                        .as_ref()
-                        .unwrap()
-                        .to_state_machine(ToStateMachine::Redraw { window_id });
                     // eprintln!("[rnd:dbg] [{:?}] Handled click", start.elapsed());
                 }
                 ToStateMachine::AllocWindow(scene_id) => {
@@ -405,7 +402,9 @@ impl _WakeupManagerHelper for Rc<RefCell<WakeupManager>> {
             .unwrap_or(&f64::INFINITY);
         drop(state_machine);
         if this_ref.next_wakeup != next_wakeup {
-            eprintln!("[rnd:dbg] wakeup at {}", next_wakeup);
+            if PER_FRAME_LOGGING {
+                eprintln!("[rnd:dbg] wakeup at {}", next_wakeup);
+            }
             this_ref.next_wakeup = next_wakeup;
             drop(this_ref);
             self.select_next();

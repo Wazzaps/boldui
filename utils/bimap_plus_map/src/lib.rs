@@ -1,4 +1,5 @@
 use bimap::{BiMap, Overwritten};
+use std::collections::hash_map::Iter;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -46,6 +47,10 @@ where
 
     pub fn right_keys_iter(&self) -> RightValues<'_, L, R> {
         self.bimap.right_values()
+    }
+
+    pub fn left_items_iter(&self) -> Iter<'_, L, V> {
+        self.hashmap.iter()
     }
 
     pub fn bimap_get_by_left(&self, left: &L) -> Option<&R> {

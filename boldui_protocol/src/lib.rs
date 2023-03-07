@@ -134,10 +134,10 @@ pub struct OpId {
     pub idx: u32,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialOrd, Ord, Eq, PartialEq)]
 pub struct VarId {
-    pub key: String,
     pub scene: SceneId,
+    pub key: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
