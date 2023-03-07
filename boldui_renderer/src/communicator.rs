@@ -16,11 +16,6 @@ pub(crate) enum ToStateMachine {
     Redraw {
         window_id: WindowId,
     },
-    Resize {
-        window_id: WindowId,
-        width: u32,
-        height: u32,
-    },
     AllocWindow(SceneId),
     SleepUntil(Instant),
     Click {

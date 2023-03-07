@@ -3,6 +3,34 @@ use crate::StateMachine;
 use boldui_protocol::{OpId, OpsOperation, SceneId, Value, VarId};
 use std::collections::HashMap;
 
+pub struct TimeManager {
+    next_wakeup: f64,
+    current_frame_time: f64,
+}
+
+impl TimeManager {
+    pub fn new(current_frame_time: f64) -> Self {
+        Self {
+            next_wakeup: f64::INFINITY,
+            current_frame_time,
+        }
+    }
+
+    pub fn reduce_next_wakeup(&mut self, when: f64) {
+        if when < self.next_wakeup {
+            self.next_wakeup = when;
+        }
+    }
+
+    pub fn next_wakeup(&self) -> f64 {
+        self.next_wakeup
+    }
+
+    pub fn current_frame_time(&self) -> f64 {
+        self.current_frame_time
+    }
+}
+
 #[derive(Debug)]
 pub struct OpResults {
     pub vals: HashMap<SceneId, Vec<Value>>,
@@ -91,7 +119,12 @@ pub enum IntOrFloatPair {
 }
 
 impl StateMachine {
-    pub fn eval_op(&self, op: &OpsOperation, ctx: (SceneId, &[Value])) -> Value {
+    pub fn eval_op(
+        &self,
+        op: &OpsOperation,
+        ctx: (SceneId, &[Value]),
+        time_manager: &mut TimeManager,
+    ) -> Value {
         match op {
             OpsOperation::Value(val) => val.to_owned(),
             OpsOperation::Var(VarId { key, scene }) => self
@@ -127,18 +160,21 @@ impl StateMachine {
                     val => todo!("Unimpl type for eq: {:?}", val),
                 }
             }
-            OpsOperation::GetTime {
-                low_clamp,
-                high_clamp,
-            } => {
-                let curr_time = self.start_time.elapsed().as_secs_f64();
-                Value::Double(if low_clamp.is_nan() && high_clamp.is_nan() {
-                    // No clamping
-                    curr_time
-                } else {
-                    // Clamp
-                    curr_time.clamp(*low_clamp, *high_clamp)
-                })
+            OpsOperation::GetTime => {
+                // No bounds set, just redraw now
+                time_manager.reduce_next_wakeup(time_manager.current_frame_time());
+                Value::Double(self.timebase.elapsed().as_secs_f64())
+            }
+            OpsOperation::GetTimeAndClamp { low, high } => {
+                let curr_time = time_manager.current_frame_time();
+                let low = self.op_results.get_f64(*low, ctx);
+                let high = self.op_results.get_f64(*high, ctx);
+                if curr_time < low {
+                    time_manager.reduce_next_wakeup(low);
+                } else if curr_time < high {
+                    time_manager.reduce_next_wakeup(curr_time);
+                }
+                Value::Double(curr_time.clamp(low, high))
             }
             OpsOperation::MakePoint { left, top } => Value::Point {
                 left: self.op_results.get_f64(*left, ctx),

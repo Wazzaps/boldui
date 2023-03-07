@@ -143,17 +143,10 @@ impl Frontend for ImageFrontend {
                         .unwrap()
                         .last_scene_size;
 
-                    self.state_machine.update_and_evaluate(
-                        scene_id,
-                        0.0,
-                        last_scene_size.0 as i64,
-                        last_scene_size.1 as i64,
-                    );
                     eprintln!("[rnd:dbg] [{:?}] Updated for click", start.elapsed());
 
                     self.state_machine.handle_click(
                         scene_id,
-                        0.0,
                         last_scene_size.0 as i64,
                         last_scene_size.1 as i64,
                         x,
@@ -162,7 +155,6 @@ impl Frontend for ImageFrontend {
                     );
                     eprintln!("[rnd:dbg] [{:?}] Handled click", start.elapsed());
                 }
-                ToStateMachine::Resize { .. } => { /* Nothing to do */ }
                 ToStateMachine::AllocWindow(scene_id) => {
                     eprintln!("[rnd:nfo] Allocating window for scene #{}", scene_id);
                     self.windows
@@ -212,7 +204,6 @@ impl ImageFrontend {
         {
             self.state_machine.update_and_evaluate(
                 scene_id,
-                0.0,
                 img_size.width as i64,
                 img_size.height as i64,
             );

@@ -80,20 +80,14 @@ struct OpFactory<'a>(Rc<RefCell<&'a mut A2RUpdateScene>>);
 #[allow(dead_code)]
 impl<'a> OpFactory<'a> {
     pub fn get_time(&self) -> OpIdWrapper<'a> {
-        OpIdWrapper::push_op(
-            OpsOperation::GetTime {
-                low_clamp: f64::NAN,
-                high_clamp: f64::NAN,
-            },
-            self,
-        )
+        OpIdWrapper::push_op(OpsOperation::GetTime, self)
     }
 
-    pub fn get_time_with_bounds(&self, min: f64, max: f64) -> OpIdWrapper<'a> {
+    pub fn get_time_and_clamp(&self, low: OpIdWrapper, high: OpIdWrapper) -> OpIdWrapper<'a> {
         OpIdWrapper::push_op(
-            OpsOperation::GetTime {
-                low_clamp: min,
-                high_clamp: max,
+            OpsOperation::GetTimeAndClamp {
+                low: *low,
+                high: *high,
             },
             self,
         )
@@ -342,11 +336,15 @@ impl AppLogic {
 
                     fn pyramid_curve<'a>(
                         f: OpFactory<'a>,
-                        neg_start_time: OpIdWrapper<'a>,
+                        start_time: OpIdWrapper<'a>,
                         total_animation_time: f64,
                         magnitude: f64,
                     ) -> OpIdWrapper<'a> {
-                        let animation_clock = ((f.get_time() + neg_start_time)
+                        let time = f.get_time_and_clamp(
+                            start_time.clone(),
+                            start_time.clone() + f.new_f64(total_animation_time),
+                        );
+                        let animation_clock = ((time + (-start_time))
                             .min(f.new_f64(total_animation_time))
                             .max(f.new_f64(0.0)))
                             * (f.new_f64(magnitude * 2.0 / total_animation_time));
@@ -371,9 +369,9 @@ impl AppLogic {
                         const BTN_WIDTH: f64 = 59.0;
                         const BTN_HEIGHT: f64 = 44.0;
 
-                        let animation_neg_start_time = ctx.f.var(format!("btn_t_{text}"));
+                        let animation_start_time = ctx.f.var(format!("btn_t_{text}"));
                         let click_anim_offset =
-                            pyramid_curve(ctx.f.clone(), animation_neg_start_time, 0.2, 4.0);
+                            pyramid_curve(ctx.f.clone(), animation_start_time, 0.2, 4.0);
                         let neg_click_anim_offset = -click_anim_offset.clone();
 
                         let rect = ctx.f.clone().make_rect_from_points(
@@ -419,17 +417,7 @@ impl AppLogic {
                             HandlerBlock {
                                 ops: vec![
                                     // Get the time
-                                    OpsOperation::GetTime {
-                                        low_clamp: f64::NAN,
-                                        high_clamp: f64::NAN,
-                                    },
-                                    // Negate it
-                                    OpsOperation::Neg {
-                                        a: OpId {
-                                            scene_id: 0,
-                                            idx: 0,
-                                        },
-                                    },
+                                    OpsOperation::GetTime,
                                 ],
                                 cmds: vec![
                                     HandlerCmd::Reply {
@@ -443,7 +431,7 @@ impl AppLogic {
                                         },
                                         value: OpId {
                                             scene_id: 0,
-                                            idx: 1,
+                                            idx: 0,
                                         },
                                     },
                                 ],
@@ -452,7 +440,7 @@ impl AppLogic {
 
                         // Start as if we pressed the button 100 secs ago
                         ctx.var_decls
-                            .insert(format!("btn_t_{text}"), Value::Double(100.0));
+                            .insert(format!("btn_t_{text}"), Value::Double(-100.0));
                     }
 
                     fn make_disabled_btn(

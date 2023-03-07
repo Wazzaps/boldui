@@ -144,10 +144,10 @@ pub struct VarId {
 pub enum OpsOperation {
     Value(Value),
     Var(VarId),
-    // TODO: Replace with `OpId`s
-    GetTime {
-        low_clamp: f64,
-        high_clamp: f64,
+    GetTime,
+    GetTimeAndClamp {
+        low: OpId,
+        high: OpId,
     },
     Add {
         a: OpId,

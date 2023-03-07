@@ -1,5 +1,5 @@
 use crate::communicator::{CommChannelRecv, CommChannelSend, FromStateMachine};
-use crate::op_interpreter::OpResults;
+use crate::op_interpreter::{OpResults, TimeManager};
 use crate::{EventLoopProxy, ToStateMachine, PER_FRAME_LOGGING};
 use bimap_plus_map::BiMapPlusMap;
 use boldui_protocol::{
@@ -7,6 +7,7 @@ use boldui_protocol::{
     SceneId, Value,
 };
 use eventfd::{EfdFlags, EventFD};
+use ordered_map::OrderedMap;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::Instant;
 
@@ -56,7 +57,8 @@ pub(crate) struct StateMachine {
     pub has_pending_replies: bool,
     pub comm_channel_send: CommChannelSend,
     pub event_proxy: Option<Box<dyn EventLoopProxy + Send>>,
-    pub start_time: Instant,
+    pub timebase: Instant,
+    pub wakeups: OrderedMap<SceneId, f64, f64>,
 }
 
 impl StateMachine {
@@ -74,7 +76,8 @@ impl StateMachine {
                     notify_send: notifier.clone(),
                 },
                 event_proxy: None,
-                start_time: Instant::now(),
+                timebase: Instant::now(),
+                wakeups: OrderedMap::new(|v| -*v), // Negate for ascending order
             },
             CommChannelRecv {
                 recv: comm_channel_recv,
@@ -83,22 +86,21 @@ impl StateMachine {
         )
     }
 
-    pub fn eval_ops_list(&self, ops: &[OpsOperation], scene_id: SceneId) -> Vec<Value> {
+    pub fn eval_ops_list(
+        &self,
+        ops: &[OpsOperation],
+        scene_id: SceneId,
+        time_manager: &mut TimeManager,
+    ) -> Vec<Value> {
         let mut results = vec![];
         for op in ops.iter() {
-            let val = self.eval_op(op, (scene_id, &results));
+            let val = self.eval_op(op, (scene_id, &results), time_manager);
             results.push(val);
         }
         results
     }
 
-    pub fn update_and_evaluate(
-        &mut self,
-        scene_id: SceneId,
-        time: f64,
-        scene_width: i64,
-        scene_height: i64,
-    ) {
+    pub fn update_and_evaluate(&mut self, scene_id: SceneId, scene_width: i64, scene_height: i64) {
         if self.root_scenes.bimap_get_by_left(&scene_id).is_none() {
             eprintln!(
                 "[rnd:wrn] Tried to update scene id {} which is not a root scene",
@@ -109,13 +111,13 @@ impl StateMachine {
         // TODO: Create utilities for some of the repeated code here
         {
             let vars = &mut self.scenes.get_mut(&scene_id).unwrap().1.var_vals;
-            vars.insert(":time".to_string(), Value::Double(time));
             vars.insert(":width".to_string(), Value::Sint64(scene_width));
             vars.insert(":height".to_string(), Value::Sint64(scene_height));
         }
 
         let mut stack = vec![(scene_id, 0)];
         let mut watches_to_run = vec![];
+        let mut time_manager = self.get_time_manager();
 
         while !stack.is_empty() {
             let (scene_id, child_id) = stack.pop().unwrap();
@@ -126,7 +128,7 @@ impl StateMachine {
                 if PER_FRAME_LOGGING {
                     eprintln!("[rnd:dbg] Evaluating scene #{scene_id}");
                 }
-                let values = self.eval_ops_list(&scene_desc.ops, scene_id);
+                let values = self.eval_ops_list(&scene_desc.ops, scene_id, &mut time_manager);
                 if PER_FRAME_LOGGING {
                     eprintln!("[rnd:dbg]  -> {values:?}");
                 }
@@ -150,6 +152,11 @@ impl StateMachine {
             }
         }
 
+        // Update next wakeup, according to info collected during last update
+        self.wakeups.insert(scene_id, time_manager.next_wakeup());
+
+        // Run watches
+        let mut watch_time_manager = self.get_time_manager();
         for (scene_id, watch_id) in watches_to_run {
             eprintln!("[rnd:dbg] Running watch #{watch_id} of scene #{scene_id}");
             let watch = self
@@ -160,7 +167,7 @@ impl StateMachine {
                 .watches
                 .get(watch_id)
                 .unwrap();
-            let op_results = self.eval_ops_list(&watch.handler.ops, 0);
+            let op_results = self.eval_ops_list(&watch.handler.ops, 0, &mut watch_time_manager);
             let cmds = watch.handler.cmds.clone();
             for cmd in cmds.iter() {
                 self.eval_handler_cmd(cmd, (0, &op_results));
@@ -376,8 +383,9 @@ impl StateMachine {
         }
 
         // Run handler blocks
+        let mut time_manager = self.get_time_manager();
         for block in run_blocks.iter() {
-            let op_results = self.eval_ops_list(&block.ops, 0);
+            let op_results = self.eval_ops_list(&block.ops, 0, &mut time_manager);
             for cmd in block.cmds.iter() {
                 self.eval_handler_cmd(cmd, (0, &op_results));
             }
@@ -395,14 +403,14 @@ impl StateMachine {
 
         // Redraw all scenes
         // TODO: Only redraw affected scenes
-        for window_id in self.root_scenes.right_keys_iter() {
-            self.event_proxy
-                .as_ref()
-                .unwrap()
-                .to_state_machine(ToStateMachine::Redraw {
-                    window_id: *window_id,
-                });
-        }
+        // for window_id in self.root_scenes.right_keys_iter() {
+        //     self.event_proxy
+        //         .as_ref()
+        //         .unwrap()
+        //         .to_state_machine(ToStateMachine::Redraw {
+        //             window_id: *window_id,
+        //         });
+        // }
 
         // eprintln!("[rnd:dbg] New scenes: {:#?}", self.scenes);
     }
@@ -411,7 +419,6 @@ impl StateMachine {
     pub(crate) fn handle_click(
         &mut self,
         scene_id: SceneId,
-        time: f64,
         scene_width: i64,
         scene_height: i64,
         x: f64,
@@ -421,7 +428,6 @@ impl StateMachine {
         // TODO: Create utilities for some of the repeated code here
         {
             let vars = &mut self.scenes.get_mut(&scene_id).unwrap().1.var_vals;
-            vars.insert(":time".to_string(), Value::Double(time));
             vars.insert(":width".to_string(), Value::Sint64(scene_width));
             vars.insert(":height".to_string(), Value::Sint64(scene_height));
             vars.insert(":click_x".to_string(), Value::Double(x));
@@ -431,6 +437,7 @@ impl StateMachine {
 
         let mut stack = vec![(scene_id, 0)];
         let mut event_handlers_to_run = vec![];
+        let mut mock_time_manager = self.get_time_manager();
 
         while !stack.is_empty() {
             let (scene_id, child_id) = stack.pop().unwrap();
@@ -439,7 +446,7 @@ impl StateMachine {
             if child_id == 0 {
                 // Evaluate current scene
                 eprintln!("[rnd:dbg] Evaluating scene for inputs #{scene_id}");
-                let values = self.eval_ops_list(&scene_desc.ops, scene_id);
+                let values = self.eval_ops_list(&scene_desc.ops, scene_id, &mut mock_time_manager);
                 if PER_FRAME_LOGGING {
                     eprintln!("[rnd:dbg]  -> {values:?}");
                 }
@@ -484,7 +491,7 @@ impl StateMachine {
                 .event_handlers
                 .get(evt_hnd_id)
                 .unwrap();
-            let op_results = self.eval_ops_list(&handler.ops, 0);
+            let op_results = self.eval_ops_list(&handler.ops, 0, &mut mock_time_manager);
             let cmds = handler.cmds.clone();
             for cmd in cmds.iter() {
                 self.eval_handler_cmd(cmd, (0, &op_results));
@@ -498,8 +505,13 @@ impl StateMachine {
         }
     }
 
-    pub fn register_window_for_scene(&mut self, scene: SceneId, window_id: WindowId) {
+    pub fn register_window_for_scene(&mut self, scene_id: SceneId, window_id: WindowId) {
         self.root_scenes
-            .insert(scene, window_id, WindowState::default());
+            .insert(scene_id, window_id, WindowState::default());
+        self.wakeups.insert(scene_id, f64::INFINITY);
+    }
+
+    fn get_time_manager(&self) -> TimeManager {
+        TimeManager::new(self.timebase.elapsed().as_secs_f64())
     }
 }

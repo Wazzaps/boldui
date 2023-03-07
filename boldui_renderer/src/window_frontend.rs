@@ -5,7 +5,7 @@ use crate::{Frontend, StateMachine, ToStateMachine};
 use adw::prelude::{ApplicationExt, ApplicationExtManual};
 use adw::{Application, HeaderBar};
 use boldui_protocol::{A2RUpdate, SceneId};
-use glib::{Continue, MainContext, PRIORITY_HIGH};
+use glib::{Continue, MainContext, SourceId, PRIORITY_HIGH};
 use gtk::prelude::{BoxExt, GLAreaExt, GtkWindowExt, WidgetExt};
 use gtk::{gio, GLArea};
 use skia_safe::gpu::gl::FramebufferInfo;
@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::ptr;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 pub(crate) struct WindowFrontend {
     pub event_recv: Option<glib::Receiver<ToStateMachine>>,
@@ -62,6 +62,7 @@ impl WindowState {
         app: &Application,
         renderer: Rc<RefCell<Renderer>>,
         state_machine: Rc<RefCell<StateMachine>>,
+        wakeup_manager: Rc<RefCell<WakeupManager>>,
         window_id: WindowId,
         scene_id: SceneId,
     ) -> Self {
@@ -92,6 +93,7 @@ impl WindowState {
         gl_area.connect_render(move |widget, _gl_ctx| {
             use gl::types::*;
 
+            eprintln!("[rnd:dbg] rendering scn #{}", scene_id);
             let start = Instant::now();
             let fb_info = {
                 let mut fboid: GLint = 0;
@@ -121,7 +123,7 @@ impl WindowState {
             )
             .unwrap();
             let canvas = surface.canvas();
-            let state_machine = &mut state_machine2.borrow_mut();
+            let mut state_machine = (*state_machine2).borrow_mut();
 
             // Update last scene size
             {
@@ -134,14 +136,13 @@ impl WindowState {
 
             state_machine.update_and_evaluate(
                 scene_id,
-                0.0, // TODO: Time value
                 widget.width() as i64,
                 widget.height() as i64,
             );
             canvas.clear(Color4f::new(0.2, 0.2, 0.2, 1.0));
-            renderer
+            (*renderer)
                 .borrow_mut()
-                .render_scene(canvas, state_machine, scene_id);
+                .render_scene(canvas, &mut state_machine, scene_id);
             surface.flush();
 
             let elapsed_us = start.elapsed().as_micros() as u64;
@@ -164,12 +165,8 @@ impl WindowState {
                 .unwrap()
                 .to_state_machine(ToStateMachine::SimulatorTick { from_update: false });
 
-            // FIXME: remove forced rerender
-            state_machine
-                .event_proxy
-                .as_ref()
-                .unwrap()
-                .to_state_machine(ToStateMachine::Redraw { window_id });
+            drop(state_machine);
+            wakeup_manager.update_next_wakeup();
 
             glib::signal::Inhibit(false)
         });
@@ -177,7 +174,7 @@ impl WindowState {
         let event_controller = gtk::GestureClick::new();
 
         event_controller.connect_released(move |_controller, button, x, y| {
-            let mut state_machine = state_machine.borrow_mut();
+            let mut state_machine = (*state_machine).borrow_mut();
             state_machine
                 .event_proxy
                 .as_mut()
@@ -213,6 +210,7 @@ impl WindowState {
 impl Frontend for WindowFrontend {
     fn main_loop(&mut self) {
         let state_machine = Rc::new(RefCell::new(self.state_machine.take().unwrap()));
+        let wakeup_manager = WakeupManager::new(state_machine.clone());
         let renderer = Rc::new(RefCell::new(self.renderer.take().unwrap()));
         let mut simulator = self.simulator.take();
         let event_recv = self.event_recv.take().unwrap();
@@ -232,11 +230,11 @@ impl Frontend for WindowFrontend {
                     run_blocks,
                 }) => {
                     let start = Instant::now();
-                    state_machine
+                    (*state_machine)
                         .borrow_mut()
                         .update_scenes_and_run_blocks(updated_scenes, run_blocks);
                     eprintln!("[rnd:dbg] A2R update took {:?} to handle", start.elapsed());
-                    state_machine
+                    (*state_machine)
                         .borrow_mut()
                         .event_proxy
                         .as_ref()
@@ -253,7 +251,8 @@ impl Frontend for WindowFrontend {
                 }
                 ToStateMachine::SimulatorTick { from_update } => {
                     if let Some(simulator) = &mut simulator {
-                        if let Err(e) = simulator.tick(&mut state_machine.borrow_mut(), from_update)
+                        if let Err(e) =
+                            simulator.tick(&mut (*state_machine).borrow_mut(), from_update)
                         {
                             eprintln!("[rnd:err] Error while running simulator: {e:?}");
                             app.quit();
@@ -265,7 +264,7 @@ impl Frontend for WindowFrontend {
                     eprintln!("[rnd:ntc] State machine seems to be done, bye from frontend!");
                     app.quit();
                 }
-                ToStateMachine::SleepUntil(instant) => {
+                ToStateMachine::SleepUntil(_instant) => {
                     // Select the earliest wakeup time
                     // TODO
                     // next_wakeup = next_wakeup
@@ -277,7 +276,7 @@ impl Frontend for WindowFrontend {
                     y,
                     button,
                 } => {
-                    let mut state_machine = state_machine.borrow_mut();
+                    let mut state_machine = (*state_machine).borrow_mut();
                     let scene_id = *state_machine
                         .root_scenes
                         .bimap_get_by_right(&window_id)
@@ -287,39 +286,22 @@ impl Frontend for WindowFrontend {
                         .hashmap_get_by_left(&scene_id)
                         .unwrap()
                         .last_scene_size;
-                    state_machine.update_and_evaluate(
-                        scene_id,
-                        0.0,
-                        last_scene_size.0 as i64,
-                        last_scene_size.1 as i64,
-                    );
-                    // eprintln!("[rnd:dbg] [{:?}] Updated for click", start.elapsed());
+
                     state_machine.handle_click(
                         scene_id,
-                        0.0,
                         last_scene_size.0 as i64,
                         last_scene_size.1 as i64,
                         x,
                         y,
                         button,
                     );
+                    // FIXME: Replace with var dep tracking
+                    state_machine
+                        .event_proxy
+                        .as_ref()
+                        .unwrap()
+                        .to_state_machine(ToStateMachine::Redraw { window_id });
                     // eprintln!("[rnd:dbg] [{:?}] Handled click", start.elapsed());
-                }
-                ToStateMachine::Resize {
-                    window_id,
-                    width,
-                    height,
-                } => {
-                    // assert_eq!(window_id, 1);
-                    // env.windowed_context
-                    //     .window()
-                    //     .set_inner_size(glutin::dpi::Size::new(glutin::dpi::LogicalSize::new(
-                    //         width, height,
-                    //     )));
-                    // env.surface =
-                    //     create_surface(&env.windowed_context, &fb_info, &mut env.gr_context);
-                    // env.windowed_context
-                    //     .resize(glutin::dpi::PhysicalSize::new(width, height));
                 }
                 ToStateMachine::AllocWindow(scene_id) => {
                     let window_id = window_counter.fetch_add(1, Ordering::SeqCst);
@@ -327,7 +309,7 @@ impl Frontend for WindowFrontend {
                         "[rnd:dbg] Allocated window #{} for scene #{}",
                         window_id, scene_id
                     );
-                    state_machine
+                    (*state_machine)
                         .borrow_mut()
                         .register_window_for_scene(scene_id, window_id);
 
@@ -336,11 +318,12 @@ impl Frontend for WindowFrontend {
                         &app,
                         renderer.clone(),
                         state_machine.clone(),
+                        wakeup_manager.clone(),
                         window_id,
                         scene_id,
                     );
                     let (scene_size, scene_title) = {
-                        let state_machine = &mut state_machine.borrow_mut();
+                        let state_machine = &mut (*state_machine).borrow_mut();
                         (
                             WindowFrontend::get_scene_size(state_machine, scene_id),
                             WindowFrontend::get_scene_title(state_machine, scene_id),
@@ -359,11 +342,11 @@ impl Frontend for WindowFrontend {
             Continue(true)
         });
 
-        application.connect_activate(|app| {
+        application.connect_activate(|_app| {
             eprintln!("[rnd:dbg] Activated by gtk");
         });
 
-        application.connect_shutdown(|app| {
+        application.connect_shutdown(|_app| {
             eprintln!("[rnd:dbg] Shutdown by gtk");
         });
 
@@ -387,5 +370,96 @@ impl WindowFrontend {
         state_machine
             .get_window_title_for_scene(scene_id)
             .unwrap_or_else(|| "Window".to_string())
+    }
+}
+
+struct WakeupManager {
+    state_machine: Rc<RefCell<StateMachine>>,
+    curr_timer: Option<SourceId>,
+    next_wakeup: f64,
+}
+
+impl WakeupManager {
+    pub fn new(state_machine: Rc<RefCell<StateMachine>>) -> Rc<RefCell<Self>> {
+        Rc::new(RefCell::new(Self {
+            state_machine,
+            curr_timer: None,
+            next_wakeup: f64::INFINITY,
+        }))
+    }
+}
+
+trait _WakeupManagerHelper {
+    fn update_next_wakeup(&self);
+    fn select_next(&self);
+}
+
+impl _WakeupManagerHelper for Rc<RefCell<WakeupManager>> {
+    fn update_next_wakeup(&self) {
+        let mut this_ref = (**self).borrow_mut();
+        let state_machine = (*this_ref.state_machine).borrow_mut();
+        let next_wakeup = *state_machine
+            .wakeups
+            .descending_values()
+            .next()
+            .unwrap_or(&f64::INFINITY);
+        drop(state_machine);
+        if this_ref.next_wakeup != next_wakeup {
+            eprintln!("[rnd:dbg] wakeup at {}", next_wakeup);
+            this_ref.next_wakeup = next_wakeup;
+            drop(this_ref);
+            self.select_next();
+        }
+    }
+
+    fn select_next(&self) {
+        let mut this_ref = (**self).borrow_mut();
+        this_ref.next_wakeup = f64::INFINITY;
+
+        // Cancel current timer
+        if let Some(curr_timer) = this_ref.curr_timer.take() {
+            curr_timer.remove();
+        }
+
+        // Run all expired wakeups, and schedule next wakeup
+        loop {
+            let mut state_machine = (*this_ref.state_machine).borrow_mut();
+            let current_time = state_machine.timebase.elapsed().as_secs_f64();
+            let wakeup = state_machine
+                .wakeups
+                .descending_items()
+                .next()
+                .map(|w| (*w.0, *w.1));
+            if let Some((scene_id, wakeup_time)) = wakeup {
+                if current_time >= wakeup_time {
+                    // Already need to wake up
+                    state_machine.wakeups.remove(&scene_id);
+                    if let Some(&window_id) = state_machine.root_scenes.bimap_get_by_left(&scene_id)
+                    {
+                        state_machine
+                            .event_proxy
+                            .as_ref()
+                            .unwrap()
+                            .to_state_machine(ToStateMachine::Redraw { window_id });
+                    }
+                    // We want to trigger any remaining redraws, keep on going
+                    continue;
+                } else if wakeup_time.is_finite() {
+                    // Schedule next wakeup
+                    let this_clone = self.clone();
+                    drop(state_machine);
+                    eprintln!("{}", wakeup_time - current_time);
+                    this_ref.curr_timer = Some(glib::timeout_add_local_once(
+                        Duration::from_secs_f64(wakeup_time - current_time),
+                        move || {
+                            eprintln!("[rnd:dbg] wakeup");
+                            this_clone.select_next();
+                        },
+                    ));
+                }
+            }
+            // We're done for now, go away
+            break;
+        }
     }
 }

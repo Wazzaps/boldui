@@ -18,6 +18,7 @@ serde_yaml = "0.9.14"
 eventfd = "0.2.0"
 bimap_plus_map = { path="../utils/bimap_plus_map" }
 num-traits = "0.2.15"
+ordered-map = "0.4.2"
 
 # Graphics
 gtk = {package = "gtk4", version = "0.6.2", features = ["v4_6"]}
