@@ -17,6 +17,11 @@ use std::io::{ErrorKind, Read, Write};
 use std::ops::Deref;
 use std::rc::Rc;
 use std::time::Instant;
+use tracing::subscriber::set_global_default;
+use tracing::{debug, error, trace};
+use tracing_log::LogTracer;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::{EnvFilter, Registry};
 use uriparse::RelativeReference;
 
 #[derive(Clone)]
@@ -247,10 +252,7 @@ impl AppLogic {
         self.window_states.insert(scene_id, WindowState::default());
         self.sessions.insert(session_id.to_string(), scene_id);
         let state = self.window_states.get(&scene_id).unwrap();
-        eprintln!(
-            "[app:dbg] Opening window with scene id #{} and session id #{}",
-            scene_id, &session_id
-        );
+        debug!(scene_id, session_id = &session_id, "Opening window",);
         match path {
             // Root
             [""] => {
@@ -803,7 +805,7 @@ impl AppLogic {
                     ],
                 }))?;
 
-                eprintln!("[app:dbg] Scene update took {:?} to make", start.elapsed());
+                trace!(scene_id, "Scene update took {:?} to make", start.elapsed());
             }
 
             // Not found
@@ -921,9 +923,7 @@ impl AppLogic {
                         state.curr_op = 0;
                         state.should_show_b = false;
                     }
-                    op => {
-                        eprintln!("unimpl: {op}");
-                    } // op => return Err(format!("Unknown operation: {op}").into()),
+                    op => return Err(format!("Unknown operation: {op}").into()),
                 }
 
                 stdout.send(&A2RMessage::Update(A2RUpdate {
@@ -1005,9 +1005,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut stdout = std::io::stdout().lock();
     let mut stdin = std::io::stdin().lock();
 
+    // Initialize logging
+    LogTracer::init().expect("Failed to set logger");
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or(EnvFilter::new("info"));
+    let formatting_layer = tracing_subscriber::fmt::layer().with_writer(std::io::stderr);
+    let subscriber = Registry::default().with(env_filter).with(formatting_layer);
+    // .with(journald_layer);
+    set_global_default(subscriber).expect("Failed to set subscriber");
+
     // Get hello
     {
-        eprintln!("[app:dbg] reading hello");
+        debug!("reading hello");
         let mut magic = [0u8; boldui_protocol::R2A_MAGIC.len()];
         stdin.read_exact(&mut magic).unwrap();
         assert_eq!(&magic, boldui_protocol::R2A_MAGIC, "Missing magic");
@@ -1018,17 +1026,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 && (boldui_protocol::LATEST_MAJOR_VER > hello.min_protocol_major_version
                     || (boldui_protocol::LATEST_MAJOR_VER == hello.min_protocol_major_version
                         && boldui_protocol::LATEST_MINOR_VER >= hello.min_protocol_minor_version)),
-            "[app:err] Incompatible version"
+            "Incompatible version"
         );
         assert_eq!(
             hello.extra_len, 0,
-            "[app:err] This protocol version specifies no extra data"
+            "This protocol version specifies no extra data"
         );
     }
 
     // Reply with A2RHelloResponse
     {
-        eprintln!("[app:dbg] sending hello response");
+        debug!("sending hello response");
         stdout.write_all(boldui_protocol::A2R_MAGIC)?;
         stdout.write_all(&bincode::serialize(&boldui_protocol::A2RHelloResponse {
             protocol_major_version: boldui_protocol::LATEST_MAJOR_VER,
@@ -1041,7 +1049,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // }),
         })?)?;
         stdout.flush()?;
-        eprintln!("[app:dbg] connected!");
+        debug!("connected!");
     }
 
     let mut app_logic = AppLogic::new();
@@ -1051,21 +1059,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let msg_len = match msg_len {
             Ok(len) => len,
             Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
-                eprintln!("[app:dbg] connection closed, bye!");
+                debug!("connection closed, bye!");
                 return Ok(());
             }
             Err(e) => Err(e)?,
         };
 
-        eprintln!("[app:dbg] reading msg of size {msg_len}");
+        trace!("reading msg of size {msg_len}");
         msg_buf.resize(msg_len as usize, 0);
         stdin.read_exact(&mut msg_buf)?;
         let msg = bincode::deserialize::<R2AMessage>(&msg_buf)?;
 
-        // eprintln!("[app:dbg] R2A: {:#?}", &msg);
+        trace!("R2A: {:#?}", &msg);
         match msg {
             R2AMessage::Update(R2AUpdate { replies }) => {
-                eprintln!("[app:dbg] Replies: {:?}", &replies);
+                trace!("Replies: {:?}", &replies);
                 for reply in replies {
                     let (raw_path, path, params) = parse_path(&reply.path);
 
@@ -1111,7 +1119,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             R2AMessage::Error(err) => {
-                eprintln!("[app:dbg] Renderer error: {err:?}");
+                error!("Renderer error: {err:?}");
             }
         }
     }

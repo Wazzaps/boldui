@@ -9,6 +9,7 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::os::unix::io::AsRawFd;
 use std::time::Instant;
+use tracing::{debug, error, info, trace};
 
 #[derive(Debug)]
 pub(crate) enum ToStateMachine {
@@ -61,7 +62,7 @@ impl ConnectionInitiator {
     pub fn connect(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         // Send hello
         {
-            eprintln!("[rnd:dbg] sending hello");
+            debug!("sending hello");
 
             self.app_stdin.write_all(boldui_protocol::R2A_MAGIC)?;
             self.app_stdin
@@ -76,7 +77,7 @@ impl ConnectionInitiator {
 
         // Get hello response
         {
-            eprintln!("[rnd:dbg] reading hello response");
+            debug!("reading hello response");
             let mut magic = [0u8; boldui_protocol::A2R_MAGIC.len()];
             self.app_stdout.read_exact(&mut magic).unwrap();
             assert_eq!(&magic, boldui_protocol::A2R_MAGIC, "Missing magic");
@@ -94,26 +95,23 @@ impl ConnectionInitiator {
                     boldui_protocol::LATEST_MAJOR_VER,
                     boldui_protocol::LATEST_MINOR_VER
                 ),
-                "[rnd:err] Incompatible version"
+                "Incompatible version"
             );
             assert_eq!(
                 hello_res.extra_len, 0,
-                "[rnd:err] This protocol version specifies no extra data"
+                "This protocol version specifies no extra data"
             );
 
             if let Some(err) = hello_res.error {
-                panic!(
-                    "[rnd:err] An error has occurred: code {}: {}",
-                    err.code, err.text
-                );
+                panic!("An error has occurred: code {}: {}", err.code, err.text);
             }
-            eprintln!("[rnd:dbg] connected!");
+            debug!("connected!");
         }
         Ok(())
     }
 
     pub fn send_open(&mut self, path: String) -> Result<(), Box<dyn std::error::Error>> {
-        eprintln!("[rnd:dbg] sending R2AOpen");
+        debug!("sending R2AOpen");
         self.app_stdin.send(&boldui_protocol::R2AMessage::Open(
             boldui_protocol::R2AOpen { path },
         ))?;
@@ -154,7 +152,7 @@ impl Communicator {
                     match reply {
                         FromStateMachine::Quit => {
                             // Got a Quit, closing the session!
-                            eprintln!("[rnd:dbg] done");
+                            info!("done");
                             return Ok(());
                         }
                         FromStateMachine::Reply(reply) => {
@@ -172,7 +170,7 @@ impl Communicator {
             if fds.contains(self.app_stdout.as_raw_fd()) {
                 // Common quit logic
                 let do_quit = || {
-                    eprintln!("[rnd:err] Failed to read message from app, quitting");
+                    error!("Failed to read message from app, quitting");
                     self.event_loop_proxy.to_state_machine(ToStateMachine::Quit);
                 };
 
@@ -184,7 +182,7 @@ impl Communicator {
                     }
                     Ok(v) => v,
                 };
-                eprintln!("[rnd:dbg] reading msg of size {msg_len}");
+                trace!("reading msg of size {msg_len}");
                 msg_buf.resize(msg_len as usize, 0);
                 if self.app_stdout.read_exact(&mut msg_buf).is_err() {
                     do_quit();
@@ -192,7 +190,7 @@ impl Communicator {
                 };
                 let msg = bincode::deserialize::<A2RMessage>(&msg_buf)?;
 
-                // eprintln!("[rnd:dbg] A2R: {:#?}", &msg);
+                trace!("A2R: {:#?}", &msg);
                 match msg {
                     A2RMessage::Update(update) => {
                         self.event_loop_proxy
@@ -200,9 +198,9 @@ impl Communicator {
                     }
                     A2RMessage::Error(e) => {
                         if e.code == 0 && e.text.is_empty() {
-                            eprintln!("[rnd:err] App Quit");
+                            error!("App Quit");
                         } else {
-                            eprintln!("[rnd:err] App Error: Code {}: {}", e.code, e.text);
+                            error!(err_code = e.code, err_text = e.text, "App Error");
                         }
                         self.event_loop_proxy.to_state_machine(ToStateMachine::Quit);
                         return Ok(());

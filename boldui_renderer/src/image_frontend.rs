@@ -1,7 +1,7 @@
 use crate::renderer::Renderer;
 use crate::simulator::Simulator;
 use crate::state_machine::WindowId;
-use crate::{EventLoopProxy, Frontend, StateMachine, ToStateMachine, PER_FRAME_LOGGING};
+use crate::{EventLoopProxy, Frontend, StateMachine, ToStateMachine};
 use boldui_protocol::A2RUpdate;
 use crossbeam::channel::{Receiver, RecvTimeoutError, Sender};
 use skia_safe::{AlphaType, Color4f, ColorSpace, EncodedImageFormat, ISize, ImageInfo, Surface};
@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::time::Instant;
+use tracing::{debug, error, info, trace};
 
 #[derive(Default)]
 pub(crate) struct InternalWindowState {
@@ -93,7 +94,7 @@ impl Frontend for ImageFrontend {
                 }) => {
                     self.state_machine
                         .update_scenes_and_run_blocks(updated_scenes, run_blocks);
-                    eprintln!("[rnd:dbg] A2R update took {:?} to handle", start.elapsed());
+                    trace!("A2R update took {:?} to handle", start.elapsed());
                     self.state_machine
                         .event_proxy
                         .as_ref()
@@ -111,13 +112,13 @@ impl Frontend for ImageFrontend {
                 ToStateMachine::SimulatorTick { from_update } => {
                     if let Some(simulator) = &mut self.simulator {
                         if let Err(e) = simulator.tick(&mut self.state_machine, from_update) {
-                            eprintln!("[rnd:err] Error while running simulator: {e:?}");
+                            error!("Error while running simulator: {e:?}");
                             break;
                         }
                     }
                 }
                 ToStateMachine::Quit => {
-                    eprintln!("[rnd:ntc] State machine seems to be done, bye from frontend!");
+                    info!("State machine seems to be done, bye from frontend!");
                     break;
                 }
                 ToStateMachine::SleepUntil(instant) => {
@@ -143,7 +144,12 @@ impl Frontend for ImageFrontend {
                         .unwrap()
                         .last_scene_size;
 
-                    eprintln!("[rnd:dbg] [{:?}] Updated for click", start.elapsed());
+                    trace!(
+                        scene_id,
+                        window_id,
+                        "[{:?}] Updated for click",
+                        start.elapsed()
+                    );
 
                     self.state_machine.handle_click(
                         scene_id,
@@ -153,10 +159,10 @@ impl Frontend for ImageFrontend {
                         y,
                         button,
                     );
-                    eprintln!("[rnd:dbg] [{:?}] Handled click", start.elapsed());
+                    trace!(scene_id, window_id, "[{:?}] Handled click", start.elapsed());
                 }
                 ToStateMachine::AllocWindow(scene_id) => {
-                    eprintln!("[rnd:nfo] Allocating window for scene #{}", scene_id);
+                    trace!(scene_id, "Allocating window");
                     self.windows
                         .insert(self.window_counter, InternalWindowState::default());
                     self.state_machine
@@ -197,7 +203,12 @@ impl ImageFrontend {
         let mut surface = Surface::new_raster(&image_info, image_info.min_row_bytes(), None)
             .expect("Failed to create surface");
         let canvas = surface.canvas();
-        eprintln!("[rnd:dbg] [{:?}] Created canvas", start.elapsed());
+        debug!(
+            scene_id,
+            window_id,
+            "[{:?}] Created canvas",
+            start.elapsed()
+        );
 
         // Render
         canvas.clear(Color4f::new(0.0, 0.0, 0.0, 0.0));
@@ -207,18 +218,18 @@ impl ImageFrontend {
                 img_size.width as i64,
                 img_size.height as i64,
             );
-            if PER_FRAME_LOGGING {
-                eprintln!("[rnd:dbg] [{:?}] Updated", start.elapsed());
-            }
+            trace!(scene_id, window_id, "[{:?}] Updated", start.elapsed());
             self.renderer
                 .render_scene(canvas, &mut self.state_machine, scene_id);
-            if PER_FRAME_LOGGING {
-                eprintln!("[rnd:dbg] [{:?}] Rendered", start.elapsed());
-            }
+            trace!(scene_id, window_id, "[{:?}] Rendered", start.elapsed());
         }
-        if PER_FRAME_LOGGING {
-            eprintln!("[rnd:dbg] Frame took {:?} to render", start.elapsed());
-        }
+        trace!(
+            scene_id,
+            window_id,
+            window_id,
+            "Frame took {:?} to render",
+            start.elapsed()
+        );
 
         // Encode it
         let frame_num_ref = &mut self.windows.get_mut(&window_id).unwrap().frame_num;
@@ -231,7 +242,7 @@ impl ImageFrontend {
             .encode_to_data(EncodedImageFormat::PNG)
             .expect("Failed to encode as PNG");
         out.write_all(img.as_bytes()).expect("Failed to write PNG");
-        eprintln!("[rnd:dbg] Wrote frame #{frame_num} for window #{window_id}");
+        info!(scene_id, window_id, "Wrote frame #{frame_num}");
         *frame_num_ref += 1;
     }
 }

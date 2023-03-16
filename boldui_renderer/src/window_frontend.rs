@@ -1,7 +1,7 @@
 use crate::renderer::Renderer;
 use crate::simulator::Simulator;
 use crate::state_machine::WindowId;
-use crate::{Frontend, StateMachine, ToStateMachine, PER_FRAME_LOGGING};
+use crate::{Frontend, StateMachine, ToStateMachine};
 use adw::prelude::{ApplicationExt, ApplicationExtManual};
 use adw::{Application, HeaderBar};
 use boldui_protocol::{A2RUpdate, SceneId};
@@ -17,6 +17,7 @@ use std::ptr;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
+use tracing::{debug, error, trace};
 
 pub(crate) struct WindowFrontend {
     pub event_recv: Option<glib::Receiver<ToStateMachine>>,
@@ -93,9 +94,7 @@ impl WindowState {
         gl_area.connect_render(move |widget, _gl_ctx| {
             use gl::types::*;
 
-            if PER_FRAME_LOGGING {
-                eprintln!("[rnd:dbg] rendering scn #{}", scene_id);
-            }
+            trace!(scene_id, "rendering scene");
             let start = Instant::now();
             let fb_info = {
                 let mut fboid: GLint = 0;
@@ -154,8 +153,9 @@ impl WindowState {
             min_frametime_us.fetch_min(elapsed_us, Ordering::SeqCst);
             max_frametime_us.fetch_max(elapsed_us, Ordering::SeqCst);
             if frame_num % 100 == 0 {
-                println!(
-                    "[rnd:dbg] Render Timings: Min: {}us\tAvg: {}us\tMax: {}us",
+                debug!(
+                    scene_id,
+                    "Render Timings: Min: {}us\tAvg: {}us\tMax: {}us",
                     min_frametime_us.load(Ordering::SeqCst),
                     total_frametime_us.load(Ordering::SeqCst) / total_frames.load(Ordering::SeqCst),
                     max_frametime_us.load(Ordering::SeqCst)
@@ -236,7 +236,7 @@ impl Frontend for WindowFrontend {
                     (*state_machine)
                         .borrow_mut()
                         .update_scenes_and_run_blocks(updated_scenes, run_blocks);
-                    eprintln!("[rnd:dbg] A2R update took {:?} to handle", start.elapsed());
+                    trace!("A2R update took {:?} to handle", start.elapsed());
                     (*state_machine)
                         .borrow_mut()
                         .event_proxy
@@ -257,14 +257,14 @@ impl Frontend for WindowFrontend {
                         if let Err(e) =
                             simulator.tick(&mut (*state_machine).borrow_mut(), from_update)
                         {
-                            eprintln!("[rnd:err] Error while running simulator: {e:?}");
+                            error!("Error while running simulator: {e:?}");
                             app.quit();
                             // *control_flow = ControlFlow::Exit;
                         }
                     }
                 }
                 ToStateMachine::Quit => {
-                    eprintln!("[rnd:ntc] State machine seems to be done, bye from frontend!");
+                    debug!("State machine seems to be done, bye from frontend!");
                     app.quit();
                 }
                 ToStateMachine::SleepUntil(_instant) => {
@@ -279,6 +279,7 @@ impl Frontend for WindowFrontend {
                     y,
                     button,
                 } => {
+                    let start = Instant::now();
                     let mut state_machine = (*state_machine).borrow_mut();
                     let scene_id = *state_machine
                         .root_scenes
@@ -298,14 +299,11 @@ impl Frontend for WindowFrontend {
                         y,
                         button,
                     );
-                    // eprintln!("[rnd:dbg] [{:?}] Handled click", start.elapsed());
+                    trace!(window_id, scene_id, "[{:?}] Handled click", start.elapsed());
                 }
                 ToStateMachine::AllocWindow(scene_id) => {
                     let window_id = window_counter.fetch_add(1, Ordering::SeqCst);
-                    eprintln!(
-                        "[rnd:dbg] Allocated window #{} for scene #{}",
-                        window_id, scene_id
-                    );
+                    trace!(window_id, scene_id, "Allocated window for scene");
                     (*state_machine)
                         .borrow_mut()
                         .register_window_for_scene(scene_id, window_id);
@@ -340,15 +338,15 @@ impl Frontend for WindowFrontend {
         });
 
         application.connect_activate(|_app| {
-            eprintln!("[rnd:dbg] Activated by gtk");
+            debug!("Activated by gtk");
         });
 
         application.connect_shutdown(|_app| {
-            eprintln!("[rnd:dbg] Shutdown by gtk");
+            debug!("Shutdown by gtk");
         });
 
         application.run_with_args::<&str>(&[]);
-        eprintln!("[rnd:dbg] app done");
+        debug!("app done");
         std::process::exit(0);
     }
 }
@@ -402,9 +400,7 @@ impl _WakeupManagerHelper for Rc<RefCell<WakeupManager>> {
             .unwrap_or(&f64::INFINITY);
         drop(state_machine);
         if this_ref.next_wakeup != next_wakeup {
-            if PER_FRAME_LOGGING {
-                eprintln!("[rnd:dbg] wakeup at {}", next_wakeup);
-            }
+            trace!("requested wakeup at {}", next_wakeup);
             this_ref.next_wakeup = next_wakeup;
             drop(this_ref);
             self.select_next();
@@ -447,11 +443,10 @@ impl _WakeupManagerHelper for Rc<RefCell<WakeupManager>> {
                     // Schedule next wakeup
                     let this_clone = self.clone();
                     drop(state_machine);
-                    eprintln!("{}", wakeup_time - current_time);
                     this_ref.curr_timer = Some(glib::timeout_add_local_once(
                         Duration::from_secs_f64(wakeup_time - current_time),
                         move || {
-                            eprintln!("[rnd:dbg] wakeup");
+                            trace!("woke up");
                             this_clone.select_next();
                         },
                     ));

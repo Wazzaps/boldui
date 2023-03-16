@@ -1,6 +1,6 @@
 use crate::communicator::{CommChannelRecv, CommChannelSend, FromStateMachine};
 use crate::op_interpreter::{DepTracker, OpResults};
-use crate::{EventLoopProxy, ToStateMachine, PER_FRAME_LOGGING};
+use crate::{EventLoopProxy, ToStateMachine};
 use bimap_plus_map::BiMapPlusMap;
 use boldui_protocol::{
     A2RReparentScene, A2RUpdateScene, EventType, HandlerBlock, HandlerCmd, OpsOperation, R2AReply,
@@ -10,6 +10,7 @@ use eventfd::{EfdFlags, EventFD};
 use ordered_map::OrderedMap;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::time::Instant;
+use tracing::{debug, trace, warn};
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub enum SceneParent {
@@ -103,10 +104,7 @@ impl StateMachine {
 
     pub fn update_and_evaluate(&mut self, scene_id: SceneId, scene_width: i64, scene_height: i64) {
         if self.root_scenes.bimap_get_by_left(&scene_id).is_none() {
-            eprintln!(
-                "[rnd:wrn] Tried to update scene id {} which is not a root scene",
-                scene_id
-            );
+            warn!(scene_id, "Tried to update scene which is not a root scene");
             return;
         }
         // TODO: Create utilities for some of the repeated code here
@@ -126,13 +124,9 @@ impl StateMachine {
 
             if child_id == 0 {
                 // Evaluate current scene
-                if PER_FRAME_LOGGING {
-                    eprintln!("[rnd:dbg] Evaluating scene #{scene_id}");
-                }
+                trace!(scene_id, "Evaluating scene");
                 let values = self.eval_ops_list(&scene_desc.ops, scene_id, &mut dep_tracker);
-                if PER_FRAME_LOGGING {
-                    eprintln!("[rnd:dbg]  -> {values:?}");
-                }
+                trace!(scene_id, "  -> {values:?}");
                 self.op_results.vals.insert(scene_id, values);
 
                 for (i, watch) in scene_desc.watches.iter().enumerate() {
@@ -158,7 +152,7 @@ impl StateMachine {
 
         // Run watches
         for (scene_id, watch_id) in watches_to_run {
-            eprintln!("[rnd:dbg] Running watch #{watch_id} of scene #{scene_id}");
+            trace!(scene_id, watch_id, "Running watch");
             let watch = self
                 .scenes
                 .get(&scene_id)
@@ -175,9 +169,7 @@ impl StateMachine {
         }
 
         let (var_deps, _updated_vars) = dep_tracker.into_var_info();
-        if PER_FRAME_LOGGING {
-            eprintln!("[rnd:dbg] var deps of scn #{} -> {:?}", scene_id, var_deps);
-        }
+        trace!(scene_id, "var deps of scene -> {:?}", var_deps);
         self.root_scenes
             .hashmap_get_mut_by_left(&scene_id)
             .unwrap()
@@ -314,15 +306,12 @@ impl StateMachine {
                 }
 
                 let var_vals = &mut self.scenes.get_mut(&var.scene).unwrap().1.var_vals;
-                eprintln!(
-                    "[rnd:dbg] Set {}@{} to {:?}",
-                    var.key, var.scene, &var_value
-                );
+                trace!("Set {}@{} to {:?}", var.key, var.scene, &var_value);
                 dep_tracker.add_updated_var(var.scene, var.key.to_owned());
                 var_vals.insert(var.key.to_owned(), var_value);
             }
-            HandlerCmd::DebugMessage { msg: debug } => {
-                eprintln!("[rnd:dbg] DebugMessage: {}", debug);
+            HandlerCmd::DebugMessage { msg } => {
+                debug!("DebugMessage: {}", msg);
             }
             HandlerCmd::Reply { path, params } => {
                 let reply = R2AReply {
@@ -332,7 +321,7 @@ impl StateMachine {
                         .map(|opid| self.op_results.get(*opid, (0, &[])).to_owned())
                         .collect(),
                 };
-                eprintln!("[rnd:dbg] Replying: {:?}", reply);
+                trace!("Replying: {:?}", reply);
                 self.comm_channel_send
                     .send
                     .send(FromStateMachine::Reply(reply))
@@ -347,11 +336,11 @@ impl StateMachine {
                 let cond_value = self.op_results.get(*condition, ctx).to_owned();
                 match cond_value {
                     Value::Sint64(0) => {
-                        eprintln!("[rnd:dbg] Running else");
+                        trace!("Running else");
                         self.eval_handler_cmd(or_else, ctx, dep_tracker);
                     }
                     Value::Sint64(_) => {
-                        eprintln!("[rnd:dbg] Running then");
+                        trace!("Running then");
                         self.eval_handler_cmd(then, ctx, dep_tracker);
                     }
                     _ => panic!(
@@ -417,15 +406,10 @@ impl StateMachine {
             .retain(|_scene_id, scene| scene.1.parent.has_parent());
 
         // Redraw scenes affected by changes
-        if PER_FRAME_LOGGING {
-            eprintln!(
-                "[rnd:dbg] updated vars -> {:?}",
-                dep_tracker.get_updated_vars()
-            );
-        }
+        trace!("updated vars -> {:?}", dep_tracker.get_updated_vars());
         self.queue_redraw_affected_scenes(dep_tracker.get_updated_vars());
 
-        // eprintln!("[rnd:dbg] New scenes: {:#?}", self.scenes);
+        trace!("New scenes: {:#?}", self.scenes);
     }
 
     // Only supports root scenes
@@ -458,11 +442,9 @@ impl StateMachine {
 
             if child_id == 0 {
                 // Evaluate current scene
-                eprintln!("[rnd:dbg] Evaluating scene for inputs #{scene_id}");
+                trace!(scene_id, "Evaluating scene for inputs");
                 let values = self.eval_ops_list(&scene_desc.ops, scene_id, &mut dep_tracker);
-                if PER_FRAME_LOGGING {
-                    eprintln!("[rnd:dbg]  -> {values:?}");
-                }
+                trace!(scene_id, "  -> {values:?}");
                 self.op_results.vals.insert(scene_id, values);
 
                 for (i, (evt_type, _handler)) in scene_desc.event_handlers.iter().enumerate() {
@@ -495,7 +477,7 @@ impl StateMachine {
         }
 
         for (scene_id, evt_hnd_id) in event_handlers_to_run {
-            eprintln!("[rnd:dbg] Running event handler #{evt_hnd_id} of scene #{scene_id}");
+            trace!(scene_id, evt_hnd_id, "Running event handler");
             let (_event_type, handler) = self
                 .scenes
                 .get(&scene_id)
@@ -511,12 +493,11 @@ impl StateMachine {
             }
         }
 
-        if PER_FRAME_LOGGING {
-            eprintln!(
-                "[rnd:dbg] click: updated vars -> {:?}",
-                dep_tracker.get_updated_vars()
-            );
-        }
+        trace!(
+            scene_id,
+            "click: updated vars -> {:?}",
+            dep_tracker.get_updated_vars()
+        );
         self.queue_redraw_affected_scenes(dep_tracker.get_updated_vars());
 
         if self.has_pending_replies {

@@ -3,6 +3,7 @@ use crate::{StateMachine, ToStateMachine};
 use boldui_protocol::serde::Deserialize;
 use std::error::Error;
 use std::time::{Duration, Instant};
+use tracing::trace;
 
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -28,7 +29,7 @@ pub(crate) struct Simulator {
 impl Simulator {
     pub fn new(src: SimulationFile) -> Self {
         assert_eq!(src.format_version, "0");
-        eprintln!("[rnd:dbg] simulator: opcode #0");
+        trace!("simulator: opcode #0");
         Self {
             src,
             next_wakeup: None,
@@ -92,7 +93,7 @@ impl Simulator {
 
             // Next opcode!
             self.curr_insn += 1;
-            eprintln!("[rnd:dbg] simulator: opcode #{}", self.curr_insn);
+            trace!("simulator: opcode #{}", self.curr_insn);
         }
         Ok(())
     }
