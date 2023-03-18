@@ -4,6 +4,9 @@ members = [
     "boldui_protocol_bindings",
     "boldui_renderer",
     "utils/bimap_plus_map",
+    "utils/serde-generate",
+    "utils/serde-name",
+    "utils/serde-reflection",
     "examples/boldui_example_rs_calc",
 ]
 default-members = ["boldui_renderer"]
@@ -19,7 +22,3 @@ debug = true
 inherits = "release"
 lto = true
 opt-level = 'z'
-
-[patch.crates-io]
-serde-generate = { git = "https://github.com/Wazzaps/serde-reflection-010bt.git" }
-serde-reflection = { git = "https://github.com/Wazzaps/serde-reflection-010bt.git" }

@@ -23,6 +23,29 @@ These define how the renderer and apps communicate, particularly the `protocol/s
 Example apps for testing the renderer.
 
 
+## How to run the examples
+
+### The rust example
+
+```shell
+RUST_LOG='debug' cargo run --release -p boldui_renderer -- --frontend window -- cargo run --release -p boldui_example_rs_calc
+```
+
+### The python example
+
+```shell
+# Rebuild bindings, just in case
+cargo run -p boldui_protocol_bindings
+# Make venv
+python3 -m venv venv
+source venv/bin/activate
+pip install -e ./boldui_python
+ln ./boldui_protocol_bindings/python/{bincode,boldui_protocol,serde_binary,serde_types} ./venv/lib/python*/site-packages/
+# Run the example
+cd ./examples/boldui_example_py_calc
+RUST_LOG='debug' cargo run --release -p boldui_renderer -- --frontend window -- python boldui_example_py_calc
+```
+
 ## WIP
 
 - Important flow to optimize: input to pixel (no app rtt)

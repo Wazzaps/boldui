@@ -8,19 +8,19 @@ using System.Numerics;
 namespace _boldui_protocol {
 
     public sealed class VarId: IEquatable<VarId>, ICloneable {
-        public string key;
         public uint scene;
+        public string key;
 
-        public VarId(string _key, uint _scene) {
+        public VarId(uint _scene, string _key) {
+            scene = _scene;
             if (_key == null) throw new ArgumentNullException(nameof(_key));
             key = _key;
-            scene = _scene;
         }
 
         public void Serialize(Serde.ISerializer serializer) {
             serializer.increase_container_depth();
-            serializer.serialize_str(key);
             serializer.serialize_u32(scene);
+            serializer.serialize_str(key);
             serializer.decrease_container_depth();
         }
 
@@ -41,8 +41,8 @@ namespace _boldui_protocol {
         public static VarId Deserialize(Serde.IDeserializer deserializer) {
             deserializer.increase_container_depth();
             VarId obj = new VarId(
-            	deserializer.deserialize_str(),
-            	deserializer.deserialize_u32());
+            	deserializer.deserialize_u32(),
+            	deserializer.deserialize_str());
             deserializer.decrease_container_depth();
             return obj;
         }
@@ -69,16 +69,16 @@ namespace _boldui_protocol {
         public bool Equals(VarId other) {
             if (other == null) return false;
             if (ReferenceEquals(this, other)) return true;
-            if (!key.Equals(other.key)) return false;
             if (!scene.Equals(other.scene)) return false;
+            if (!key.Equals(other.key)) return false;
             return true;
         }
 
         public override int GetHashCode() {
             unchecked {
                 int value = 7;
-                value = 31 * value + key.GetHashCode();
                 value = 31 * value + scene.GetHashCode();
+                value = 31 * value + key.GetHashCode();
                 return value;
             }
         }

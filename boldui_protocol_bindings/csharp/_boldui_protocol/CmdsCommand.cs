@@ -16,6 +16,7 @@ namespace _boldui_protocol {
             switch (index) {
                 case 0: return Clear.Load(deserializer);
                 case 1: return DrawRect.Load(deserializer);
+                case 2: return DrawCenteredText.Load(deserializer);
                 default: throw new Serde.DeserializationException("Unknown variant index for CmdsCommand: " + index);
             }
         }
@@ -51,6 +52,7 @@ namespace _boldui_protocol {
             switch (this) {
             case Clear x: return x.GetHashCode();
             case DrawRect x: return x.GetHashCode();
+            case DrawCenteredText x: return x.GetHashCode();
             default: throw new InvalidOperationException("Unknown variant type");
             }
         }
@@ -63,6 +65,7 @@ namespace _boldui_protocol {
             switch (this) {
             case Clear x: return x.Equals((Clear)other);
             case DrawRect x: return x.Equals((DrawRect)other);
+            case DrawCenteredText x: return x.Equals((DrawCenteredText)other);
             default: throw new InvalidOperationException("Unknown variant type");
             }
         }
@@ -164,6 +167,65 @@ namespace _boldui_protocol {
                     int value = 7;
                     value = 31 * value + paint.GetHashCode();
                     value = 31 * value + rect.GetHashCode();
+                    return value;
+                }
+            }
+
+        }
+
+        public sealed class DrawCenteredText: CmdsCommand, IEquatable<DrawCenteredText>, ICloneable {
+            public OpId text;
+            public OpId paint;
+            public OpId center;
+
+            public DrawCenteredText(OpId _text, OpId _paint, OpId _center) {
+                if (_text == null) throw new ArgumentNullException(nameof(_text));
+                text = _text;
+                if (_paint == null) throw new ArgumentNullException(nameof(_paint));
+                paint = _paint;
+                if (_center == null) throw new ArgumentNullException(nameof(_center));
+                center = _center;
+            }
+
+            public override void Serialize(Serde.ISerializer serializer) {
+                serializer.increase_container_depth();
+                serializer.serialize_variant_index(2);
+                text.Serialize(serializer);
+                paint.Serialize(serializer);
+                center.Serialize(serializer);
+                serializer.decrease_container_depth();
+            }
+
+            internal static DrawCenteredText Load(Serde.IDeserializer deserializer) {
+                deserializer.increase_container_depth();
+                DrawCenteredText obj = new DrawCenteredText(
+                	OpId.Deserialize(deserializer),
+                	OpId.Deserialize(deserializer),
+                	OpId.Deserialize(deserializer));
+                deserializer.decrease_container_depth();
+                return obj;
+            }
+            public override bool Equals(object obj) => obj is DrawCenteredText other && Equals(other);
+
+            public static bool operator ==(DrawCenteredText left, DrawCenteredText right) => Equals(left, right);
+
+            public static bool operator !=(DrawCenteredText left, DrawCenteredText right) => !Equals(left, right);
+
+            public bool Equals(DrawCenteredText other) {
+                if (other == null) return false;
+                if (ReferenceEquals(this, other)) return true;
+                if (!text.Equals(other.text)) return false;
+                if (!paint.Equals(other.paint)) return false;
+                if (!center.Equals(other.center)) return false;
+                return true;
+            }
+
+            public override int GetHashCode() {
+                unchecked {
+                    int value = 7;
+                    value = 31 * value + text.GetHashCode();
+                    value = 31 * value + paint.GetHashCode();
+                    value = 31 * value + center.GetHashCode();
                     return value;
                 }
             }

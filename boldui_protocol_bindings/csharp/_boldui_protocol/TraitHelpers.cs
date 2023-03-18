@@ -59,6 +59,18 @@ namespace _boldui_protocol {
             }
         }
 
+        public static void serialize_tuple2_EventType_HandlerBlock((EventType, HandlerBlock) value, Serde.ISerializer serializer) {
+            value.Item1.Serialize(serializer);
+            value.Item2.Serialize(serializer);
+        }
+
+        public static (EventType, HandlerBlock) deserialize_tuple2_EventType_HandlerBlock(Serde.IDeserializer deserializer) {
+            return (
+                EventType.Deserialize(deserializer),
+                HandlerBlock.Deserialize(deserializer)
+            );
+        }
+
         public static void serialize_vector_A2RUpdateScene(Serde.ValueArray<A2RUpdateScene> value, Serde.ISerializer serializer) {
             serializer.serialize_len(value.Count);
             foreach (var item in value) {
@@ -123,6 +135,22 @@ namespace _boldui_protocol {
             return new Serde.ValueArray<HandlerCmd>(obj);
         }
 
+        public static void serialize_vector_OpId(Serde.ValueArray<OpId> value, Serde.ISerializer serializer) {
+            serializer.serialize_len(value.Count);
+            foreach (var item in value) {
+                item.Serialize(serializer);
+            }
+        }
+
+        public static Serde.ValueArray<OpId> deserialize_vector_OpId(Serde.IDeserializer deserializer) {
+            long length = deserializer.deserialize_len();
+            OpId[] obj = new OpId[length];
+            for (int i = 0; i < length; i++) {
+                obj[i] = OpId.Deserialize(deserializer);
+            }
+            return new Serde.ValueArray<OpId>(obj);
+        }
+
         public static void serialize_vector_OpsOperation(Serde.ValueArray<OpsOperation> value, Serde.ISerializer serializer) {
             serializer.serialize_len(value.Count);
             foreach (var item in value) {
@@ -137,6 +165,86 @@ namespace _boldui_protocol {
                 obj[i] = OpsOperation.Deserialize(deserializer);
             }
             return new Serde.ValueArray<OpsOperation>(obj);
+        }
+
+        public static void serialize_vector_R2AReply(Serde.ValueArray<R2AReply> value, Serde.ISerializer serializer) {
+            serializer.serialize_len(value.Count);
+            foreach (var item in value) {
+                item.Serialize(serializer);
+            }
+        }
+
+        public static Serde.ValueArray<R2AReply> deserialize_vector_R2AReply(Serde.IDeserializer deserializer) {
+            long length = deserializer.deserialize_len();
+            R2AReply[] obj = new R2AReply[length];
+            for (int i = 0; i < length; i++) {
+                obj[i] = R2AReply.Deserialize(deserializer);
+            }
+            return new Serde.ValueArray<R2AReply>(obj);
+        }
+
+        public static void serialize_vector_Value(Serde.ValueArray<Value> value, Serde.ISerializer serializer) {
+            serializer.serialize_len(value.Count);
+            foreach (var item in value) {
+                item.Serialize(serializer);
+            }
+        }
+
+        public static Serde.ValueArray<Value> deserialize_vector_Value(Serde.IDeserializer deserializer) {
+            long length = deserializer.deserialize_len();
+            Value[] obj = new Value[length];
+            for (int i = 0; i < length; i++) {
+                obj[i] = Value.Deserialize(deserializer);
+            }
+            return new Serde.ValueArray<Value>(obj);
+        }
+
+        public static void serialize_vector_Watch(Serde.ValueArray<Watch> value, Serde.ISerializer serializer) {
+            serializer.serialize_len(value.Count);
+            foreach (var item in value) {
+                item.Serialize(serializer);
+            }
+        }
+
+        public static Serde.ValueArray<Watch> deserialize_vector_Watch(Serde.IDeserializer deserializer) {
+            long length = deserializer.deserialize_len();
+            Watch[] obj = new Watch[length];
+            for (int i = 0; i < length; i++) {
+                obj[i] = Watch.Deserialize(deserializer);
+            }
+            return new Serde.ValueArray<Watch>(obj);
+        }
+
+        public static void serialize_vector_tuple2_EventType_HandlerBlock(Serde.ValueArray<(EventType, HandlerBlock)> value, Serde.ISerializer serializer) {
+            serializer.serialize_len(value.Count);
+            foreach (var item in value) {
+                TraitHelpers.serialize_tuple2_EventType_HandlerBlock(item, serializer);
+            }
+        }
+
+        public static Serde.ValueArray<(EventType, HandlerBlock)> deserialize_vector_tuple2_EventType_HandlerBlock(Serde.IDeserializer deserializer) {
+            long length = deserializer.deserialize_len();
+            (EventType, HandlerBlock)[] obj = new (EventType, HandlerBlock)[length];
+            for (int i = 0; i < length; i++) {
+                obj[i] = TraitHelpers.deserialize_tuple2_EventType_HandlerBlock(deserializer);
+            }
+            return new Serde.ValueArray<(EventType, HandlerBlock)>(obj);
+        }
+
+        public static void serialize_vector_u8(Serde.ValueArray<byte> value, Serde.ISerializer serializer) {
+            serializer.serialize_len(value.Count);
+            foreach (var item in value) {
+                serializer.serialize_u8(item);
+            }
+        }
+
+        public static Serde.ValueArray<byte> deserialize_vector_u8(Serde.IDeserializer deserializer) {
+            long length = deserializer.deserialize_len();
+            byte[] obj = new byte[length];
+            for (int i = 0; i < length; i++) {
+                obj[i] = deserializer.deserialize_u8();
+            }
+            return new Serde.ValueArray<byte>(obj);
         }
 
     }

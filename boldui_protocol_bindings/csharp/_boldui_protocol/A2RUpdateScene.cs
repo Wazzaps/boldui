@@ -17,8 +17,10 @@ namespace _boldui_protocol {
         public Serde.ValueArray<OpsOperation> ops;
         public Serde.ValueArray<CmdsCommand> cmds;
         public Serde.ValueDictionary<string, Value> var_decls;
+        public Serde.ValueArray<Watch> watches;
+        public Serde.ValueArray<(EventType, HandlerBlock)> event_handlers;
 
-        public A2RUpdateScene(uint _id, OpId _paint, OpId _backdrop, OpId _transform, OpId _clip, string _uri, Serde.ValueArray<OpsOperation> _ops, Serde.ValueArray<CmdsCommand> _cmds, Serde.ValueDictionary<string, Value> _var_decls) {
+        public A2RUpdateScene(uint _id, OpId _paint, OpId _backdrop, OpId _transform, OpId _clip, string _uri, Serde.ValueArray<OpsOperation> _ops, Serde.ValueArray<CmdsCommand> _cmds, Serde.ValueDictionary<string, Value> _var_decls, Serde.ValueArray<Watch> _watches, Serde.ValueArray<(EventType, HandlerBlock)> _event_handlers) {
             id = _id;
             if (_paint == null) throw new ArgumentNullException(nameof(_paint));
             paint = _paint;
@@ -36,6 +38,10 @@ namespace _boldui_protocol {
             cmds = _cmds;
             if (_var_decls == null) throw new ArgumentNullException(nameof(_var_decls));
             var_decls = _var_decls;
+            if (_watches == null) throw new ArgumentNullException(nameof(_watches));
+            watches = _watches;
+            if (_event_handlers == null) throw new ArgumentNullException(nameof(_event_handlers));
+            event_handlers = _event_handlers;
         }
 
         public void Serialize(Serde.ISerializer serializer) {
@@ -49,6 +55,8 @@ namespace _boldui_protocol {
             TraitHelpers.serialize_vector_OpsOperation(ops, serializer);
             TraitHelpers.serialize_vector_CmdsCommand(cmds, serializer);
             TraitHelpers.serialize_map_str_to_Value(var_decls, serializer);
+            TraitHelpers.serialize_vector_Watch(watches, serializer);
+            TraitHelpers.serialize_vector_tuple2_EventType_HandlerBlock(event_handlers, serializer);
             serializer.decrease_container_depth();
         }
 
@@ -77,7 +85,9 @@ namespace _boldui_protocol {
             	deserializer.deserialize_str(),
             	TraitHelpers.deserialize_vector_OpsOperation(deserializer),
             	TraitHelpers.deserialize_vector_CmdsCommand(deserializer),
-            	TraitHelpers.deserialize_map_str_to_Value(deserializer));
+            	TraitHelpers.deserialize_map_str_to_Value(deserializer),
+            	TraitHelpers.deserialize_vector_Watch(deserializer),
+            	TraitHelpers.deserialize_vector_tuple2_EventType_HandlerBlock(deserializer));
             deserializer.decrease_container_depth();
             return obj;
         }
@@ -113,6 +123,8 @@ namespace _boldui_protocol {
             if (!ops.Equals(other.ops)) return false;
             if (!cmds.Equals(other.cmds)) return false;
             if (!var_decls.Equals(other.var_decls)) return false;
+            if (!watches.Equals(other.watches)) return false;
+            if (!event_handlers.Equals(other.event_handlers)) return false;
             return true;
         }
 
@@ -128,6 +140,8 @@ namespace _boldui_protocol {
                 value = 31 * value + ops.GetHashCode();
                 value = 31 * value + cmds.GetHashCode();
                 value = 31 * value + var_decls.GetHashCode();
+                value = 31 * value + watches.GetHashCode();
+                value = 31 * value + event_handlers.GetHashCode();
                 return value;
             }
         }

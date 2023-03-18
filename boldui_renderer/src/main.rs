@@ -10,7 +10,7 @@ use crate::window_frontend::WindowFrontend;
 use std::fs::File;
 use std::os::unix::io::{FromRawFd, IntoRawFd};
 use std::process::{Command, Stdio};
-use tracing::info;
+use tracing::debug;
 use tracing::subscriber::set_global_default;
 use tracing_log::LogTracer;
 use tracing_subscriber::layer::SubscriberExt;
@@ -93,7 +93,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         app_stdout: out,
         // update_barrier: None,
     };
-    info!("Starting boldui renderer");
+    debug!("Starting boldui renderer");
     connect_init.connect()?;
     connect_init.send_open(params.uri.unwrap_or_else(|| "/".to_string()))?;
 

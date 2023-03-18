@@ -8,11 +8,16 @@ using System.Numerics;
 namespace _boldui_protocol {
 
     public sealed class R2AUpdate: IEquatable<R2AUpdate>, ICloneable {
-        public R2AUpdate() {
+        public Serde.ValueArray<R2AReply> replies;
+
+        public R2AUpdate(Serde.ValueArray<R2AReply> _replies) {
+            if (_replies == null) throw new ArgumentNullException(nameof(_replies));
+            replies = _replies;
         }
 
         public void Serialize(Serde.ISerializer serializer) {
             serializer.increase_container_depth();
+            TraitHelpers.serialize_vector_R2AReply(replies, serializer);
             serializer.decrease_container_depth();
         }
 
@@ -33,7 +38,7 @@ namespace _boldui_protocol {
         public static R2AUpdate Deserialize(Serde.IDeserializer deserializer) {
             deserializer.increase_container_depth();
             R2AUpdate obj = new R2AUpdate(
-            	);
+            	TraitHelpers.deserialize_vector_R2AReply(deserializer));
             deserializer.decrease_container_depth();
             return obj;
         }
@@ -60,12 +65,14 @@ namespace _boldui_protocol {
         public bool Equals(R2AUpdate other) {
             if (other == null) return false;
             if (ReferenceEquals(this, other)) return true;
+            if (!replies.Equals(other.replies)) return false;
             return true;
         }
 
         public override int GetHashCode() {
             unchecked {
                 int value = 7;
+                value = 31 * value + replies.GetHashCode();
                 return value;
             }
         }

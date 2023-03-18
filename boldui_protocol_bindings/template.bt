@@ -29,6 +29,8 @@ struct Color;
 
 struct Error;
 
+struct EventType;
+
 struct HandlerBlock;
 
 struct HandlerCmd;
@@ -45,11 +47,15 @@ struct R2AMessage;
 
 struct R2AOpen;
 
+struct R2AReply;
+
 struct R2AUpdate;
 
 struct Value;
 
 struct VarId;
+
+struct Watch;
 
 
 struct A2RExtendedHelloResponse {
@@ -67,6 +73,7 @@ struct A2RHelloResponse {
 enum <uint32> A2RMessage_TAGS {
     A2RMessage_Update = 0,
     A2RMessage_Error = 1,
+    A2RMessage_CompressedUpdate = 2,
 };
 
 struct A2RMessage {
@@ -78,6 +85,10 @@ struct A2RMessage {
 
     if (_tag == 1) {
         Error value;
+    }
+
+    if (_tag == 2) {
+        struct { uint64 len; ubyte items[len] <optimize=false>; } value;
     }
 
 };
@@ -128,12 +139,15 @@ struct A2RUpdateScene {
     struct { uint64 len; OpsOperation items[len] <optimize=false>; } ops;
     struct { uint64 len; CmdsCommand items[len] <optimize=false>; } cmds;
     struct { uint64 len; struct { String key; Value value; } items[len] <optimize=false>; } var_decls;
+    struct { uint64 len; Watch items[len] <optimize=false>; } watches;
+    struct { uint64 len; struct { EventType f0; HandlerBlock f1; } items[len] <optimize=false>; } event_handlers;
 };
 
 
 enum <uint32> CmdsCommand_TAGS {
     CmdsCommand_Clear = 0,
     CmdsCommand_DrawRect = 1,
+    CmdsCommand_DrawCenteredText = 2,
 };
 
 struct CmdsCommand {
@@ -146,6 +160,12 @@ struct CmdsCommand {
     if (_tag == 1) {
         OpId paint;
         OpId rect;
+    }
+
+    if (_tag == 2) {
+        OpId text;
+        OpId paint;
+        OpId center;
     }
 
 };
@@ -164,6 +184,19 @@ struct Error {
 };
 
 
+enum <uint32> EventType_TAGS {
+    EventType_Click = 0,
+};
+
+struct EventType {
+    enum EventType_TAGS _tag;
+
+    if (_tag == 0) {
+        OpId rect;
+    }
+
+};
+
 struct HandlerBlock {
     struct { uint64 len; OpsOperation items[len] <optimize=false>; } ops;
     struct { uint64 len; HandlerCmd items[len] <optimize=false>; } cmds;
@@ -172,9 +205,12 @@ struct HandlerBlock {
 
 enum <uint32> HandlerCmd_TAGS {
     HandlerCmd_Nop = 0,
-    HandlerCmd_ReparentScene = 1,
-    HandlerCmd_UpdateVar = 2,
-    HandlerCmd_If = 3,
+    HandlerCmd_AllocateWindowId = 1,
+    HandlerCmd_ReparentScene = 2,
+    HandlerCmd_UpdateVar = 3,
+    HandlerCmd_DebugMessage = 4,
+    HandlerCmd_Reply = 5,
+    HandlerCmd_If = 6,
 };
 
 struct HandlerCmd {
@@ -184,16 +220,28 @@ struct HandlerCmd {
     }
 
     if (_tag == 1) {
+    }
+
+    if (_tag == 2) {
         uint32 scene;
         A2RReparentScene to;
     }
 
-    if (_tag == 2) {
+    if (_tag == 3) {
         VarId var;
         OpId value;
     }
 
-    if (_tag == 3) {
+    if (_tag == 4) {
+        String msg;
+    }
+
+    if (_tag == 5) {
+        String path;
+        struct { uint64 len; OpId items[len] <optimize=false>; } params;
+    }
+
+    if (_tag == 6) {
         OpId condition;
         HandlerCmd then;
         HandlerCmd or_else;
@@ -211,11 +259,18 @@ enum <uint32> OpsOperation_TAGS {
     OpsOperation_Value = 0,
     OpsOperation_Var = 1,
     OpsOperation_GetTime = 2,
-    OpsOperation_Add = 3,
-    OpsOperation_Neg = 4,
-    OpsOperation_MakePoint = 5,
-    OpsOperation_MakeRectFromPoints = 6,
-    OpsOperation_MakeRectFromSides = 7,
+    OpsOperation_GetTimeAndClamp = 3,
+    OpsOperation_Add = 4,
+    OpsOperation_Neg = 5,
+    OpsOperation_Mul = 6,
+    OpsOperation_Div = 7,
+    OpsOperation_Eq = 8,
+    OpsOperation_Min = 9,
+    OpsOperation_Max = 10,
+    OpsOperation_MakePoint = 11,
+    OpsOperation_MakeRectFromPoints = 12,
+    OpsOperation_MakeRectFromSides = 13,
+    OpsOperation_ToString = 14,
 };
 
 struct OpsOperation {
@@ -230,34 +285,66 @@ struct OpsOperation {
     }
 
     if (_tag == 2) {
-        double low_clamp;
-        double high_clamp;
     }
 
     if (_tag == 3) {
-        OpId a;
-        OpId b;
+        OpId low;
+        OpId high;
     }
 
     if (_tag == 4) {
         OpId a;
+        OpId b;
     }
 
     if (_tag == 5) {
+        OpId a;
+    }
+
+    if (_tag == 6) {
+        OpId a;
+        OpId b;
+    }
+
+    if (_tag == 7) {
+        OpId a;
+        OpId b;
+    }
+
+    if (_tag == 8) {
+        OpId a;
+        OpId b;
+    }
+
+    if (_tag == 9) {
+        OpId a;
+        OpId b;
+    }
+
+    if (_tag == 10) {
+        OpId a;
+        OpId b;
+    }
+
+    if (_tag == 11) {
         OpId left;
         OpId top;
     }
 
-    if (_tag == 6) {
+    if (_tag == 12) {
         OpId left_top;
         OpId right_bottom;
     }
 
-    if (_tag == 7) {
+    if (_tag == 13) {
         OpId left;
         OpId top;
         OpId right;
         OpId bottom;
+    }
+
+    if (_tag == 14) {
+        OpId a;
     }
 
 };
@@ -302,7 +389,14 @@ struct R2AOpen {
 };
 
 
+struct R2AReply {
+    String path;
+    struct { uint64 len; Value items[len] <optimize=false>; } params;
+};
+
+
 struct R2AUpdate {
+    struct { uint64 len; R2AReply items[len] <optimize=false>; } replies;
 };
 
 
@@ -349,8 +443,14 @@ struct Value {
 };
 
 struct VarId {
-    String key;
     uint32 scene;
+    String key;
+};
+
+
+struct Watch {
+    OpId condition;
+    HandlerBlock handler;
 };
 
 

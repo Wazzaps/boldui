@@ -1,4 +1,5 @@
 # pyre-strict
+from typing import BinaryIO
 from dataclasses import dataclass
 import typing
 import serde_types as st
@@ -19,6 +20,10 @@ class A2RExtendedHelloResponse:
             raise st.DeserializationError("Some input bytes were not read")
         return v
 
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "A2RExtendedHelloResponse":
+        return bincode.deserialize_stream(input, A2RExtendedHelloResponse)
+
 
 @dataclass(frozen=True)
 class A2RHelloResponse:
@@ -37,6 +42,10 @@ class A2RHelloResponse:
             raise st.DeserializationError("Some input bytes were not read")
         return v
 
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "A2RHelloResponse":
+        return bincode.deserialize_stream(input, A2RHelloResponse)
+
 
 class A2RMessage:
     VARIANTS = []  # type: typing.Sequence[typing.Type[A2RMessage]]
@@ -51,6 +60,10 @@ class A2RMessage:
             raise st.DeserializationError("Some input bytes were not read")
         return v
 
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "A2RMessage":
+        return bincode.deserialize_stream(input, A2RMessage)
+
 
 @dataclass(frozen=True)
 class A2RMessage__Update(A2RMessage):
@@ -64,9 +77,16 @@ class A2RMessage__Error(A2RMessage):
     value: "Error"
 
 
+@dataclass(frozen=True)
+class A2RMessage__CompressedUpdate(A2RMessage):
+    INDEX = 2  # type: int
+    value: typing.Sequence[st.uint8]
+
+
 A2RMessage.VARIANTS = [
     A2RMessage__Update,
     A2RMessage__Error,
+    A2RMessage__CompressedUpdate,
 ]
 
 
@@ -82,6 +102,10 @@ class A2RReparentScene:
         if buffer:
             raise st.DeserializationError("Some input bytes were not read")
         return v
+
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "A2RReparentScene":
+        return bincode.deserialize_stream(input, A2RReparentScene)
 
 
 @dataclass(frozen=True)
@@ -138,6 +162,10 @@ class A2RUpdate:
             raise st.DeserializationError("Some input bytes were not read")
         return v
 
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "A2RUpdate":
+        return bincode.deserialize_stream(input, A2RUpdate)
+
 
 @dataclass(frozen=True)
 class A2RUpdateScene:
@@ -150,6 +178,8 @@ class A2RUpdateScene:
     ops: typing.Sequence["OpsOperation"]
     cmds: typing.Sequence["CmdsCommand"]
     var_decls: typing.Dict[str, "Value"]
+    watches: typing.Sequence["Watch"]
+    event_handlers: typing.Sequence[typing.Tuple["EventType", "HandlerBlock"]]
 
     def bincode_serialize(self) -> bytes:
         return bincode.serialize(self, A2RUpdateScene)
@@ -160,6 +190,10 @@ class A2RUpdateScene:
         if buffer:
             raise st.DeserializationError("Some input bytes were not read")
         return v
+
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "A2RUpdateScene":
+        return bincode.deserialize_stream(input, A2RUpdateScene)
 
 
 class CmdsCommand:
@@ -175,6 +209,10 @@ class CmdsCommand:
             raise st.DeserializationError("Some input bytes were not read")
         return v
 
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "CmdsCommand":
+        return bincode.deserialize_stream(input, CmdsCommand)
+
 
 @dataclass(frozen=True)
 class CmdsCommand__Clear(CmdsCommand):
@@ -189,9 +227,18 @@ class CmdsCommand__DrawRect(CmdsCommand):
     rect: "OpId"
 
 
+@dataclass(frozen=True)
+class CmdsCommand__DrawCenteredText(CmdsCommand):
+    INDEX = 2  # type: int
+    text: "OpId"
+    paint: "OpId"
+    center: "OpId"
+
+
 CmdsCommand.VARIANTS = [
     CmdsCommand__Clear,
     CmdsCommand__DrawRect,
+    CmdsCommand__DrawCenteredText,
 ]
 
 
@@ -212,6 +259,10 @@ class Color:
             raise st.DeserializationError("Some input bytes were not read")
         return v
 
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "Color":
+        return bincode.deserialize_stream(input, Color)
+
 
 @dataclass(frozen=True)
 class Error:
@@ -227,6 +278,39 @@ class Error:
         if buffer:
             raise st.DeserializationError("Some input bytes were not read")
         return v
+
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "Error":
+        return bincode.deserialize_stream(input, Error)
+
+
+class EventType:
+    VARIANTS = []  # type: typing.Sequence[typing.Type[EventType]]
+
+    def bincode_serialize(self) -> bytes:
+        return bincode.serialize(self, EventType)
+
+    @staticmethod
+    def bincode_deserialize(input: bytes) -> "EventType":
+        v, buffer = bincode.deserialize(input, EventType)
+        if buffer:
+            raise st.DeserializationError("Some input bytes were not read")
+        return v
+
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "EventType":
+        return bincode.deserialize_stream(input, EventType)
+
+
+@dataclass(frozen=True)
+class EventType__Click(EventType):
+    INDEX = 0  # type: int
+    rect: "OpId"
+
+
+EventType.VARIANTS = [
+    EventType__Click,
+]
 
 
 @dataclass(frozen=True)
@@ -244,6 +328,10 @@ class HandlerBlock:
             raise st.DeserializationError("Some input bytes were not read")
         return v
 
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "HandlerBlock":
+        return bincode.deserialize_stream(input, HandlerBlock)
+
 
 class HandlerCmd:
     VARIANTS = []  # type: typing.Sequence[typing.Type[HandlerCmd]]
@@ -258,6 +346,10 @@ class HandlerCmd:
             raise st.DeserializationError("Some input bytes were not read")
         return v
 
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "HandlerCmd":
+        return bincode.deserialize_stream(input, HandlerCmd)
+
 
 @dataclass(frozen=True)
 class HandlerCmd__Nop(HandlerCmd):
@@ -266,22 +358,41 @@ class HandlerCmd__Nop(HandlerCmd):
 
 
 @dataclass(frozen=True)
-class HandlerCmd__ReparentScene(HandlerCmd):
+class HandlerCmd__AllocateWindowId(HandlerCmd):
     INDEX = 1  # type: int
+    pass
+
+
+@dataclass(frozen=True)
+class HandlerCmd__ReparentScene(HandlerCmd):
+    INDEX = 2  # type: int
     scene: st.uint32
     to: "A2RReparentScene"
 
 
 @dataclass(frozen=True)
 class HandlerCmd__UpdateVar(HandlerCmd):
-    INDEX = 2  # type: int
+    INDEX = 3  # type: int
     var: "VarId"
     value: "OpId"
 
 
 @dataclass(frozen=True)
+class HandlerCmd__DebugMessage(HandlerCmd):
+    INDEX = 4  # type: int
+    msg: str
+
+
+@dataclass(frozen=True)
+class HandlerCmd__Reply(HandlerCmd):
+    INDEX = 5  # type: int
+    path: str
+    params: typing.Sequence["OpId"]
+
+
+@dataclass(frozen=True)
 class HandlerCmd__If(HandlerCmd):
-    INDEX = 3  # type: int
+    INDEX = 6  # type: int
     condition: "OpId"
     then: "HandlerCmd"
     or_else: "HandlerCmd"
@@ -289,8 +400,11 @@ class HandlerCmd__If(HandlerCmd):
 
 HandlerCmd.VARIANTS = [
     HandlerCmd__Nop,
+    HandlerCmd__AllocateWindowId,
     HandlerCmd__ReparentScene,
     HandlerCmd__UpdateVar,
+    HandlerCmd__DebugMessage,
+    HandlerCmd__Reply,
     HandlerCmd__If,
 ]
 
@@ -310,6 +424,10 @@ class OpId:
             raise st.DeserializationError("Some input bytes were not read")
         return v
 
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "OpId":
+        return bincode.deserialize_stream(input, OpId)
+
 
 class OpsOperation:
     VARIANTS = []  # type: typing.Sequence[typing.Type[OpsOperation]]
@@ -323,6 +441,10 @@ class OpsOperation:
         if buffer:
             raise st.DeserializationError("Some input bytes were not read")
         return v
+
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "OpsOperation":
+        return bincode.deserialize_stream(input, OpsOperation)
 
 
 @dataclass(frozen=True)
@@ -340,55 +462,109 @@ class OpsOperation__Var(OpsOperation):
 @dataclass(frozen=True)
 class OpsOperation__GetTime(OpsOperation):
     INDEX = 2  # type: int
-    low_clamp: st.float64
-    high_clamp: st.float64
+    pass
+
+
+@dataclass(frozen=True)
+class OpsOperation__GetTimeAndClamp(OpsOperation):
+    INDEX = 3  # type: int
+    low: "OpId"
+    high: "OpId"
 
 
 @dataclass(frozen=True)
 class OpsOperation__Add(OpsOperation):
-    INDEX = 3  # type: int
+    INDEX = 4  # type: int
     a: "OpId"
     b: "OpId"
 
 
 @dataclass(frozen=True)
 class OpsOperation__Neg(OpsOperation):
-    INDEX = 4  # type: int
+    INDEX = 5  # type: int
     a: "OpId"
 
 
 @dataclass(frozen=True)
+class OpsOperation__Mul(OpsOperation):
+    INDEX = 6  # type: int
+    a: "OpId"
+    b: "OpId"
+
+
+@dataclass(frozen=True)
+class OpsOperation__Div(OpsOperation):
+    INDEX = 7  # type: int
+    a: "OpId"
+    b: "OpId"
+
+
+@dataclass(frozen=True)
+class OpsOperation__Eq(OpsOperation):
+    INDEX = 8  # type: int
+    a: "OpId"
+    b: "OpId"
+
+
+@dataclass(frozen=True)
+class OpsOperation__Min(OpsOperation):
+    INDEX = 9  # type: int
+    a: "OpId"
+    b: "OpId"
+
+
+@dataclass(frozen=True)
+class OpsOperation__Max(OpsOperation):
+    INDEX = 10  # type: int
+    a: "OpId"
+    b: "OpId"
+
+
+@dataclass(frozen=True)
 class OpsOperation__MakePoint(OpsOperation):
-    INDEX = 5  # type: int
+    INDEX = 11  # type: int
     left: "OpId"
     top: "OpId"
 
 
 @dataclass(frozen=True)
 class OpsOperation__MakeRectFromPoints(OpsOperation):
-    INDEX = 6  # type: int
+    INDEX = 12  # type: int
     left_top: "OpId"
     right_bottom: "OpId"
 
 
 @dataclass(frozen=True)
 class OpsOperation__MakeRectFromSides(OpsOperation):
-    INDEX = 7  # type: int
+    INDEX = 13  # type: int
     left: "OpId"
     top: "OpId"
     right: "OpId"
     bottom: "OpId"
 
 
+@dataclass(frozen=True)
+class OpsOperation__ToString(OpsOperation):
+    INDEX = 14  # type: int
+    a: "OpId"
+
+
 OpsOperation.VARIANTS = [
     OpsOperation__Value,
     OpsOperation__Var,
     OpsOperation__GetTime,
+    OpsOperation__GetTimeAndClamp,
     OpsOperation__Add,
     OpsOperation__Neg,
+    OpsOperation__Mul,
+    OpsOperation__Div,
+    OpsOperation__Eq,
+    OpsOperation__Min,
+    OpsOperation__Max,
     OpsOperation__MakePoint,
     OpsOperation__MakeRectFromPoints,
     OpsOperation__MakeRectFromSides,
+    OpsOperation__ToString,
 ]
 
 
@@ -405,6 +581,10 @@ class R2AExtendedHello:
         if buffer:
             raise st.DeserializationError("Some input bytes were not read")
         return v
+
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "R2AExtendedHello":
+        return bincode.deserialize_stream(input, R2AExtendedHello)
 
 
 @dataclass(frozen=True)
@@ -424,6 +604,10 @@ class R2AHello:
             raise st.DeserializationError("Some input bytes were not read")
         return v
 
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "R2AHello":
+        return bincode.deserialize_stream(input, R2AHello)
+
 
 class R2AMessage:
     VARIANTS = []  # type: typing.Sequence[typing.Type[R2AMessage]]
@@ -437,6 +621,10 @@ class R2AMessage:
         if buffer:
             raise st.DeserializationError("Some input bytes were not read")
         return v
+
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "R2AMessage":
+        return bincode.deserialize_stream(input, R2AMessage)
 
 
 @dataclass(frozen=True)
@@ -478,10 +666,34 @@ class R2AOpen:
             raise st.DeserializationError("Some input bytes were not read")
         return v
 
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "R2AOpen":
+        return bincode.deserialize_stream(input, R2AOpen)
+
+
+@dataclass(frozen=True)
+class R2AReply:
+    path: str
+    params: typing.Sequence["Value"]
+
+    def bincode_serialize(self) -> bytes:
+        return bincode.serialize(self, R2AReply)
+
+    @staticmethod
+    def bincode_deserialize(input: bytes) -> "R2AReply":
+        v, buffer = bincode.deserialize(input, R2AReply)
+        if buffer:
+            raise st.DeserializationError("Some input bytes were not read")
+        return v
+
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "R2AReply":
+        return bincode.deserialize_stream(input, R2AReply)
+
 
 @dataclass(frozen=True)
 class R2AUpdate:
-    pass
+    replies: typing.Sequence["R2AReply"]
 
     def bincode_serialize(self) -> bytes:
         return bincode.serialize(self, R2AUpdate)
@@ -492,6 +704,10 @@ class R2AUpdate:
         if buffer:
             raise st.DeserializationError("Some input bytes were not read")
         return v
+
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "R2AUpdate":
+        return bincode.deserialize_stream(input, R2AUpdate)
 
 
 class Value:
@@ -506,6 +722,10 @@ class Value:
         if buffer:
             raise st.DeserializationError("Some input bytes were not read")
         return v
+
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "Value":
+        return bincode.deserialize_stream(input, Value)
 
 
 @dataclass(frozen=True)
@@ -560,8 +780,8 @@ Value.VARIANTS = [
 
 @dataclass(frozen=True)
 class VarId:
-    key: str
     scene: st.uint32
+    key: str
 
     def bincode_serialize(self) -> bytes:
         return bincode.serialize(self, VarId)
@@ -572,3 +792,27 @@ class VarId:
         if buffer:
             raise st.DeserializationError("Some input bytes were not read")
         return v
+
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "VarId":
+        return bincode.deserialize_stream(input, VarId)
+
+
+@dataclass(frozen=True)
+class Watch:
+    condition: "OpId"
+    handler: "HandlerBlock"
+
+    def bincode_serialize(self) -> bytes:
+        return bincode.serialize(self, Watch)
+
+    @staticmethod
+    def bincode_deserialize(input: bytes) -> "Watch":
+        v, buffer = bincode.deserialize(input, Watch)
+        if buffer:
+            raise st.DeserializationError("Some input bytes were not read")
+        return v
+
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "Watch":
+        return bincode.deserialize_stream(input, Watch)

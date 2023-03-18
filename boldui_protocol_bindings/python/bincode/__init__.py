@@ -39,8 +39,10 @@ class BincodeSerializer(sb.BinarySerializer):
 
 
 class BincodeDeserializer(sb.BinaryDeserializer):
-    def __init__(self, content):
-        super().__init__(input=io.BytesIO(content), container_depth_budget=None)
+    def __init__(self, content: bytes | typing.BinaryIO):
+        if isinstance(content, bytes):
+            content = io.BytesIO(content)
+        super().__init__(input=content, container_depth_budget=None)
 
     def deserialize_f32(self) -> st.float32:
         (value,) = struct.unpack("<f", self.read(4))
@@ -75,3 +77,8 @@ def deserialize(content: bytes, obj_type) -> typing.Tuple[typing.Any, bytes]:
     deserializer = BincodeDeserializer(content)
     value = deserializer.deserialize_any(obj_type)
     return value, deserializer.get_remaining_buffer()
+
+
+def deserialize_stream(content: typing.BinaryIO, obj_type) -> typing.Any:
+    deserializer = BincodeDeserializer(content)
+    return deserializer.deserialize_any(obj_type)

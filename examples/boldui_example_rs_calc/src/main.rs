@@ -249,14 +249,21 @@ impl AppLogic {
         query_params: HashMap<String, String>,
         stdout: &mut impl SerdeSender,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.window_states.insert(scene_id, WindowState::default());
-        self.sessions.insert(session_id.to_string(), scene_id);
-        let state = self.window_states.get(&scene_id).unwrap();
-        debug!(scene_id, session_id = &session_id, "Opening window",);
+        debug!(
+            scene_id,
+            session_id = &session_id,
+            path = &raw_path,
+            "Opening window",
+        );
         match path {
             // Root
             [""] => {
                 let start = Instant::now();
+
+                self.window_states.insert(scene_id, WindowState::default());
+                self.sessions.insert(session_id.to_string(), scene_id);
+                let state = self.window_states.get(&scene_id).unwrap();
+
                 let mut var_decls = BTreeMap::new();
                 var_decls.insert("result_bar".to_string(), Value::String(state.a.to_string()));
                 var_decls.insert(
