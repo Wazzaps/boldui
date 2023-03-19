@@ -1,11 +1,12 @@
 # BoldUI Spec v0.1 (DRAFT)
 
-The BoldUI architecture is split into two main entities and the transport between them:
+The BoldUI architecture is split into three main entities and the transport between them:
 
 - The Renderer
 - The App
+- The Window Manager/WM (Optional)
 
-They may both be in-process for performance.
+They may all be in-process for performance.
 
 The state framework and widget kit used by the Python implementation is not described in this document.
 
@@ -30,22 +31,24 @@ boldui --devtools -- <APP-CMD>
 
 - A tree of <u>**Scenes**</u>
     - Each scene consists of:
-        - A per-connection-unique 64-bit ID
+        - A unique non-zero 32-bit Scene ID
         - A <u>**Transform**</u> (2D transformation matrix)
         - A <u>**Paint**</u> (Affects how the scene is rendered, e.g. foreground blur)
         - A <u>**Backdrop Paint**</u> (Affects how parts under the scene are rendered, e.g. background blur)
+        - A <u>**Clip**</u> (Masks the scene)
         - A list of <u>**Renderer Variable Declarations**</u>
         - A list of <u>**Operations**</u>
         - A list of <u>**Commands**</u>
         - A list of <u>**Watches**</u>
         - A list of <u>**Sub-Scenes**</u> (Scenes that are rendered after this scene)
         - A URI for the current scene
+- A list of root scenes, each producing a window if applicable (or just the first one filling the framebuffer)
 
 ## BoldUI App Spec v0.1
 
 See the Protocol spec for information about implementing an app that will connect to a renderer successfully.
 
-### Reconnectable Scene
+### Reconnectable Scenes
 
 The URI of a scene should lead to the same synchronized scene even when connected-to simultaneously from multiple renderers.
 
@@ -108,6 +111,8 @@ A2RMessage__Update(A2RUpdate(
             ops=[],  # ...
             cmds=[],  # ...
             var_decls={},  # ...
+            watches=[],  # ...
+            event_handlers=[],  # ...
         )
     ],
     run_blocks=[
@@ -124,7 +129,29 @@ A2RMessage__Update(A2RUpdate(
 ))
 ```
 
-Then the renderer and the app exchange messages (e.g. `R2AUpdate` for new inputs and `A2RUpdate` for scene and var updates).
+Then the renderer and the app exchange messages (e.g. `R2AUpdate` for new inputs and `A2RUpdate` for scene updates, etc.).
+
+### Handler commands
+
+Imperative commands that affect the state of the scene tree and can send replies to the app.
+
+**Command list:**
+
+- `Nop`: Does nothing
+- `ReparentScene`: Changes the parent of the scene (or makes it a root scene, or disconnects it, or hides it)
+- `UpdateVar`: Changes the value of a variable in a given scene
+- `DebugMessage`: Logs a constant message in the renderer
+- `Reply`: Sends an `R2AUpdate` to the app with a path and a list of `Value`s
+- `If`: Depending on a given condition, executes on of two given lists of handler commands
+  - NOTE: The handler command lists are not handler blocks, they reuse the same operation list as the parent handler block
+
+### Handler blocks
+
+A list of operations and a list of handler commands.
+
+When the block is executed, the operation list is evaluated, and the results are available as scene #0 in the handler commands.
+
+Can be triggered in response to events, watches, or by updates from the app.
 
 ### Operations
 
@@ -142,12 +169,11 @@ Draw primitives, event handler regions, (etc.), that use the results from previo
 
 **Partial list:**
 
-- `clear`: Clears the screen
-- `rect`: Draws a colored rectangle
-- `roundRect`: Draws a colored round-rectangle
-- `text`: Draws text
-- `image`: Draws an image
-- `eventHandler`: Defines an area that evaluates a handler when an input event happens
+- `Clear`: Clears the screen
+- `Rect`: Draws a colored rectangle
+- `RoundRect`: Draws a colored round-rectangle
+- `Text`: Draws text
+- `Image`: Draws an image
 
 TODO: Expand and list all of them
 
@@ -155,13 +181,19 @@ TODO: Expand and list all of them
 
 Scene-attached state that can be referenced inside operations.
 
-Can be one of the following types: `Int64`, `Float64`, `String`.
+Can be one of the following types: `SInt64`, `Double`, `String`, `Color`, `Point`, `Rect`.
 
 Created by a declaration in `A2RUpdateScene.var_decls`, and get deleted if their declaration is removed.
 
-The value given in the declaration is the default value, replaced by `VarUpdate`s in `A2RUpdate.updated_vars` during the lifetime of the scene.
+The value given in the declaration is the default value, replaced by `HandlerCmd::UpdateVar` handler commands during the lifetime of the scene.
 
-Note that `VarUpdate` have no access to results of ops in the parent scene, only to other variables.
+Some special values affect the rendering of root scenes:
+
+- `:width`, `:height`: Created by the renderer on root windows, specifies the current width of the window
+- `:click_x`, `:click_y`, `:click_button`: Created by the renderer on root windows during handling of a click event, specifies the click info
+- `:window_initial_size_x`, `:window_initial_size_y`: Supplied by the app (optional), specifies the initial window size of the window (if windowing supported)
+- `:window_title`: Supplied by the app (optional), specifies the window title (if windowing supported)
+- `:window_id`: Supplied by the app (optional), mirrors the value of the `window_id` query parameter during the `Open` that opened the window(s)
 
 ### Watches
 
@@ -172,4 +204,27 @@ Handlers that execute when a given (variable-dependent) condition becomes true.
 - Fetch more items in a list view when needed.
 - Notify a music player to buffer the next song when the current song is nearing completion.
 
+### Event handlers
+
+Lists of handler commands that trigger when a certain condition is met
+
 TODO: Expand
+
+## BoldUI Window Manager Spec v0.1
+
+This component is responsible for combining multiple apps into a single connection for the renderer.
+
+It implements both the app-side protocol (connected to a renderer) and the renderer-side protocol (connected to the multiple apps).
+
+Window managers should be transparent to both the apps and the renderer, only providing extra features and multiplexing the scenes. Generally apps should work without a window manager.
+
+The main features of a window manager are:
+
+- App multiplexing: Allow multiple apps to connect to one renderer, mapping the scene ids between them
+- Compositing: Move all the root scenes under one (per display?) root scene, to provide a desktop environment for full-screen and remote-desktop use cases 
+- Embedding: Combine scenes from different apps under one root scene (like OLE in Windows)
+  - It should provide an API to map scene ids between apps so this can work 
+- "Server-side" decorations: Adding window frames to root scenes (mainly used with Compositing)
+- Rendezvous: Provide a central source for apps and renderers to reconnect to on failure
+
+TODO: Expand and specify API
