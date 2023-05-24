@@ -24,15 +24,20 @@ tracing-log = "0.1.3"
 tracing-journald = "0.3.0"
 tracing-bunyan-formatter = "0.3.6"
 tracing-subscriber = { version = "0.3", features = ["registry", "env-filter"] }
+roaring = "0.10.1"
 
 # Graphics
 gtk = {package = "gtk4", version = "0.6.2", features = ["v4_6"]}
 adw = {package = "libadwaita", version = "0.3.1", features = ["v1_1"]}
 glib = "0.17.2"
-skia-safe = { version = "0.46.0", features = ["wayland"] }
+#skia-safe = { version = "0.60.0", features = ["wayland", "textlayout", "svg", "x11"] }
+skia-safe = { path = "../../rust-skia/skia-safe", features = ["wayland", "textlayout", "svg", "x11"] }
+#skia-bindings = { version = "0.60.0", features = ["wayland", "textlayout", "svg", "x11"] }
+skia-bindings = { path = "../../rust-skia/skia-bindings", features = ["wayland", "textlayout", "svg", "x11"] }
 gl = "0.14.0"
 epoxy = "0.1.0"
 libloading = "0.7.4"
+command-fds = "0.2.2"
 
 # Devtools related
 #imgui = "0.8.2"

@@ -14,13 +14,14 @@ namespace _boldui_protocol {
         public OpId transform;
         public OpId clip;
         public string uri;
+        public OpId dimensions;
         public Serde.ValueArray<OpsOperation> ops;
         public Serde.ValueArray<CmdsCommand> cmds;
         public Serde.ValueDictionary<string, Value> var_decls;
         public Serde.ValueArray<Watch> watches;
         public Serde.ValueArray<(EventType, HandlerBlock)> event_handlers;
 
-        public A2RUpdateScene(uint _id, OpId _paint, OpId _backdrop, OpId _transform, OpId _clip, string _uri, Serde.ValueArray<OpsOperation> _ops, Serde.ValueArray<CmdsCommand> _cmds, Serde.ValueDictionary<string, Value> _var_decls, Serde.ValueArray<Watch> _watches, Serde.ValueArray<(EventType, HandlerBlock)> _event_handlers) {
+        public A2RUpdateScene(uint _id, OpId _paint, OpId _backdrop, OpId _transform, OpId _clip, string _uri, OpId _dimensions, Serde.ValueArray<OpsOperation> _ops, Serde.ValueArray<CmdsCommand> _cmds, Serde.ValueDictionary<string, Value> _var_decls, Serde.ValueArray<Watch> _watches, Serde.ValueArray<(EventType, HandlerBlock)> _event_handlers) {
             id = _id;
             if (_paint == null) throw new ArgumentNullException(nameof(_paint));
             paint = _paint;
@@ -32,6 +33,8 @@ namespace _boldui_protocol {
             clip = _clip;
             if (_uri == null) throw new ArgumentNullException(nameof(_uri));
             uri = _uri;
+            if (_dimensions == null) throw new ArgumentNullException(nameof(_dimensions));
+            dimensions = _dimensions;
             if (_ops == null) throw new ArgumentNullException(nameof(_ops));
             ops = _ops;
             if (_cmds == null) throw new ArgumentNullException(nameof(_cmds));
@@ -52,6 +55,7 @@ namespace _boldui_protocol {
             transform.Serialize(serializer);
             clip.Serialize(serializer);
             serializer.serialize_str(uri);
+            dimensions.Serialize(serializer);
             TraitHelpers.serialize_vector_OpsOperation(ops, serializer);
             TraitHelpers.serialize_vector_CmdsCommand(cmds, serializer);
             TraitHelpers.serialize_map_str_to_Value(var_decls, serializer);
@@ -83,6 +87,7 @@ namespace _boldui_protocol {
             	OpId.Deserialize(deserializer),
             	OpId.Deserialize(deserializer),
             	deserializer.deserialize_str(),
+            	OpId.Deserialize(deserializer),
             	TraitHelpers.deserialize_vector_OpsOperation(deserializer),
             	TraitHelpers.deserialize_vector_CmdsCommand(deserializer),
             	TraitHelpers.deserialize_map_str_to_Value(deserializer),
@@ -120,6 +125,7 @@ namespace _boldui_protocol {
             if (!transform.Equals(other.transform)) return false;
             if (!clip.Equals(other.clip)) return false;
             if (!uri.Equals(other.uri)) return false;
+            if (!dimensions.Equals(other.dimensions)) return false;
             if (!ops.Equals(other.ops)) return false;
             if (!cmds.Equals(other.cmds)) return false;
             if (!var_decls.Equals(other.var_decls)) return false;
@@ -137,6 +143,7 @@ namespace _boldui_protocol {
                 value = 31 * value + transform.GetHashCode();
                 value = 31 * value + clip.GetHashCode();
                 value = 31 * value + uri.GetHashCode();
+                value = 31 * value + dimensions.GetHashCode();
                 value = 31 * value + ops.GetHashCode();
                 value = 31 * value + cmds.GetHashCode();
                 value = 31 * value + var_decls.GetHashCode();

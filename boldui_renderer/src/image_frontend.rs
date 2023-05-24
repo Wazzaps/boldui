@@ -91,9 +91,12 @@ impl Frontend for ImageFrontend {
                 ToStateMachine::Update(A2RUpdate {
                     updated_scenes,
                     run_blocks,
+                    external_app_requests,
                 }) => {
                     self.state_machine
                         .update_scenes_and_run_blocks(updated_scenes, run_blocks);
+                    self.state_machine
+                        .handle_ext_app_requests(external_app_requests);
                     trace!("A2R update took {:?} to handle", start.elapsed());
                     self.state_machine
                         .event_proxy
@@ -168,6 +171,13 @@ impl Frontend for ImageFrontend {
                     self.state_machine
                         .register_window_for_scene(scene_id, self.window_counter);
                     self.window_counter += 1;
+                }
+                ToStateMachine::MountExternalWidget {
+                    scene_id,
+                    texture_metadata,
+                    texture_fd,
+                } => {
+                    info!(scene_id, "Mounting external widget");
                 }
             }
         }

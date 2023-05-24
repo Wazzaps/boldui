@@ -5,8 +5,12 @@ use std::collections::BTreeMap;
 
 pub const R2A_MAGIC: &[u8] = b"BOLDUI\x00";
 pub const A2R_MAGIC: &[u8] = b"BOLDUI\x01";
+pub const R2EA_MAGIC: &[u8] = b"BOLDUI\x02";
+pub const EA2R_MAGIC: &[u8] = b"BOLDUI\x03";
 pub const LATEST_MAJOR_VER: u16 = 0;
 pub const LATEST_MINOR_VER: u16 = 1;
+pub const LATEST_EA_MAJOR_VER: u16 = 0;
+pub const LATEST_EA_MINOR_VER: u16 = 1;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct R2AHello {
@@ -17,7 +21,18 @@ pub struct R2AHello {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct R2EAHello {
+    pub min_protocol_major_version: u16,
+    pub min_protocol_minor_version: u16,
+    pub max_protocol_major_version: u16,
+    pub extra_len: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct R2AExtendedHello {}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct R2EAExtendedHello {}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum R2AMessage {
@@ -27,8 +42,20 @@ pub enum R2AMessage {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum R2EAMessage {
+    Update(R2EAUpdate),
+    Open(R2EAOpen),
+    Error(Error),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct R2AUpdate {
     pub replies: Vec<R2AReply>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct R2EAUpdate {
+    pub changed_vars: Vec<(String, Value)>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -39,6 +66,11 @@ pub struct R2AReply {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct R2AOpen {
+    pub path: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct R2EAOpen {
     pub path: String,
 }
 
@@ -89,6 +121,26 @@ impl Color {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct Paint {
+    pub color: Color,
+    // TODO: image effects, etc
+}
+
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq)]
+pub struct Point {
+    pub left: f64,
+    pub top: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq)]
+pub struct Rect {
+    pub left: f64,
+    pub top: f64,
+    pub right: f64,
+    pub bottom: f64,
+}
+
 // Make sure to update typecheck in `HandlerCmd::UpdateVar` handler in `eval_handler_cmd` when adding types
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum Value {
@@ -120,10 +172,29 @@ pub struct A2RHelloResponse {
 pub struct A2RExtendedHelloResponse {}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct EA2RHelloResponse {
+    pub protocol_major_version: u16,
+    pub protocol_minor_version: u16,
+    pub extra_len: u32,
+    pub error: Option<Error>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct EA2RExtendedHelloResponse {}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum A2RMessage {
     Update(A2RUpdate),
     Error(Error),
     CompressedUpdate(Vec<u8>),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum EA2RMessage {
+    CreatedExternalWidget { texture_info: Vec<u8> },
+    SpontaneousUpdate,
+    UpdateHandled,
+    Error(Error),
 }
 
 pub type SceneId = u32;
@@ -230,6 +301,7 @@ pub struct A2RUpdateScene {
     pub transform: OpId,
     pub clip: OpId,
     pub uri: String,
+    pub dimensions: OpId,
 
     pub ops: Vec<OpsOperation>,
     pub cmds: Vec<CmdsCommand>,
@@ -289,9 +361,16 @@ pub struct HandlerBlock {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ExternalAppRequest {
+    pub scene_id: SceneId,
+    pub uri: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct A2RUpdate {
     pub updated_scenes: Vec<A2RUpdateScene>,
     pub run_blocks: Vec<HandlerBlock>,
+    pub external_app_requests: Vec<ExternalAppRequest>,
 }
 
 // #[cfg(test)]

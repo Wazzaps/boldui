@@ -1,6 +1,6 @@
 use crate::renderer::Renderer;
 use crate::simulator::Simulator;
-use crate::state_machine::WindowId;
+use crate::state_machine::{SceneReplacement, WindowId};
 use crate::{Frontend, StateMachine, ToStateMachine};
 use adw::prelude::{ApplicationExt, ApplicationExtManual};
 use adw::{Application, HeaderBar};
@@ -17,7 +17,7 @@ use std::ptr;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
-use tracing::{debug, error, trace};
+use tracing::{debug, error, info, trace};
 
 pub(crate) struct WindowFrontend {
     pub event_recv: Option<glib::Receiver<ToStateMachine>>,
@@ -231,14 +231,14 @@ impl Frontend for WindowFrontend {
                 ToStateMachine::Update(A2RUpdate {
                     updated_scenes,
                     run_blocks,
+                    external_app_requests,
                 }) => {
                     let start = Instant::now();
-                    (*state_machine)
-                        .borrow_mut()
-                        .update_scenes_and_run_blocks(updated_scenes, run_blocks);
+                    let mut state_machine = (*state_machine).borrow_mut();
+                    state_machine.update_scenes_and_run_blocks(updated_scenes, run_blocks);
+                    state_machine.handle_ext_app_requests(external_app_requests);
                     trace!("A2R update took {:?} to handle", start.elapsed());
-                    (*state_machine)
-                        .borrow_mut()
+                    state_machine
                         .event_proxy
                         .as_ref()
                         .unwrap()
@@ -332,6 +332,19 @@ impl Frontend for WindowFrontend {
                         .set_default_size(scene_size.0, scene_size.1 + HEADERBAR_SIZE);
                     window_state.win.show();
                     windows.insert(window_id, window_state);
+                }
+                ToStateMachine::MountExternalWidget {
+                    scene_id,
+                    texture_metadata,
+                    texture_fd,
+                } => {
+                    info!(scene_id, "Mounting external widget");
+                    let mut state_machine = (*state_machine).borrow_mut();
+                    let scene_state = &mut state_machine.scenes.get_mut(&scene_id).unwrap().1;
+                    scene_state.scene_replacement = SceneReplacement::PendingExternalWidget {
+                        texture_metadata,
+                        texture_fd,
+                    };
                 }
             }
             Continue(true)

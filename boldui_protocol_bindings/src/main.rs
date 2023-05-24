@@ -27,6 +27,16 @@ pub fn main() {
     tracer.trace_simple_type::<R2AOpen>().unwrap();
     tracer.trace_simple_type::<R2AUpdate>().unwrap();
     tracer.trace_simple_type::<Value>().unwrap();
+    tracer.trace_simple_type::<R2EAHello>().unwrap();
+    tracer.trace_simple_type::<R2EAExtendedHello>().unwrap();
+    tracer.trace_simple_type::<R2EAMessage>().unwrap();
+    tracer.trace_simple_type::<R2EAOpen>().unwrap();
+    tracer.trace_simple_type::<R2EAUpdate>().unwrap();
+    tracer.trace_simple_type::<EA2RHelloResponse>().unwrap();
+    tracer
+        .trace_simple_type::<EA2RExtendedHelloResponse>()
+        .unwrap();
+    tracer.trace_simple_type::<EA2RMessage>().unwrap();
     let registry = tracer.registry().unwrap();
 
     // Make sure type sizes are in check (do not depend on this, this is for internal use (prevent memory balooning))

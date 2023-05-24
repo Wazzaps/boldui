@@ -2,6 +2,7 @@ use crate::util::FloatExt;
 use crate::StateMachine;
 use boldui_protocol::{OpId, OpsOperation, SceneId, Value, VarId};
 use std::collections::{BTreeSet, HashMap};
+use tracing::info;
 
 /// Tracks requested wakeup times and var dependencies
 pub struct DepTracker {
@@ -98,6 +99,20 @@ impl OpResults {
         }
     }
 
+    pub fn get_string<'a>(&'a self, id: OpId, ctx: (SceneId, &'a [Value])) -> String {
+        match self.get(id, ctx) {
+            Value::String(s) => s.to_string(),
+            val => panic!("Tried to get {:?} as string", val),
+        }
+    }
+
+    // pub fn get_external_app_uri<'a>(&'a self, id: OpId, ctx: (SceneId, &'a [Value])) -> String {
+    //     match self.get(id, ctx) {
+    //         Value::ExternalApp { uri } => uri.to_string(),
+    //         val => panic!("Tried to get {:?} as external app", val),
+    //     }
+    // }
+
     pub fn as_string<'a>(&'a self, id: OpId, ctx: (SceneId, &'a [Value])) -> String {
         match self.get(id, ctx) {
             Value::Sint64(i) => i.to_string(),
@@ -110,7 +125,7 @@ impl OpResults {
                 top,
                 right,
                 bottom,
-            } => format!("(L={}, T={}, R={}, B={})", left, top, right, bottom),
+            } => format!("Rect(L={}, T={}, R={}, B={})", left, top, right, bottom),
         }
     }
 

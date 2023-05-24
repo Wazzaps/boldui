@@ -27,9 +27,17 @@ struct CmdsCommand;
 
 struct Color;
 
+struct EA2RExtendedHelloResponse;
+
+struct EA2RHelloResponse;
+
+struct EA2RMessage;
+
 struct Error;
 
 struct EventType;
+
+struct ExternalAppRequest;
 
 struct HandlerBlock;
 
@@ -50,6 +58,16 @@ struct R2AOpen;
 struct R2AReply;
 
 struct R2AUpdate;
+
+struct R2EAExtendedHello;
+
+struct R2EAHello;
+
+struct R2EAMessage;
+
+struct R2EAOpen;
+
+struct R2EAUpdate;
 
 struct Value;
 
@@ -126,6 +144,7 @@ struct A2RReparentScene {
 struct A2RUpdate {
     struct { uint64 len; A2RUpdateScene items[len] <optimize=false>; } updated_scenes;
     struct { uint64 len; HandlerBlock items[len] <optimize=false>; } run_blocks;
+    struct { uint64 len; ExternalAppRequest items[len] <optimize=false>; } external_app_requests;
 };
 
 
@@ -136,6 +155,7 @@ struct A2RUpdateScene {
     OpId transform;
     OpId clip;
     String uri;
+    OpId dimensions;
     struct { uint64 len; OpsOperation items[len] <optimize=false>; } ops;
     struct { uint64 len; CmdsCommand items[len] <optimize=false>; } cmds;
     struct { uint64 len; struct { String key; Value value; } items[len] <optimize=false>; } var_decls;
@@ -178,6 +198,44 @@ struct Color {
 };
 
 
+struct EA2RExtendedHelloResponse {
+};
+
+
+struct EA2RHelloResponse {
+    uint16 protocol_major_version;
+    uint16 protocol_minor_version;
+    uint32 extra_len;
+    struct { ubyte is_some; if (is_some) { Error item; } } error;
+};
+
+
+enum <uint32> EA2RMessage_TAGS {
+    EA2RMessage_CreatedExternalWidget = 0,
+    EA2RMessage_SpontaneousUpdate = 1,
+    EA2RMessage_UpdateHandled = 2,
+    EA2RMessage_Error = 3,
+};
+
+struct EA2RMessage {
+    enum EA2RMessage_TAGS _tag;
+
+    if (_tag == 0) {
+        struct { uint64 len; ubyte items[len] <optimize=false>; } texture_info;
+    }
+
+    if (_tag == 1) {
+    }
+
+    if (_tag == 2) {
+    }
+
+    if (_tag == 3) {
+        Error value;
+    }
+
+};
+
 struct Error {
     uint64 code;
     String text;
@@ -196,6 +254,12 @@ struct EventType {
     }
 
 };
+
+struct ExternalAppRequest {
+    uint32 scene_id;
+    String uri;
+};
+
 
 struct HandlerBlock {
     struct { uint64 len; OpsOperation items[len] <optimize=false>; } ops;
@@ -397,6 +461,51 @@ struct R2AReply {
 
 struct R2AUpdate {
     struct { uint64 len; R2AReply items[len] <optimize=false>; } replies;
+};
+
+
+struct R2EAExtendedHello {
+};
+
+
+struct R2EAHello {
+    uint16 min_protocol_major_version;
+    uint16 min_protocol_minor_version;
+    uint16 max_protocol_major_version;
+    uint32 extra_len;
+};
+
+
+enum <uint32> R2EAMessage_TAGS {
+    R2EAMessage_Update = 0,
+    R2EAMessage_Open = 1,
+    R2EAMessage_Error = 2,
+};
+
+struct R2EAMessage {
+    enum R2EAMessage_TAGS _tag;
+
+    if (_tag == 0) {
+        R2EAUpdate value;
+    }
+
+    if (_tag == 1) {
+        R2EAOpen value;
+    }
+
+    if (_tag == 2) {
+        Error value;
+    }
+
+};
+
+struct R2EAOpen {
+    String path;
+};
+
+
+struct R2EAUpdate {
+    struct { uint64 len; struct { String f0; Value f1; } items[len] <optimize=false>; } changed_vars;
 };
 
 

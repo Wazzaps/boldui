@@ -151,6 +151,7 @@ A2RReparentScene.VARIANTS = [
 class A2RUpdate:
     updated_scenes: typing.Sequence["A2RUpdateScene"]
     run_blocks: typing.Sequence["HandlerBlock"]
+    external_app_requests: typing.Sequence["ExternalAppRequest"]
 
     def bincode_serialize(self) -> bytes:
         return bincode.serialize(self, A2RUpdate)
@@ -175,6 +176,7 @@ class A2RUpdateScene:
     transform: "OpId"
     clip: "OpId"
     uri: str
+    dimensions: "OpId"
     ops: typing.Sequence["OpsOperation"]
     cmds: typing.Sequence["CmdsCommand"]
     var_decls: typing.Dict[str, "Value"]
@@ -265,6 +267,97 @@ class Color:
 
 
 @dataclass(frozen=True)
+class EA2RExtendedHelloResponse:
+    pass
+
+    def bincode_serialize(self) -> bytes:
+        return bincode.serialize(self, EA2RExtendedHelloResponse)
+
+    @staticmethod
+    def bincode_deserialize(input: bytes) -> "EA2RExtendedHelloResponse":
+        v, buffer = bincode.deserialize(input, EA2RExtendedHelloResponse)
+        if buffer:
+            raise st.DeserializationError("Some input bytes were not read")
+        return v
+
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "EA2RExtendedHelloResponse":
+        return bincode.deserialize_stream(input, EA2RExtendedHelloResponse)
+
+
+@dataclass(frozen=True)
+class EA2RHelloResponse:
+    protocol_major_version: st.uint16
+    protocol_minor_version: st.uint16
+    extra_len: st.uint32
+    error: typing.Optional["Error"]
+
+    def bincode_serialize(self) -> bytes:
+        return bincode.serialize(self, EA2RHelloResponse)
+
+    @staticmethod
+    def bincode_deserialize(input: bytes) -> "EA2RHelloResponse":
+        v, buffer = bincode.deserialize(input, EA2RHelloResponse)
+        if buffer:
+            raise st.DeserializationError("Some input bytes were not read")
+        return v
+
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "EA2RHelloResponse":
+        return bincode.deserialize_stream(input, EA2RHelloResponse)
+
+
+class EA2RMessage:
+    VARIANTS = []  # type: typing.Sequence[typing.Type[EA2RMessage]]
+
+    def bincode_serialize(self) -> bytes:
+        return bincode.serialize(self, EA2RMessage)
+
+    @staticmethod
+    def bincode_deserialize(input: bytes) -> "EA2RMessage":
+        v, buffer = bincode.deserialize(input, EA2RMessage)
+        if buffer:
+            raise st.DeserializationError("Some input bytes were not read")
+        return v
+
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "EA2RMessage":
+        return bincode.deserialize_stream(input, EA2RMessage)
+
+
+@dataclass(frozen=True)
+class EA2RMessage__CreatedExternalWidget(EA2RMessage):
+    INDEX = 0  # type: int
+    texture_info: typing.Sequence[st.uint8]
+
+
+@dataclass(frozen=True)
+class EA2RMessage__SpontaneousUpdate(EA2RMessage):
+    INDEX = 1  # type: int
+    pass
+
+
+@dataclass(frozen=True)
+class EA2RMessage__UpdateHandled(EA2RMessage):
+    INDEX = 2  # type: int
+    pass
+
+
+@dataclass(frozen=True)
+class EA2RMessage__Error(EA2RMessage):
+    INDEX = 3  # type: int
+    value: "Error"
+
+
+EA2RMessage.VARIANTS = [
+    EA2RMessage__CreatedExternalWidget,
+    EA2RMessage__SpontaneousUpdate,
+    EA2RMessage__UpdateHandled,
+    EA2RMessage__Error,
+]
+
+
+@dataclass(frozen=True)
 class Error:
     code: st.uint64
     text: str
@@ -311,6 +404,26 @@ class EventType__Click(EventType):
 EventType.VARIANTS = [
     EventType__Click,
 ]
+
+
+@dataclass(frozen=True)
+class ExternalAppRequest:
+    scene_id: st.uint32
+    uri: str
+
+    def bincode_serialize(self) -> bytes:
+        return bincode.serialize(self, ExternalAppRequest)
+
+    @staticmethod
+    def bincode_deserialize(input: bytes) -> "ExternalAppRequest":
+        v, buffer = bincode.deserialize(input, ExternalAppRequest)
+        if buffer:
+            raise st.DeserializationError("Some input bytes were not read")
+        return v
+
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "ExternalAppRequest":
+        return bincode.deserialize_stream(input, ExternalAppRequest)
 
 
 @dataclass(frozen=True)
@@ -708,6 +821,128 @@ class R2AUpdate:
     @staticmethod
     def bincode_deserialize_stream(input: BinaryIO) -> "R2AUpdate":
         return bincode.deserialize_stream(input, R2AUpdate)
+
+
+@dataclass(frozen=True)
+class R2EAExtendedHello:
+    pass
+
+    def bincode_serialize(self) -> bytes:
+        return bincode.serialize(self, R2EAExtendedHello)
+
+    @staticmethod
+    def bincode_deserialize(input: bytes) -> "R2EAExtendedHello":
+        v, buffer = bincode.deserialize(input, R2EAExtendedHello)
+        if buffer:
+            raise st.DeserializationError("Some input bytes were not read")
+        return v
+
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "R2EAExtendedHello":
+        return bincode.deserialize_stream(input, R2EAExtendedHello)
+
+
+@dataclass(frozen=True)
+class R2EAHello:
+    min_protocol_major_version: st.uint16
+    min_protocol_minor_version: st.uint16
+    max_protocol_major_version: st.uint16
+    extra_len: st.uint32
+
+    def bincode_serialize(self) -> bytes:
+        return bincode.serialize(self, R2EAHello)
+
+    @staticmethod
+    def bincode_deserialize(input: bytes) -> "R2EAHello":
+        v, buffer = bincode.deserialize(input, R2EAHello)
+        if buffer:
+            raise st.DeserializationError("Some input bytes were not read")
+        return v
+
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "R2EAHello":
+        return bincode.deserialize_stream(input, R2EAHello)
+
+
+class R2EAMessage:
+    VARIANTS = []  # type: typing.Sequence[typing.Type[R2EAMessage]]
+
+    def bincode_serialize(self) -> bytes:
+        return bincode.serialize(self, R2EAMessage)
+
+    @staticmethod
+    def bincode_deserialize(input: bytes) -> "R2EAMessage":
+        v, buffer = bincode.deserialize(input, R2EAMessage)
+        if buffer:
+            raise st.DeserializationError("Some input bytes were not read")
+        return v
+
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "R2EAMessage":
+        return bincode.deserialize_stream(input, R2EAMessage)
+
+
+@dataclass(frozen=True)
+class R2EAMessage__Update(R2EAMessage):
+    INDEX = 0  # type: int
+    value: "R2EAUpdate"
+
+
+@dataclass(frozen=True)
+class R2EAMessage__Open(R2EAMessage):
+    INDEX = 1  # type: int
+    value: "R2EAOpen"
+
+
+@dataclass(frozen=True)
+class R2EAMessage__Error(R2EAMessage):
+    INDEX = 2  # type: int
+    value: "Error"
+
+
+R2EAMessage.VARIANTS = [
+    R2EAMessage__Update,
+    R2EAMessage__Open,
+    R2EAMessage__Error,
+]
+
+
+@dataclass(frozen=True)
+class R2EAOpen:
+    path: str
+
+    def bincode_serialize(self) -> bytes:
+        return bincode.serialize(self, R2EAOpen)
+
+    @staticmethod
+    def bincode_deserialize(input: bytes) -> "R2EAOpen":
+        v, buffer = bincode.deserialize(input, R2EAOpen)
+        if buffer:
+            raise st.DeserializationError("Some input bytes were not read")
+        return v
+
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "R2EAOpen":
+        return bincode.deserialize_stream(input, R2EAOpen)
+
+
+@dataclass(frozen=True)
+class R2EAUpdate:
+    changed_vars: typing.Sequence[typing.Tuple[str, "Value"]]
+
+    def bincode_serialize(self) -> bytes:
+        return bincode.serialize(self, R2EAUpdate)
+
+    @staticmethod
+    def bincode_deserialize(input: bytes) -> "R2EAUpdate":
+        v, buffer = bincode.deserialize(input, R2EAUpdate)
+        if buffer:
+            raise st.DeserializationError("Some input bytes were not read")
+        return v
+
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "R2EAUpdate":
+        return bincode.deserialize_stream(input, R2EAUpdate)
 
 
 class Value:

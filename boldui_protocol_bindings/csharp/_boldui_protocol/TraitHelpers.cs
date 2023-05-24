@@ -71,6 +71,18 @@ namespace _boldui_protocol {
             );
         }
 
+        public static void serialize_tuple2_str_Value((string, Value) value, Serde.ISerializer serializer) {
+            serializer.serialize_str(value.Item1);
+            value.Item2.Serialize(serializer);
+        }
+
+        public static (string, Value) deserialize_tuple2_str_Value(Serde.IDeserializer deserializer) {
+            return (
+                deserializer.deserialize_str(),
+                Value.Deserialize(deserializer)
+            );
+        }
+
         public static void serialize_vector_A2RUpdateScene(Serde.ValueArray<A2RUpdateScene> value, Serde.ISerializer serializer) {
             serializer.serialize_len(value.Count);
             foreach (var item in value) {
@@ -101,6 +113,22 @@ namespace _boldui_protocol {
                 obj[i] = CmdsCommand.Deserialize(deserializer);
             }
             return new Serde.ValueArray<CmdsCommand>(obj);
+        }
+
+        public static void serialize_vector_ExternalAppRequest(Serde.ValueArray<ExternalAppRequest> value, Serde.ISerializer serializer) {
+            serializer.serialize_len(value.Count);
+            foreach (var item in value) {
+                item.Serialize(serializer);
+            }
+        }
+
+        public static Serde.ValueArray<ExternalAppRequest> deserialize_vector_ExternalAppRequest(Serde.IDeserializer deserializer) {
+            long length = deserializer.deserialize_len();
+            ExternalAppRequest[] obj = new ExternalAppRequest[length];
+            for (int i = 0; i < length; i++) {
+                obj[i] = ExternalAppRequest.Deserialize(deserializer);
+            }
+            return new Serde.ValueArray<ExternalAppRequest>(obj);
         }
 
         public static void serialize_vector_HandlerBlock(Serde.ValueArray<HandlerBlock> value, Serde.ISerializer serializer) {
@@ -229,6 +257,22 @@ namespace _boldui_protocol {
                 obj[i] = TraitHelpers.deserialize_tuple2_EventType_HandlerBlock(deserializer);
             }
             return new Serde.ValueArray<(EventType, HandlerBlock)>(obj);
+        }
+
+        public static void serialize_vector_tuple2_str_Value(Serde.ValueArray<(string, Value)> value, Serde.ISerializer serializer) {
+            serializer.serialize_len(value.Count);
+            foreach (var item in value) {
+                TraitHelpers.serialize_tuple2_str_Value(item, serializer);
+            }
+        }
+
+        public static Serde.ValueArray<(string, Value)> deserialize_vector_tuple2_str_Value(Serde.IDeserializer deserializer) {
+            long length = deserializer.deserialize_len();
+            (string, Value)[] obj = new (string, Value)[length];
+            for (int i = 0; i < length; i++) {
+                obj[i] = TraitHelpers.deserialize_tuple2_str_Value(deserializer);
+            }
+            return new Serde.ValueArray<(string, Value)>(obj);
         }
 
         public static void serialize_vector_u8(Serde.ValueArray<byte> value, Serde.ISerializer serializer) {

@@ -10,18 +10,22 @@ namespace _boldui_protocol {
     public sealed class A2RUpdate: IEquatable<A2RUpdate>, ICloneable {
         public Serde.ValueArray<A2RUpdateScene> updated_scenes;
         public Serde.ValueArray<HandlerBlock> run_blocks;
+        public Serde.ValueArray<ExternalAppRequest> external_app_requests;
 
-        public A2RUpdate(Serde.ValueArray<A2RUpdateScene> _updated_scenes, Serde.ValueArray<HandlerBlock> _run_blocks) {
+        public A2RUpdate(Serde.ValueArray<A2RUpdateScene> _updated_scenes, Serde.ValueArray<HandlerBlock> _run_blocks, Serde.ValueArray<ExternalAppRequest> _external_app_requests) {
             if (_updated_scenes == null) throw new ArgumentNullException(nameof(_updated_scenes));
             updated_scenes = _updated_scenes;
             if (_run_blocks == null) throw new ArgumentNullException(nameof(_run_blocks));
             run_blocks = _run_blocks;
+            if (_external_app_requests == null) throw new ArgumentNullException(nameof(_external_app_requests));
+            external_app_requests = _external_app_requests;
         }
 
         public void Serialize(Serde.ISerializer serializer) {
             serializer.increase_container_depth();
             TraitHelpers.serialize_vector_A2RUpdateScene(updated_scenes, serializer);
             TraitHelpers.serialize_vector_HandlerBlock(run_blocks, serializer);
+            TraitHelpers.serialize_vector_ExternalAppRequest(external_app_requests, serializer);
             serializer.decrease_container_depth();
         }
 
@@ -43,7 +47,8 @@ namespace _boldui_protocol {
             deserializer.increase_container_depth();
             A2RUpdate obj = new A2RUpdate(
             	TraitHelpers.deserialize_vector_A2RUpdateScene(deserializer),
-            	TraitHelpers.deserialize_vector_HandlerBlock(deserializer));
+            	TraitHelpers.deserialize_vector_HandlerBlock(deserializer),
+            	TraitHelpers.deserialize_vector_ExternalAppRequest(deserializer));
             deserializer.decrease_container_depth();
             return obj;
         }
@@ -72,6 +77,7 @@ namespace _boldui_protocol {
             if (ReferenceEquals(this, other)) return true;
             if (!updated_scenes.Equals(other.updated_scenes)) return false;
             if (!run_blocks.Equals(other.run_blocks)) return false;
+            if (!external_app_requests.Equals(other.external_app_requests)) return false;
             return true;
         }
 
@@ -80,6 +86,7 @@ namespace _boldui_protocol {
                 int value = 7;
                 value = 31 * value + updated_scenes.GetHashCode();
                 value = 31 * value + run_blocks.GetHashCode();
+                value = 31 * value + external_app_requests.GetHashCode();
                 return value;
             }
         }

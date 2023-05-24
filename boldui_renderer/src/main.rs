@@ -1,3 +1,4 @@
+#![feature(unix_socket_ancillary_data)]
 #![allow(clippy::read_zero_byte_vec)] // False positives :(
 
 use crate::cli::FrontendType;
@@ -20,6 +21,7 @@ use util::SerdeSender;
 pub(crate) mod cli;
 // pub(crate) mod devtools;
 pub(crate) mod communicator;
+pub(crate) mod dmabuf;
 pub(crate) mod image_frontend;
 pub(crate) mod op_interpreter;
 pub(crate) mod renderer;

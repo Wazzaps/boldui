@@ -1,14 +1,17 @@
 use crate::communicator::{CommChannelRecv, CommChannelSend, FromStateMachine};
+use crate::dmabuf::{ExternalApp, TextureStorageMetadata};
 use crate::op_interpreter::{DepTracker, OpResults};
 use crate::{EventLoopProxy, ToStateMachine};
 use bimap_plus_map::BiMapPlusMap;
 use boldui_protocol::{
-    A2RReparentScene, A2RUpdateScene, EventType, HandlerBlock, HandlerCmd, OpsOperation, R2AReply,
-    SceneId, Value, VarId,
+    A2RReparentScene, A2RUpdateScene, EventType, ExternalAppRequest, HandlerBlock, HandlerCmd,
+    OpsOperation, R2AReply, SceneId, Value, VarId,
 };
 use eventfd::{EfdFlags, EventFD};
 use ordered_map::OrderedMap;
+use skia_safe::gpu::BackendTexture;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::os::fd::OwnedFd;
 use std::time::Instant;
 use tracing::{debug, trace, warn};
 
@@ -37,10 +40,46 @@ impl SceneParent {
 }
 
 #[derive(Debug, Default)]
+pub enum SceneReplacement {
+    #[default]
+    None,
+    PendingExternalWidget {
+        texture_metadata: TextureStorageMetadata,
+        texture_fd: OwnedFd,
+    },
+    ExternalWidget {
+        texture: BackendTexture,
+    },
+}
+
+impl SceneReplacement {
+    pub fn is_pending(&self) -> bool {
+        matches!(self, SceneReplacement::PendingExternalWidget { .. })
+    }
+
+    /// Should only be called from a rendering context
+    pub fn realise_pending_external_widget(&mut self) {
+        let mut pending = SceneReplacement::None;
+        std::mem::swap(self, &mut pending);
+        if let SceneReplacement::PendingExternalWidget {
+            texture_metadata,
+            texture_fd,
+        } = pending
+        {
+            let texture = ExternalApp::attach_remote_texture(&texture_metadata, texture_fd);
+            *self = SceneReplacement::ExternalWidget { texture };
+        } else {
+            panic!("Called realise_pending_external_widget on a widget that's not pending")
+        }
+    }
+}
+
+#[derive(Debug, Default)]
 pub struct SceneState {
     pub children: Vec<SceneId>,
     pub parent: SceneParent,
     pub var_vals: BTreeMap<String, Value>,
+    pub scene_replacement: SceneReplacement,
 }
 
 pub type Scene = (A2RUpdateScene, SceneState);
@@ -318,7 +357,7 @@ impl StateMachine {
                     path: path.to_owned(),
                     params: params
                         .iter()
-                        .map(|opid| self.op_results.get(*opid, (0, &[])).to_owned())
+                        .map(|opid| self.op_results.get(*opid, ctx).to_owned())
                         .collect(),
                 };
                 trace!("Replying: {:?}", reply);
@@ -410,6 +449,20 @@ impl StateMachine {
         self.queue_redraw_affected_scenes(dep_tracker.get_updated_vars());
 
         trace!("New scenes: {:#?}", self.scenes);
+    }
+
+    pub(crate) fn handle_ext_app_requests(&mut self, requests: Vec<ExternalAppRequest>) {
+        for request in requests {
+            trace!("Sending external app request: {:?}", request);
+            self.comm_channel_send
+                .send
+                .send(FromStateMachine::RequestExternalWidget {
+                    scene_id: request.scene_id,
+                    uri: request.uri,
+                })
+                .unwrap();
+            self.comm_channel_send.notify_send.write(1).unwrap();
+        }
     }
 
     // Only supports root scenes
