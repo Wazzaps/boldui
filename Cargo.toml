@@ -22,3 +22,8 @@ debug = true
 inherits = "release"
 lto = true
 opt-level = 'z'
+
+#[patch.crates-io]
+#skia-bindings = { path = "../rust-skia/skia-bindings" }
+#serde-generate = { git = "https://github.com/Wazzaps/serde-reflection-010bt.git" }
+#serde-reflection = { git = "https://github.com/Wazzaps/serde-reflection-010bt.git" }
