@@ -7,6 +7,8 @@ pub const R2A_MAGIC: &[u8] = b"BOLDUI\x00";
 pub const A2R_MAGIC: &[u8] = b"BOLDUI\x01";
 pub const R2EA_MAGIC: &[u8] = b"BOLDUI\x02";
 pub const EA2R_MAGIC: &[u8] = b"BOLDUI\x03";
+pub const WM_REQ_MAGIC: &[u8] = b"BOLDUI\x04";
+pub const WM_RES_MAGIC: &[u8] = b"BOLDUI\x05";
 pub const LATEST_MAJOR_VER: u16 = 0;
 pub const LATEST_MINOR_VER: u16 = 1;
 pub const LATEST_EA_MAJOR_VER: u16 = 0;
@@ -371,6 +373,19 @@ pub struct A2RUpdate {
     pub updated_scenes: Vec<A2RUpdateScene>,
     pub run_blocks: Vec<HandlerBlock>,
     pub external_app_requests: Vec<ExternalAppRequest>,
+}
+
+#[derive(Debug, Clone)]
+#[repr(C)]
+pub struct WmHello {
+    pub action: WmHelloAction,
+}
+
+#[derive(Debug, Clone)]
+#[repr(u8)]
+pub enum WmHelloAction {
+    ConnectApp,
+    AttachRenderer,
 }
 
 // #[cfg(test)]

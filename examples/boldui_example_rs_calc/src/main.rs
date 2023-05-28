@@ -287,6 +287,7 @@ impl AppLogic {
                     transform: OpId::default(),
                     clip: OpId::default(),
                     uri: format!("{}?session={}", raw_path, &session_id),
+                    dimensions: OpId::default(),
                     ops: vec![],
                     cmds: vec![],
                     var_decls: Default::default(),
@@ -810,6 +811,7 @@ impl AppLogic {
                             }],
                         },
                     ],
+                    external_app_requests: vec![],
                 }))?;
 
                 trace!(scene_id, "Scene update took {:?} to make", start.elapsed());
@@ -955,6 +957,7 @@ impl AppLogic {
                             }],
                         },
                     ],
+                    external_app_requests: vec![],
                 }))?;
             }
 

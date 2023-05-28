@@ -3,6 +3,7 @@ members = [
     "boldui_protocol",
     "boldui_protocol_bindings",
     "boldui_renderer",
+    "boldui_wm",
     "utils/bimap_plus_map",
     "utils/serde-generate",
     "utils/serde-name",
