@@ -5,7 +5,7 @@ use crate::{Frontend, StateMachine, ToStateMachine};
 use adw::prelude::{ApplicationExt, ApplicationExtManual};
 use adw::{Application, HeaderBar};
 use boldui_protocol::{A2RUpdate, SceneId};
-use glib::{Continue, MainContext, SourceId, PRIORITY_HIGH};
+use glib::{Continue, MainContext, SourceId, PRIORITY_DEFAULT};
 use gtk::prelude::{BoxExt, GLAreaExt, GtkWindowExt, WidgetExt};
 use gtk::{gio, GLArea};
 use skia_safe::gpu::gl::FramebufferInfo;
@@ -38,7 +38,7 @@ impl WindowFrontend {
         mut state_machine: StateMachine,
         simulator: Option<Simulator>,
     ) -> (Self, Box<glib::Sender<ToStateMachine>>) {
-        let (sender, receiver) = MainContext::channel(PRIORITY_HIGH);
+        let (sender, receiver) = MainContext::channel(PRIORITY_DEFAULT);
         let event_proxy = Box::new(sender);
         state_machine.event_proxy = Some(event_proxy.clone());
         (
@@ -54,7 +54,7 @@ impl WindowFrontend {
 }
 
 struct WindowState {
-    win: adw::ApplicationWindow,
+    win: adw::Window,
     gl_area: GLArea,
 }
 
@@ -194,11 +194,11 @@ impl WindowState {
 
         gl_area.add_controller(event_controller);
 
-        // Adwaitas' ApplicationWindow does not include a HeaderBar
+        // Adwaitas' Window does not include a HeaderBar
         let header_bar = HeaderBar::new();
         content.append(&header_bar);
         content.append(&gl_area);
-        let win = adw::ApplicationWindow::builder()
+        let win = adw::Window::builder()
             .application(app)
             .title("Window")
             .default_width(300)
@@ -222,7 +222,6 @@ impl Frontend for WindowFrontend {
 
         let application = Application::builder()
             .application_id("org.boldos.ui.BoldUI")
-            .flags(gio::ApplicationFlags::IS_SERVICE)
             .build();
 
         let app = application.clone();
@@ -357,6 +356,9 @@ impl Frontend for WindowFrontend {
         application.connect_shutdown(|_app| {
             debug!("Shutdown by gtk");
         });
+
+        // Don't quit the app even though it has no windows
+        let _hold = application.hold();
 
         application.run_with_args::<&str>(&[]);
         debug!("app done");
