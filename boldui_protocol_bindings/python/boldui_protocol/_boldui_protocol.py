@@ -230,8 +230,16 @@ class CmdsCommand__DrawRect(CmdsCommand):
 
 
 @dataclass(frozen=True)
-class CmdsCommand__DrawCenteredText(CmdsCommand):
+class CmdsCommand__DrawRoundRect(CmdsCommand):
     INDEX = 2  # type: int
+    paint: "OpId"
+    rect: "OpId"
+    radius: "OpId"
+
+
+@dataclass(frozen=True)
+class CmdsCommand__DrawCenteredText(CmdsCommand):
+    INDEX = 3  # type: int
     text: "OpId"
     paint: "OpId"
     center: "OpId"
@@ -240,6 +248,7 @@ class CmdsCommand__DrawCenteredText(CmdsCommand):
 CmdsCommand.VARIANTS = [
     CmdsCommand__Clear,
     CmdsCommand__DrawRect,
+    CmdsCommand__DrawRoundRect,
     CmdsCommand__DrawCenteredText,
 ]
 
@@ -613,43 +622,68 @@ class OpsOperation__Div(OpsOperation):
 
 
 @dataclass(frozen=True)
-class OpsOperation__Eq(OpsOperation):
+class OpsOperation__FloorDiv(OpsOperation):
     INDEX = 8  # type: int
     a: "OpId"
     b: "OpId"
 
 
 @dataclass(frozen=True)
-class OpsOperation__Min(OpsOperation):
+class OpsOperation__Eq(OpsOperation):
     INDEX = 9  # type: int
     a: "OpId"
     b: "OpId"
 
 
 @dataclass(frozen=True)
-class OpsOperation__Max(OpsOperation):
+class OpsOperation__Min(OpsOperation):
     INDEX = 10  # type: int
     a: "OpId"
     b: "OpId"
 
 
 @dataclass(frozen=True)
-class OpsOperation__MakePoint(OpsOperation):
+class OpsOperation__Max(OpsOperation):
     INDEX = 11  # type: int
+    a: "OpId"
+    b: "OpId"
+
+
+@dataclass(frozen=True)
+class OpsOperation__Abs(OpsOperation):
+    INDEX = 12  # type: int
+    a: "OpId"
+
+
+@dataclass(frozen=True)
+class OpsOperation__Sin(OpsOperation):
+    INDEX = 13  # type: int
+    a: "OpId"
+
+
+@dataclass(frozen=True)
+class OpsOperation__Cos(OpsOperation):
+    INDEX = 14  # type: int
+    a: "OpId"
+
+
+@dataclass(frozen=True)
+class OpsOperation__MakePoint(OpsOperation):
+    INDEX = 15  # type: int
     left: "OpId"
     top: "OpId"
 
 
 @dataclass(frozen=True)
 class OpsOperation__MakeRectFromPoints(OpsOperation):
-    INDEX = 12  # type: int
+    INDEX = 16  # type: int
     left_top: "OpId"
     right_bottom: "OpId"
 
 
 @dataclass(frozen=True)
 class OpsOperation__MakeRectFromSides(OpsOperation):
-    INDEX = 13  # type: int
+    INDEX = 17  # type: int
     left: "OpId"
     top: "OpId"
     right: "OpId"
@@ -658,7 +692,7 @@ class OpsOperation__MakeRectFromSides(OpsOperation):
 
 @dataclass(frozen=True)
 class OpsOperation__ToString(OpsOperation):
-    INDEX = 14  # type: int
+    INDEX = 18  # type: int
     a: "OpId"
 
 
@@ -671,9 +705,13 @@ OpsOperation.VARIANTS = [
     OpsOperation__Neg,
     OpsOperation__Mul,
     OpsOperation__Div,
+    OpsOperation__FloorDiv,
     OpsOperation__Eq,
     OpsOperation__Min,
     OpsOperation__Max,
+    OpsOperation__Abs,
+    OpsOperation__Sin,
+    OpsOperation__Cos,
     OpsOperation__MakePoint,
     OpsOperation__MakeRectFromPoints,
     OpsOperation__MakeRectFromSides,

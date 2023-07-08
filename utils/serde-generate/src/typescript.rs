@@ -503,6 +503,14 @@ return list;
         Ok(())
     }
 
+    fn escape_name(name: &str) -> &str {
+        if name == "var" {
+            "var_"
+        } else {
+            name
+        }
+    }
+
     fn output_struct_or_variant_container(
         &mut self,
         variant_base: Option<&str>,
@@ -535,7 +543,13 @@ return list;
             "constructor ({}) {{",
             fields
                 .iter()
-                .map(|f| { format!("public {}: {}", &f.name, self.quote_type(&f.value)) })
+                .map(|f| {
+                    format!(
+                        "public {}: {}",
+                        Self::escape_name(&f.name),
+                        self.quote_type(&f.value)
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join(", ")
         )?;
@@ -559,7 +573,7 @@ return list;
                 writeln!(
                     self.out,
                     "{}",
-                    self.quote_serialize_value(&field.name, &field.value, true)
+                    self.quote_serialize_value(Self::escape_name(&field.name), &field.value, true)
                 )?;
             }
             self.out.unindent();
@@ -585,7 +599,7 @@ return list;
                 writeln!(
                     self.out,
                     "const {} = {};",
-                    field.name,
+                    Self::escape_name(&field.name),
                     self.quote_deserialize(&field.value)
                 )?;
             }
@@ -596,7 +610,7 @@ return list;
                 name,
                 fields
                     .iter()
-                    .map(|f| f.name.to_string())
+                    .map(|f| Self::escape_name(&f.name).to_string())
                     .collect::<Vec<_>>()
                     .join(",")
             )?;
@@ -611,6 +625,30 @@ return list;
         name: &str,
         variants: &BTreeMap<u32, Named<VariantFormat>>,
     ) -> Result<()> {
+        writeln!(self.out, "interface FullMatch{name}<R> {{")?;
+        for (_, variant) in variants {
+            writeln!(
+                self.out,
+                "  {0}: (value: {1}Variant{0}) => R,",
+                variant.name, name
+            )?;
+        }
+        writeln!(self.out, "}}\n")?;
+        writeln!(self.out, "interface PartialMatch{name}<R> {{")?;
+        for (_, variant) in variants {
+            writeln!(
+                self.out,
+                "  {0}?: (value: {1}Variant{0}) => R,",
+                variant.name, name
+            )?;
+        }
+        writeln!(self.out, "  _: (value: {}) => R,\n", name)?;
+        writeln!(self.out, "}}\n")?;
+        writeln!(
+            self.out,
+            "type Match{name}<R> = PartialMatch{name}<R> | FullMatch{name}<R>;\n"
+        )?;
+
         self.output_comment(name)?;
         writeln!(self.out, "export abstract class {} {{", name)?;
         if self.generator.config.serialization {
@@ -640,7 +678,7 @@ switch (index) {{"#,
             }
             writeln!(
                 self.out,
-                "default: throw new Error(\"Unknown variant index for {}: \" + index);",
+                "default: throw new window.Error(\"Unknown variant index for {}: \" + index);",
                 name,
             )?;
             self.out.unindent();
@@ -648,6 +686,15 @@ switch (index) {{"#,
             self.out.unindent();
             writeln!(self.out, "}}")?;
         }
+        writeln!(
+            self.out,
+            "match<R>(handlers: Match{0}<R>): R {{
+  let handler = (handlers as any)[this.constructor.name.slice({1})];
+  return (handler || (handlers as any)['_'])(this);
+}}\n",
+            name,
+            name.len() + "Variant".len()
+        )?;
         writeln!(self.out, "}}\n")?;
         self.output_variants(name, variants)?;
         Ok(())

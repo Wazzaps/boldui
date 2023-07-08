@@ -98,5 +98,16 @@ pub fn main() {
         )
         .unwrap();
 
+    // Write Typescript bindings
+    println!("Writing Typescript bindings...");
+    let generator = serde_generate::typescript::CodeGenerator::new(&config);
+    let mut ts_source = Vec::new();
+    generator.output(&mut ts_source, &registry).unwrap();
+    std::fs::write(
+        "./boldui_protocol_bindings/typescript/_boldui_protocol/_boldui_protocol.ts",
+        &ts_source,
+    )
+    .unwrap();
+
     println!("Done!");
 }

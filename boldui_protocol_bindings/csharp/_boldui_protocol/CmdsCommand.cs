@@ -16,7 +16,8 @@ namespace _boldui_protocol {
             switch (index) {
                 case 0: return Clear.Load(deserializer);
                 case 1: return DrawRect.Load(deserializer);
-                case 2: return DrawCenteredText.Load(deserializer);
+                case 2: return DrawRoundRect.Load(deserializer);
+                case 3: return DrawCenteredText.Load(deserializer);
                 default: throw new Serde.DeserializationException("Unknown variant index for CmdsCommand: " + index);
             }
         }
@@ -52,6 +53,7 @@ namespace _boldui_protocol {
             switch (this) {
             case Clear x: return x.GetHashCode();
             case DrawRect x: return x.GetHashCode();
+            case DrawRoundRect x: return x.GetHashCode();
             case DrawCenteredText x: return x.GetHashCode();
             default: throw new InvalidOperationException("Unknown variant type");
             }
@@ -65,6 +67,7 @@ namespace _boldui_protocol {
             switch (this) {
             case Clear x: return x.Equals((Clear)other);
             case DrawRect x: return x.Equals((DrawRect)other);
+            case DrawRoundRect x: return x.Equals((DrawRoundRect)other);
             case DrawCenteredText x: return x.Equals((DrawCenteredText)other);
             default: throw new InvalidOperationException("Unknown variant type");
             }
@@ -173,6 +176,65 @@ namespace _boldui_protocol {
 
         }
 
+        public sealed class DrawRoundRect: CmdsCommand, IEquatable<DrawRoundRect>, ICloneable {
+            public OpId paint;
+            public OpId rect;
+            public OpId radius;
+
+            public DrawRoundRect(OpId _paint, OpId _rect, OpId _radius) {
+                if (_paint == null) throw new ArgumentNullException(nameof(_paint));
+                paint = _paint;
+                if (_rect == null) throw new ArgumentNullException(nameof(_rect));
+                rect = _rect;
+                if (_radius == null) throw new ArgumentNullException(nameof(_radius));
+                radius = _radius;
+            }
+
+            public override void Serialize(Serde.ISerializer serializer) {
+                serializer.increase_container_depth();
+                serializer.serialize_variant_index(2);
+                paint.Serialize(serializer);
+                rect.Serialize(serializer);
+                radius.Serialize(serializer);
+                serializer.decrease_container_depth();
+            }
+
+            internal static DrawRoundRect Load(Serde.IDeserializer deserializer) {
+                deserializer.increase_container_depth();
+                DrawRoundRect obj = new DrawRoundRect(
+                	OpId.Deserialize(deserializer),
+                	OpId.Deserialize(deserializer),
+                	OpId.Deserialize(deserializer));
+                deserializer.decrease_container_depth();
+                return obj;
+            }
+            public override bool Equals(object obj) => obj is DrawRoundRect other && Equals(other);
+
+            public static bool operator ==(DrawRoundRect left, DrawRoundRect right) => Equals(left, right);
+
+            public static bool operator !=(DrawRoundRect left, DrawRoundRect right) => !Equals(left, right);
+
+            public bool Equals(DrawRoundRect other) {
+                if (other == null) return false;
+                if (ReferenceEquals(this, other)) return true;
+                if (!paint.Equals(other.paint)) return false;
+                if (!rect.Equals(other.rect)) return false;
+                if (!radius.Equals(other.radius)) return false;
+                return true;
+            }
+
+            public override int GetHashCode() {
+                unchecked {
+                    int value = 7;
+                    value = 31 * value + paint.GetHashCode();
+                    value = 31 * value + rect.GetHashCode();
+                    value = 31 * value + radius.GetHashCode();
+                    return value;
+                }
+            }
+
+        }
+
         public sealed class DrawCenteredText: CmdsCommand, IEquatable<DrawCenteredText>, ICloneable {
             public OpId text;
             public OpId paint;
@@ -189,7 +251,7 @@ namespace _boldui_protocol {
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
-                serializer.serialize_variant_index(2);
+                serializer.serialize_variant_index(3);
                 text.Serialize(serializer);
                 paint.Serialize(serializer);
                 center.Serialize(serializer);

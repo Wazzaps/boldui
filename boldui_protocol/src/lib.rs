@@ -237,6 +237,10 @@ pub enum OpsOperation {
         a: OpId,
         b: OpId,
     },
+    FloorDiv {
+        a: OpId,
+        b: OpId,
+    },
     Eq {
         a: OpId,
         b: OpId,
@@ -248,6 +252,15 @@ pub enum OpsOperation {
     Max {
         a: OpId,
         b: OpId,
+    },
+    Abs {
+        a: OpId,
+    },
+    Sin {
+        a: OpId,
+    },
+    Cos {
+        a: OpId,
     },
     MakePoint {
         left: OpId,
@@ -276,6 +289,11 @@ pub enum CmdsCommand {
     DrawRect {
         paint: OpId,
         rect: OpId,
+    },
+    DrawRoundRect {
+        paint: OpId,
+        rect: OpId,
+        radius: OpId,
     },
     DrawCenteredText {
         text: OpId,

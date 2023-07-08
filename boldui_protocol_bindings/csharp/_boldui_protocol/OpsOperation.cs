@@ -22,13 +22,17 @@ namespace _boldui_protocol {
                 case 5: return Neg.Load(deserializer);
                 case 6: return Mul.Load(deserializer);
                 case 7: return Div.Load(deserializer);
-                case 8: return Eq.Load(deserializer);
-                case 9: return Min.Load(deserializer);
-                case 10: return Max.Load(deserializer);
-                case 11: return MakePoint.Load(deserializer);
-                case 12: return MakeRectFromPoints.Load(deserializer);
-                case 13: return MakeRectFromSides.Load(deserializer);
-                case 14: return ToString.Load(deserializer);
+                case 8: return FloorDiv.Load(deserializer);
+                case 9: return Eq.Load(deserializer);
+                case 10: return Min.Load(deserializer);
+                case 11: return Max.Load(deserializer);
+                case 12: return Abs.Load(deserializer);
+                case 13: return Sin.Load(deserializer);
+                case 14: return Cos.Load(deserializer);
+                case 15: return MakePoint.Load(deserializer);
+                case 16: return MakeRectFromPoints.Load(deserializer);
+                case 17: return MakeRectFromSides.Load(deserializer);
+                case 18: return ToString.Load(deserializer);
                 default: throw new Serde.DeserializationException("Unknown variant index for OpsOperation: " + index);
             }
         }
@@ -70,9 +74,13 @@ namespace _boldui_protocol {
             case Neg x: return x.GetHashCode();
             case Mul x: return x.GetHashCode();
             case Div x: return x.GetHashCode();
+            case FloorDiv x: return x.GetHashCode();
             case Eq x: return x.GetHashCode();
             case Min x: return x.GetHashCode();
             case Max x: return x.GetHashCode();
+            case Abs x: return x.GetHashCode();
+            case Sin x: return x.GetHashCode();
+            case Cos x: return x.GetHashCode();
             case MakePoint x: return x.GetHashCode();
             case MakeRectFromPoints x: return x.GetHashCode();
             case MakeRectFromSides x: return x.GetHashCode();
@@ -95,9 +103,13 @@ namespace _boldui_protocol {
             case Neg x: return x.Equals((Neg)other);
             case Mul x: return x.Equals((Mul)other);
             case Div x: return x.Equals((Div)other);
+            case FloorDiv x: return x.Equals((FloorDiv)other);
             case Eq x: return x.Equals((Eq)other);
             case Min x: return x.Equals((Min)other);
             case Max x: return x.Equals((Max)other);
+            case Abs x: return x.Equals((Abs)other);
+            case Sin x: return x.Equals((Sin)other);
+            case Cos x: return x.Equals((Cos)other);
             case MakePoint x: return x.Equals((MakePoint)other);
             case MakeRectFromPoints x: return x.Equals((MakeRectFromPoints)other);
             case MakeRectFromSides x: return x.Equals((MakeRectFromSides)other);
@@ -493,6 +505,58 @@ namespace _boldui_protocol {
 
         }
 
+        public sealed class FloorDiv: OpsOperation, IEquatable<FloorDiv>, ICloneable {
+            public OpId a;
+            public OpId b;
+
+            public FloorDiv(OpId _a, OpId _b) {
+                if (_a == null) throw new ArgumentNullException(nameof(_a));
+                a = _a;
+                if (_b == null) throw new ArgumentNullException(nameof(_b));
+                b = _b;
+            }
+
+            public override void Serialize(Serde.ISerializer serializer) {
+                serializer.increase_container_depth();
+                serializer.serialize_variant_index(8);
+                a.Serialize(serializer);
+                b.Serialize(serializer);
+                serializer.decrease_container_depth();
+            }
+
+            internal static FloorDiv Load(Serde.IDeserializer deserializer) {
+                deserializer.increase_container_depth();
+                FloorDiv obj = new FloorDiv(
+                	OpId.Deserialize(deserializer),
+                	OpId.Deserialize(deserializer));
+                deserializer.decrease_container_depth();
+                return obj;
+            }
+            public override bool Equals(object obj) => obj is FloorDiv other && Equals(other);
+
+            public static bool operator ==(FloorDiv left, FloorDiv right) => Equals(left, right);
+
+            public static bool operator !=(FloorDiv left, FloorDiv right) => !Equals(left, right);
+
+            public bool Equals(FloorDiv other) {
+                if (other == null) return false;
+                if (ReferenceEquals(this, other)) return true;
+                if (!a.Equals(other.a)) return false;
+                if (!b.Equals(other.b)) return false;
+                return true;
+            }
+
+            public override int GetHashCode() {
+                unchecked {
+                    int value = 7;
+                    value = 31 * value + a.GetHashCode();
+                    value = 31 * value + b.GetHashCode();
+                    return value;
+                }
+            }
+
+        }
+
         public sealed class Eq: OpsOperation, IEquatable<Eq>, ICloneable {
             public OpId a;
             public OpId b;
@@ -506,7 +570,7 @@ namespace _boldui_protocol {
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
-                serializer.serialize_variant_index(8);
+                serializer.serialize_variant_index(9);
                 a.Serialize(serializer);
                 b.Serialize(serializer);
                 serializer.decrease_container_depth();
@@ -558,7 +622,7 @@ namespace _boldui_protocol {
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
-                serializer.serialize_variant_index(9);
+                serializer.serialize_variant_index(10);
                 a.Serialize(serializer);
                 b.Serialize(serializer);
                 serializer.decrease_container_depth();
@@ -610,7 +674,7 @@ namespace _boldui_protocol {
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
-                serializer.serialize_variant_index(10);
+                serializer.serialize_variant_index(11);
                 a.Serialize(serializer);
                 b.Serialize(serializer);
                 serializer.decrease_container_depth();
@@ -649,6 +713,141 @@ namespace _boldui_protocol {
 
         }
 
+        public sealed class Abs: OpsOperation, IEquatable<Abs>, ICloneable {
+            public OpId a;
+
+            public Abs(OpId _a) {
+                if (_a == null) throw new ArgumentNullException(nameof(_a));
+                a = _a;
+            }
+
+            public override void Serialize(Serde.ISerializer serializer) {
+                serializer.increase_container_depth();
+                serializer.serialize_variant_index(12);
+                a.Serialize(serializer);
+                serializer.decrease_container_depth();
+            }
+
+            internal static Abs Load(Serde.IDeserializer deserializer) {
+                deserializer.increase_container_depth();
+                Abs obj = new Abs(
+                	OpId.Deserialize(deserializer));
+                deserializer.decrease_container_depth();
+                return obj;
+            }
+            public override bool Equals(object obj) => obj is Abs other && Equals(other);
+
+            public static bool operator ==(Abs left, Abs right) => Equals(left, right);
+
+            public static bool operator !=(Abs left, Abs right) => !Equals(left, right);
+
+            public bool Equals(Abs other) {
+                if (other == null) return false;
+                if (ReferenceEquals(this, other)) return true;
+                if (!a.Equals(other.a)) return false;
+                return true;
+            }
+
+            public override int GetHashCode() {
+                unchecked {
+                    int value = 7;
+                    value = 31 * value + a.GetHashCode();
+                    return value;
+                }
+            }
+
+        }
+
+        public sealed class Sin: OpsOperation, IEquatable<Sin>, ICloneable {
+            public OpId a;
+
+            public Sin(OpId _a) {
+                if (_a == null) throw new ArgumentNullException(nameof(_a));
+                a = _a;
+            }
+
+            public override void Serialize(Serde.ISerializer serializer) {
+                serializer.increase_container_depth();
+                serializer.serialize_variant_index(13);
+                a.Serialize(serializer);
+                serializer.decrease_container_depth();
+            }
+
+            internal static Sin Load(Serde.IDeserializer deserializer) {
+                deserializer.increase_container_depth();
+                Sin obj = new Sin(
+                	OpId.Deserialize(deserializer));
+                deserializer.decrease_container_depth();
+                return obj;
+            }
+            public override bool Equals(object obj) => obj is Sin other && Equals(other);
+
+            public static bool operator ==(Sin left, Sin right) => Equals(left, right);
+
+            public static bool operator !=(Sin left, Sin right) => !Equals(left, right);
+
+            public bool Equals(Sin other) {
+                if (other == null) return false;
+                if (ReferenceEquals(this, other)) return true;
+                if (!a.Equals(other.a)) return false;
+                return true;
+            }
+
+            public override int GetHashCode() {
+                unchecked {
+                    int value = 7;
+                    value = 31 * value + a.GetHashCode();
+                    return value;
+                }
+            }
+
+        }
+
+        public sealed class Cos: OpsOperation, IEquatable<Cos>, ICloneable {
+            public OpId a;
+
+            public Cos(OpId _a) {
+                if (_a == null) throw new ArgumentNullException(nameof(_a));
+                a = _a;
+            }
+
+            public override void Serialize(Serde.ISerializer serializer) {
+                serializer.increase_container_depth();
+                serializer.serialize_variant_index(14);
+                a.Serialize(serializer);
+                serializer.decrease_container_depth();
+            }
+
+            internal static Cos Load(Serde.IDeserializer deserializer) {
+                deserializer.increase_container_depth();
+                Cos obj = new Cos(
+                	OpId.Deserialize(deserializer));
+                deserializer.decrease_container_depth();
+                return obj;
+            }
+            public override bool Equals(object obj) => obj is Cos other && Equals(other);
+
+            public static bool operator ==(Cos left, Cos right) => Equals(left, right);
+
+            public static bool operator !=(Cos left, Cos right) => !Equals(left, right);
+
+            public bool Equals(Cos other) {
+                if (other == null) return false;
+                if (ReferenceEquals(this, other)) return true;
+                if (!a.Equals(other.a)) return false;
+                return true;
+            }
+
+            public override int GetHashCode() {
+                unchecked {
+                    int value = 7;
+                    value = 31 * value + a.GetHashCode();
+                    return value;
+                }
+            }
+
+        }
+
         public sealed class MakePoint: OpsOperation, IEquatable<MakePoint>, ICloneable {
             public OpId left;
             public OpId top;
@@ -662,7 +861,7 @@ namespace _boldui_protocol {
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
-                serializer.serialize_variant_index(11);
+                serializer.serialize_variant_index(15);
                 left.Serialize(serializer);
                 top.Serialize(serializer);
                 serializer.decrease_container_depth();
@@ -714,7 +913,7 @@ namespace _boldui_protocol {
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
-                serializer.serialize_variant_index(12);
+                serializer.serialize_variant_index(16);
                 left_top.Serialize(serializer);
                 right_bottom.Serialize(serializer);
                 serializer.decrease_container_depth();
@@ -772,7 +971,7 @@ namespace _boldui_protocol {
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
-                serializer.serialize_variant_index(13);
+                serializer.serialize_variant_index(17);
                 left.Serialize(serializer);
                 top.Serialize(serializer);
                 right.Serialize(serializer);
@@ -829,7 +1028,7 @@ namespace _boldui_protocol {
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
-                serializer.serialize_variant_index(14);
+                serializer.serialize_variant_index(18);
                 a.Serialize(serializer);
                 serializer.decrease_container_depth();
             }
