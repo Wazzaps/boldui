@@ -93,11 +93,9 @@ def calc_view(state: CalculatorState, _query_params: Dict[str, str]):
 
     # Buttons
     action_button_color = s.hex_color(0x3A3A3A)
-    action_button_disabled_color = s.hex_color(0x2A2A2A)
     number_button_color = s.hex_color(0x505050)
     equals_button_color = s.hex_color(0xE66100)
     button_text_color = s.hex_color(0xFFFFFF)
-    button_text_disabled_color = s.hex_color(0x808080)
 
     def make_btn(color: OpWrapper, x: int, y: int, height: int, text: str, text_color: OpWrapper):
         TOP_PADDING = 79.0
@@ -136,9 +134,6 @@ def calc_view(state: CalculatorState, _query_params: Dict[str, str]):
             )
         )
 
-    def make_disabled_action_btn(x: int, y: int, text: str):
-        make_btn(action_button_disabled_color, x, y, 1, text, button_text_disabled_color)
-
     def make_action_btn(x: int, y: int, text: str):
         make_btn(action_button_color, x, y, 1, text, button_text_color)
 
@@ -174,6 +169,12 @@ def calc_view(state: CalculatorState, _query_params: Dict[str, str]):
     make_action_btn(3, 4, "+")
 
     state.scene_id = int(s.scene.id)
+
+    s.add_watch(
+        condition=s.var("expr_bar").eq(s.value("1337")),
+        handler=lambda h: h.hcmd_reply(s.scene.uri, "."),
+    )
+
     s.create_window(title="Calculator", initial_size=(334, 327))
 
 

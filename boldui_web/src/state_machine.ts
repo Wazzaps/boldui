@@ -13,6 +13,7 @@ import {
     CmdsCommandVariantDrawRect,
     CmdsCommandVariantDrawRoundRect,
     EventTypeVariantClick,
+    HandlerBlock,
     HandlerCmd,
     HandlerCmdVariantAllocateWindowId,
     HandlerCmdVariantDebugMessage,
@@ -24,7 +25,8 @@ import {
     OpId,
     OpsOperation,
     OpsOperationVariantAbs,
-    OpsOperationVariantAdd, OpsOperationVariantCos,
+    OpsOperationVariantAdd,
+    OpsOperationVariantCos,
     OpsOperationVariantDiv,
     OpsOperationVariantEq,
     OpsOperationVariantGetTime,
@@ -35,7 +37,8 @@ import {
     OpsOperationVariantMax,
     OpsOperationVariantMin,
     OpsOperationVariantMul,
-    OpsOperationVariantNeg, OpsOperationVariantSin,
+    OpsOperationVariantNeg,
+    OpsOperationVariantSin,
     OpsOperationVariantToString,
     OpsOperationVariantValue,
     OpsOperationVariantVar,
@@ -51,10 +54,11 @@ import {
     ValueVariantString,
     VarId
 } from "boldui_protocol/boldui_protocol.ts";
+import {debugFmt, htmlEscape, objectEquals} from "./utils.ts";
 
 
 class SceneState {
-    parent?: "root" | number;
+    parent?: "root" | "hidden" | number;
     children: Array<number> = [];
     varVals = new Map<string, Value>();
     opResults: Value[] = [];
@@ -67,6 +71,7 @@ export class StateMachine {
     private rootScenes = new Set();
     private context?: Value[];
     private startTime = new Date().getTime();
+    private watchesToRun: HandlerBlock[] = [];
     public comm?: Communicator;
 
     public handleUpdate = (update: A2RUpdate) => {
@@ -109,8 +114,17 @@ export class StateMachine {
             throw new Error("BoldUI Web only supports one root scene");
         }
 
+        // Remove scenes with no parent
+        for (const [scnIdx, state] of this.sceneStates) {
+            if (state.parent === undefined) {
+                this.sceneStates.delete(scnIdx);
+                this.scenes.delete(scnIdx);
+            }
+        }
+
         // Render to SVG
-        this.render()
+        // TODO: Decouple updates and re-renders, because watches might need to be triggered without re-rendering
+        this.renderAndRunWatches();
 
         // if (!startedInteractor) {
         //   startedInteractor = true;
@@ -122,13 +136,22 @@ export class StateMachine {
         // let output = "";
     }
 
-    private renderToSVG = (scnIdx: number): string => {
+    private renderToSVGAndSchedWatches = (scnIdx: number): string => {
         const scene = this.scenes.get(scnIdx)!;
         const state = this.sceneStates.get(scnIdx)!;
         state.dependsOnTime = false;
+
         // Eval op list
-        // console.log(state);
         this.evalOpList(scene.ops, state.opResults, state);
+
+        // Schedule watches
+        for (const watch of scene.watches) {
+            if (this.asBool(this.lookupOp(watch.condition))) {
+                this.watchesToRun.push(watch.handler);
+            }
+        }
+
+        // Render to SVG
         let sceneResult = "";
 
         for (const cmd of scene.cmds) {
@@ -138,11 +161,11 @@ export class StateMachine {
         let offset = [0, 0];
         return `<g id="scn${scnIdx}" transform="translate(${offset[0]} ${offset[1]})">
       ${sceneResult}
-      ${state.children.map((childIdx) => this.renderToSVG(childIdx)).join("\n")}
+      ${state.children.map((childIdx) => this.renderToSVGAndSchedWatches(childIdx)).join("\n")}
     </g>`;
     }
 
-    private render = () => {
+    private renderAndRunWatches = () => {
         const app = document.getElementById("app") as unknown as SVGElement;
         const rootScene = this.rootScenes.values().next().value;
         if (rootScene) {
@@ -162,12 +185,23 @@ export class StateMachine {
             // TODO: let title = state.varVals.get(":title");
             state.varVals.set(":width", new ValueVariantDouble(app.clientWidth));
             state.varVals.set(":height", new ValueVariantDouble(app.clientHeight));
-            app.innerHTML = this.renderToSVG(rootScene);
+            app.innerHTML = this.renderToSVGAndSchedWatches(rootScene);
+
+            for (const watch of this.watchesToRun) {
+                this.context = [];
+                this.evalOpList(watch.ops, this.context, undefined);
+                for (let cmd of watch.cmds) {
+                    this.evalHandlerCmd(cmd);
+                }
+                this.context = undefined;
+            }
+            this.watchesToRun.length = 0;
+
             app.onpointerdown = (e) => {
                 this.handleClick(rootScene, e.offsetX, e.offsetY);
             }
             if (state.dependsOnTime) {
-                requestAnimationFrame(this.render);
+                requestAnimationFrame(this.renderAndRunWatches);
             }
         }
     }
@@ -256,11 +290,11 @@ export class StateMachine {
                         newParent.children.splice(after.value + 1, 0, reparent.scene);
                         state.parent = newParentIdx;
                     },
-                    Disconnect: (disconnect: A2RReparentSceneVariantDisconnect) => {
-                        throw new Error(`Disconnect not implemented: ${JSON.stringify(disconnect)}`);
+                    Disconnect: (_disconnect: A2RReparentSceneVariantDisconnect) => {
+                        // Was already disconnected, nothing to do
                     },
-                    Hide: (hide: A2RReparentSceneVariantHide) => {
-                        throw new Error(`Hide not implemented: ${JSON.stringify(hide)}`);
+                    Hide: (_hide: A2RReparentSceneVariantHide) => {
+                        state.parent = "hidden";
                     },
                 });
             },
@@ -274,13 +308,13 @@ export class StateMachine {
                 this.comm!.send(new R2AMessageVariantUpdate(new R2AUpdate([new R2AReply(path, params)])));
             },
             AllocateWindowId: (allocateWindowId: HandlerCmdVariantAllocateWindowId) => {
-                throw new Error(`AllocateWindowId not implemented: ${JSON.stringify(allocateWindowId)}`);
+                throw new Error(`AllocateWindowId not implemented: ${debugFmt(allocateWindowId)}`);
             },
             DebugMessage: (debugMessage: HandlerCmdVariantDebugMessage) => {
                 console.log("DebugMessage: " + debugMessage.msg);
             },
             If: (if_: HandlerCmdVariantIf) => {
-                throw new Error(`If not implemented: ${JSON.stringify(if_)}`);
+                throw new Error(`If not implemented: ${debugFmt(if_)}`);
             },
             Nop: (_nop: HandlerCmdVariantNop) => {
             },
@@ -315,6 +349,23 @@ export class StateMachine {
             Sint64: (v) => Number(v.value),
             _: (_v) => {
                 throw new Error("Invalid cast to double");
+            },
+        });
+    }
+
+    private asBool = (val: Value): boolean => {
+        return val.match({
+            Sint64: (v) => {
+                if (v.value === BigInt(0)) {
+                    return false;
+                } else if (v.value === BigInt(1)) {
+                    return true;
+                } else {
+                    throw new Error("Invalid cast to bool of value: " + v.value.toString());
+                }
+            },
+            _: (_v) => {
+                throw new Error("Invalid cast to bool");
             },
         });
     }
@@ -453,7 +504,7 @@ export class StateMachine {
             Eq: (eq: OpsOperationVariantEq) => {
                 let a = this.lookupOp(eq.a);
                 let b = this.lookupOp(eq.b);
-                return new ValueVariantSint64(BigInt(a === b));
+                return new ValueVariantSint64(BigInt(objectEquals(a, b)));
             },
             ToString: (toString: OpsOperationVariantToString) => {
                 let a = this.lookupOp(toString.a);
@@ -461,13 +512,4 @@ export class StateMachine {
             }
         });
     }
-}
-
-function htmlEscape(s: string): string {
-    return s
-        .replace(/&/g, '&amp')
-        .replace(/'/g, '&apos')
-        .replace(/"/g, '&quot')
-        .replace(/>/g, '&gt')
-        .replace(/</g, '&lt');
 }

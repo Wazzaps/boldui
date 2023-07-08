@@ -11,27 +11,33 @@ if typing.TYPE_CHECKING:
 
 @dataclasses.dataclass
 class OpWrapper:
-    op: OpId
+    # If you use this field, make sure it's on the result of `flush_consts()`. Otherwise, use the `op` property.
+    _op: OpId
 
     # Basic constant propagation
     const_mul: float | int = 1
     const_add: float | int = 0
 
+    @property
+    def op(self) -> OpId:
+        # Op Caching should make this efficient
+        return self.flush_consts()._op
+
     def flush_consts(self) -> "OpWrapper":
         scene = get_current_scene()
-        res = OpWrapper(self.op)
+        res = OpWrapper(self._op)
 
         if self.const_mul == -1:
-            res = scene.op(OpsOperation__Neg(res.op))
+            res = scene.op(OpsOperation__Neg(res._op))
         elif self.const_mul == 0:
             return self._flush_const(scene, self.const_add)
         elif self.const_mul == 1:
             pass
         else:
-            res = scene.op(OpsOperation__Mul(res.op, self._flush_const(scene, self.const_mul).op))
+            res = scene.op(OpsOperation__Mul(res._op, self._flush_const(scene, self.const_mul)._op))
 
         if self.const_add != 0:
-            res = scene.op(OpsOperation__Add(res.op, self._flush_const(scene, self.const_add).op))
+            res = scene.op(OpsOperation__Add(res._op, self._flush_const(scene, self.const_add)._op))
 
         return res
 
@@ -46,74 +52,79 @@ class OpWrapper:
 
     def __add__(self, other: "int | float | OpWrapper") -> "OpWrapper":
         if isinstance(other, (float, int)):
-            return OpWrapper(self.op, self.const_mul, self.const_add + other)
+            return OpWrapper(self._op, self.const_mul, self.const_add + other)
         elif isinstance(other, OpWrapper) and other.const_mul == 0:
-            return OpWrapper(self.op, self.const_mul, self.const_add + other.const_add)
+            return OpWrapper(self._op, self.const_mul, self.const_add + other.const_add)
         else:
             scene = get_current_scene()
-            return scene.op(OpsOperation__Add(self.flush_consts().op, other.flush_consts().op))
+            return scene.op(OpsOperation__Add(self.op, other.op))
 
     def __neg__(self):
-        return OpWrapper(self.op, -self.const_mul, -self.const_add)
+        return OpWrapper(self._op, -self.const_mul, -self.const_add)
 
     def __sub__(self, other: "int | float | OpWrapper") -> "OpWrapper":
         return self + (-other)
 
     def __mul__(self, other: "int | float | OpWrapper") -> "OpWrapper":
         if isinstance(other, (float, int)):
-            return OpWrapper(self.op, self.const_mul * other, self.const_add * other)
+            return OpWrapper(self._op, self.const_mul * other, self.const_add * other)
         else:
             scene = get_current_scene()
-            return scene.op(OpsOperation__Mul(self.flush_consts().op, scene.value(other).flush_consts().op))
+            return scene.op(OpsOperation__Mul(self.op, scene.value(other).op))
 
     def __truediv__(self, other: "int | float | OpWrapper") -> "OpWrapper":
         if isinstance(other, (float, int)):
-            return OpWrapper(self.op, self.const_mul / other, self.const_add / other)
+            return OpWrapper(self._op, self.const_mul / other, self.const_add / other)
         else:
             scene = get_current_scene()
-            return scene.op(OpsOperation__Div(self.flush_consts().op, scene.value(other).flush_consts().op))
+            return scene.op(OpsOperation__Div(self.op, scene.value(other).op))
 
     def __floordiv__(self, other: "int | float | OpWrapper") -> "OpWrapper":
         if self.const_mul == 0:
-            return OpWrapper(self.op, self.const_mul, self.const_add // other)
+            return OpWrapper(self._op, self.const_mul, self.const_add // other)
         else:
             scene = get_current_scene()
-            return scene.op(OpsOperation__FloorDiv(self.flush_consts().op, scene.value(other).flush_consts().op))
+            return scene.op(OpsOperation__FloorDiv(self.op, scene.value(other).op))
 
     def __abs__(self) -> "OpWrapper":
         if self.const_mul == 0:
-            return OpWrapper(self.op, self.const_mul, abs(self.const_add))
+            return OpWrapper(self._op, self.const_mul, abs(self.const_add))
         else:
             scene = get_current_scene()
-            return scene.op(OpsOperation__Abs(self.flush_consts().op))
+            return scene.op(OpsOperation__Abs(self.op))
 
     def min(self, other: "int | float | OpWrapper") -> "OpWrapper":
         if self.const_mul == 0 and other.const_mul == 0:
-            return OpWrapper(self.op, self.const_mul, min(self.const_add, other.const_add))
+            return OpWrapper(self._op, self.const_mul, min(self.const_add, other.const_add))
         else:
             scene = get_current_scene()
-            return scene.op(OpsOperation__Min(self.flush_consts().op, scene.value(other).flush_consts().op))
+            return scene.op(OpsOperation__Min(self.op, scene.value(other).op))
 
     def max(self, other: "int | float | OpWrapper") -> "OpWrapper":
         if self.const_mul == 0 and other.const_mul == 0:
-            return OpWrapper(self.op, self.const_mul, max(self.const_add, other.const_add))
+            return OpWrapper(self._op, self.const_mul, max(self.const_add, other.const_add))
         else:
             scene = get_current_scene()
-            return scene.op(OpsOperation__Max(self.flush_consts().op, scene.value(other).flush_consts().op))
+            return scene.op(OpsOperation__Max(self.op, scene.value(other).op))
 
     def sin(self) -> "OpWrapper":
         if self.const_mul == 0:
-            return OpWrapper(self.op, self.const_mul, math.sin(self.const_add))
+            return OpWrapper(self._op, self.const_mul, math.sin(self.const_add))
         else:
             scene = get_current_scene()
             return scene.op(OpsOperation__Sin(self.op))
 
     def cos(self) -> "OpWrapper":
         if self.const_mul == 0:
-            return OpWrapper(self.op, self.const_mul, math.cos(self.const_add))
+            return OpWrapper(self._op, self.const_mul, math.cos(self.const_add))
         else:
             scene = get_current_scene()
             return scene.op(OpsOperation__Cos(self.op))
+
+    def eq(self, other: "OpWrapper") -> "OpWrapper":
+        # TODO: const prop?
+        scene = get_current_scene()
+        return scene.op(OpsOperation__Eq(self.op, other.op))
 
 
 @dataclasses.dataclass
@@ -152,6 +163,12 @@ class CurrentScene:
             update.run_blocks.append(extra_handler_block)
 
         self.app.send_update(update)
+
+    def add_watch(self, condition: OpWrapper, handler: Callable[["CurrentScene"], None]):
+        inner = CurrentScene(self.app, HandlerBlock([], []), self.session_id)
+        handler(inner)
+        # noinspection PyUnresolvedReferences
+        self.scene.watches.append(Watch(condition=condition.op, handler=inner.scene))
 
     def decl_var(self, name: str, default_val: Value):
         self.scene.var_decls[name] = default_val
@@ -293,10 +310,12 @@ class CurrentScene:
             )
         )
 
-    def hcmd_reply(self, path: str, params: List[OpWrapper] | OpWrapper):
+    def hcmd_reply(
+        self, path: str, params: List[float | int | str | Value | OpWrapper] | float | int | str | Value | OpWrapper
+    ):
         if type(params) is not list:
             params = [params]
-        self.push_hcmd(HandlerCmd__Reply(path=path, params=[r.flush_consts().op for r in params]))
+        self.push_hcmd(HandlerCmd__Reply(path=path, params=[self.value(r).op for r in params]))
 
 
 def make_handler_block_factory(app: "BoldUIApplication"):

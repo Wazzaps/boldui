@@ -1,6 +1,6 @@
 import {StateMachine} from './state_machine';
 import {
-    A2R_MAGIC, A2RHelloResponse, A2RMessage, A2RMessageVariantUpdate, A2RUpdate,
+    A2R_MAGIC, A2RHelloResponse, A2RMessage, A2RUpdate,
     LATEST_MAJOR_VER,
     LATEST_MINOR_VER,
     R2A_MAGIC,
@@ -9,6 +9,7 @@ import {
 } from "boldui_protocol/boldui_protocol.ts";
 import {BincodeSerializer} from "boldui_protocol/boldui_protocol.ts";
 import {BincodeDeserializer} from "boldui_protocol/boldui_protocol.ts";
+import {debugFmt} from "./utils.ts";
 
 function memeq(a: Uint8Array, b: Uint8Array) {
     if (a.length != b.length) {
@@ -24,7 +25,7 @@ export class Communicator {
     private sock: WebSocket;
     private recvRequest?: [number, (_: Uint8Array) => void] = undefined;
     private buf = new Uint8Array();
-    private onUpdate: (update: A2RUpdate) => void;
+    private readonly onUpdate: (update: A2RUpdate) => void;
 
     constructor(stateMachine: StateMachine) {
         stateMachine.comm = this;
@@ -103,23 +104,30 @@ export class Communicator {
         let helloResponse = await this.recv(9);
         let helloResponseDeser = new BincodeDeserializer(helloResponse);
         let helloResponseObj = A2RHelloResponse.deserialize(helloResponseDeser);
-        console.log("Hello response:", JSON.stringify(helloResponseObj));
+        console.log("Hello response:", debugFmt(helloResponseObj));
 
         // Send Open
         this.send(new R2AMessageVariantOpen(new R2AOpen(initialPath)));
 
         // Main loop
+        // noinspection InfiniteLoopJS
         while (true) {
             let msgLen = new Uint32Array((await this.recv(4)).buffer)[0];
             let msgDeser = new BincodeDeserializer(await this.recv(msgLen));
             let msg = A2RMessage.deserialize(msgDeser);
-            if (msg instanceof A2RMessageVariantUpdate) {
-                console.time("update");
-                this.onUpdate(msg.value);
-                console.timeEnd("update");
-            } else {
-                throw new Error("Unknown message type: " + JSON.stringify(msg));
-            }
+            msg.match({
+                Update: (update) => {
+                    console.time("update");
+                    this.onUpdate(update.value);
+                    console.timeEnd("update");
+                },
+                Error: (err) => {
+                    alert(`Error in app (code ${Number(err.value.code)}):\n${err.value.text}`);
+                },
+                _: (_) => {
+                    throw new Error("Unknown message type: " + debugFmt(msg));
+                }
+            })
         }
     }
 
