@@ -121,7 +121,7 @@ class OpWrapper:
             scene = get_current_scene()
             return scene.op(OpsOperation__Cos(self.op))
 
-    def eq(self, other: "OpWrapper") -> "OpWrapper":
+    def __eq__(self, other: "OpWrapper") -> "OpWrapper":
         # TODO: const prop?
         scene = get_current_scene()
         return scene.op(OpsOperation__Eq(self.op, other.op))

@@ -171,7 +171,7 @@ def calc_view(state: CalculatorState, _query_params: Dict[str, str]):
     state.scene_id = int(s.scene.id)
 
     s.add_watch(
-        condition=s.var("expr_bar").eq(s.value("1337")),
+        condition=s.var("expr_bar") == s.value("1337"),
         handler=lambda h: h.hcmd_reply(s.scene.uri, "."),
     )
 
