@@ -3,6 +3,10 @@ import logging
 import struct
 import sys
 import uuid
+import sqlite3
+import dataclasses
+import json
+import dataclass_wizard
 from typing import Dict, List, Any, Optional
 from boldui.scene_mgmt import Session, ViewHandler, ReplyHandler, CurrentScene, _set_current_scene
 from boldui_protocol import *
@@ -20,6 +24,7 @@ class BoldUIApplication:
         self._view_handlers: List[ViewHandler] = []
         self._reply_handlers: List[ReplyHandler] = []
         self._scene_id_counter = SceneId(1)
+        self._db = None
         self.out = None
         self.inp = None
 
@@ -85,6 +90,9 @@ class BoldUIApplication:
     @staticmethod
     def setup_logging():
         setup_logging()
+    
+    def database(self, path):
+        self._db = sqlite3.connect(path)
 
     def main_loop(self):
         if sys.stdout.isatty() or sys.stdin.isatty():
@@ -173,6 +181,44 @@ class BoldUIApplication:
         for reply_handler in self._reply_handlers:
             if path == reply_handler.path:
                 return reply_handler
+    
+    def _fetch_raw_state(self, session_id) -> Optional[dict]:
+        if not self._db:
+            return None
+        
+        if res := self._db.execute(
+            'SELECT data FROM sessions s WHERE s.sess_id = ?',
+            (session_id,),
+        ).fetchone():
+            return json.loads(res[0])
+    
+    def _fetch_session(self, session_id, state_factory=None) -> Any:
+        if state := self._fetch_raw_state(session_id):
+            # Found session in DB
+            if session_id in self._sessions:
+                session = self._sessions[session_id]
+                session.state = dataclass_wizard.fromdict(session.state_type, state)
+                return session
+            elif state_factory:
+                state = dataclass_wizard.fromdict(type(state_factory()), state)
+                session = Session(scene_ids=[], state=state, state_type=type(state), session_id=session_id)
+                self._sessions[session_id] = session
+                return session
+            else:
+                raise AssertionError(f"Cannot recreate session {session_id}")
+        elif session_id in self._sessions:
+            return self._sessions[session_id]
+        elif state_factory:
+            state = state_factory()
+            if self._db:
+                serialized = json.dumps(dataclasses.asdict(state))
+                self._db.execute("INSERT INTO sessions(sess_id, data) VALUES (?, ?)", (session_id, serialized))
+                self._db.commit()
+            session = Session(scene_ids=[], state=state, state_type=type(state), session_id=session_id)
+            self._sessions[session_id] = session
+            return session
+        else:
+            raise AssertionError(f"Unknown session {session_id}")
 
     def _handle_reply(
         self,
@@ -191,10 +237,13 @@ class BoldUIApplication:
             self.stdout.write(msg)
             return
 
-        assert session_id in self._sessions, f"Unknown session {session_id}"
-        session = self._sessions[session_id]
+        session = self._fetch_session(session_id)
         _set_current_scene(CurrentScene(app=self, scene=None, session_id=session_id))
         reply_handler.handler(session.state, query_params, value_params)
+        if self._db:
+            serialized = json.dumps(dataclasses.asdict(session.state))
+            self._db.execute('UPDATE sessions SET data=? WHERE sess_id=?', (serialized, session_id))
+            self._db.commit()
         _set_current_scene(None)
 
     def _open_window(self, scene_id: SceneId, session_id: str, path: List[str], query_params: Dict[str, str]):
@@ -209,12 +258,8 @@ class BoldUIApplication:
             self.stdout.write(msg)
             return
 
-        if session_id in self._sessions:
-            session = self._sessions[session_id]
-            session.scene_ids.append(scene_id)
-        else:
-            session = Session(scene_ids=[scene_id], state=view_handler.state_factory(), session_id=session_id)
-            self._sessions[session_id] = session
+        session = self._fetch_session(session_id, view_handler.state_factory)
+        session.scene_ids.append(scene_id)
 
         self._scene_to_session[scene_id] = session_id
 
@@ -239,6 +284,10 @@ class BoldUIApplication:
             view_handler.handler(session.state, query_params)
         else:
             view_handler.handler(session.state)
+        if self._db:
+            serialized = json.dumps(dataclasses.asdict(session.state))
+            self._db.execute('UPDATE sessions SET data=? WHERE sess_id=?', (serialized, session_id))
+            self._db.commit()
         _set_current_scene(None)
 
     def send_update(self, update: A2RUpdate):

@@ -173,7 +173,7 @@ def calc_view(state: CalculatorState, _query_params: Dict[str, str]):
     make_action_btn(2, 4, "%")
     make_action_btn(3, 4, "+")
 
-    state.scene_id = s.scene.id
+    state.scene_id = int(s.scene.id)
     s.create_window(title="Calculator", initial_size=(334, 327))
 
 
@@ -236,6 +236,7 @@ def calculate(expr: str) -> str:
 
 if __name__ == "__main__":
     app.setup_logging()
+    app.database("/home/david/tmp/boldui_calc.db")
     app.main_loop()
 
 
