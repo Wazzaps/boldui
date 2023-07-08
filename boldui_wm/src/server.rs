@@ -1,16 +1,22 @@
+use crate::utils::SerdeSender;
+use anyhow::Context;
 use boldui_protocol::serde::de::DeserializeOwned;
-use boldui_protocol::{bincode, WmHello, WmHelloAction, WM_REQ_MAGIC};
-use std::io::IoSliceMut;
+use boldui_protocol::{
+    bincode, A2RMessage, R2AMessage, R2AOpen, R2AUpdate, WmHello, WmHelloAction, WM_REQ_MAGIC,
+};
+use std::collections::HashMap;
+use std::io::{ErrorKind, IoSliceMut};
 use std::mem::size_of;
 use std::ops::DerefMut;
 use std::os::fd::{FromRawFd, IntoRawFd, OwnedFd};
 use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::{mpsc, Mutex, Notify};
 use tokio_seqpacket::ancillary::OwnedAncillaryMessage;
 use tokio_seqpacket::{UnixSeqpacket, UnixSeqpacketListener};
-use tracing::{debug, info};
+use tracing::{debug, error, info, trace};
 
 pub struct MainLoop {
     renderer_kill_flag: Notify,
@@ -19,7 +25,15 @@ pub struct MainLoop {
 }
 
 #[derive(Debug, Default)]
-struct RendererState {}
+struct RendererState {
+    pub apps: HashMap<usize, RendererAppState>,
+    pub app2renderer_recv: Option<Receiver<(usize, App2RendererMsg)>>,
+}
+
+#[derive(Debug)]
+struct RendererAppState {
+    pub renderer2app_send: Sender<Renderer2AppMsg>,
+}
 
 impl MainLoop {
     pub fn new() -> anyhow::Result<Self> {
@@ -40,20 +54,176 @@ impl MainLoop {
 
     async fn handle_app(
         self: Arc<Self>,
+        app_id: usize,
         mut app_stdin: File,
         mut app_stdout: File,
+        renderer2app_send: Sender<Renderer2AppMsg>,
+        mut renderer2app_recv: Receiver<Renderer2AppMsg>,
+        app2renderer_send: Sender<(usize, App2RendererMsg)>,
     ) -> anyhow::Result<()> {
-        Self::send_hello(&mut app_stdin, &mut app_stdout).await?;
+        Self::app_send_hello(&mut app_stdin, &mut app_stdout)
+            .await
+            .context("Failed while sending hello message")?;
 
+        info!("new app id {}", app_id);
+        app2renderer_send
+            .send((app_id, App2RendererMsg::NewApp { renderer2app_send }))
+            .await
+            .context("Failed while notifying renderer task of new app")?;
+
+        let mut msg_buf = Vec::new();
+        loop {
+            tokio::select! {
+                msg_len = app_stdout.read_u32_le() => {
+                    // TODO: buffered reader?
+                    let msg_len = match msg_len {
+                        Ok(len) => len,
+                        Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
+                            debug!("app #{} connection closed, bye!", app_id);
+                            return Ok(());
+                        }
+                        Err(e) => Err(e)?,
+                    };
+
+                    trace!("reading msg of size {msg_len}");
+                    msg_buf.resize(msg_len as usize, 0);
+                    app_stdout.read_exact(&mut msg_buf).await?;
+                    let msg = bincode::deserialize::<A2RMessage>(&msg_buf)?;
+
+                    trace!("R2A: {:#?}", &msg);
+                    match msg {
+                        // TODO: map ids
+                        A2RMessage::Update(u) => app2renderer_send.send((app_id, App2RendererMsg::A2RMessage(A2RMessage::Update(u)))).await?,
+                        A2RMessage::Error(e) => todo!("app error: {:?}", e),
+                        A2RMessage::CompressedUpdate(u) => todo!("compressed update: {:?}", u),
+                    }
+                }
+                r2a = renderer2app_recv.recv() => {
+                    let r2a_msg = r2a.unwrap();
+                    Self::app_handle_r2a_msg(&mut app_stdin, r2a_msg).await?;
+                }
+            }
+        }
+    }
+
+    async fn app_handle_r2a_msg(
+        app_stdin: &mut File,
+        r2a_msg: Renderer2AppMsg,
+    ) -> anyhow::Result<()> {
+        match r2a_msg {
+            Renderer2AppMsg::R2AMessage(inner) => {
+                // debug!("R2A: {:?}", &R2AMessage::Open(o.clone()));
+                app_stdin.send(&inner).await?;
+                app_stdin.flush().await?;
+            }
+        };
         Ok(())
     }
 
-    #[allow(clippy::absurd_extreme_comparisons)]
     async fn handle_renderer(
         self: Arc<Self>,
         mut renderer_stdin: File,
         mut renderer_stdout: File,
-        _renderer_state: &mut RendererState,
+        renderer_state: &mut RendererState,
+    ) -> anyhow::Result<()> {
+        Self::renderer_recv_hello(&mut renderer_stdin, &mut renderer_stdout).await?;
+
+        // TODO: re-open all current windows
+
+        let mut msg_buf = Vec::new();
+        loop {
+            tokio::select! {
+                msg_len = renderer_stdin.read_u32_le() => {
+                    // TODO: buffered reader?
+                    let msg_len = match msg_len {
+                        Ok(len) => len,
+                        // TODO: test if this works
+                        Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
+                            debug!("renderer connection closed, bye!");
+                            return Ok(());
+                        }
+                        Err(e) => Err(e)?,
+                    };
+                    trace!("reading msg of size {msg_len}");
+                    msg_buf.resize(msg_len as usize, 0);
+                    renderer_stdin.read_exact(&mut msg_buf).await?;
+                    let msg = bincode::deserialize::<R2AMessage>(&msg_buf)?;
+
+                    trace!("R2A: {:#?}", &msg);
+                    match msg {
+                        R2AMessage::Update(R2AUpdate { replies }) => {
+                            trace!("Replies: {:?}", &replies);
+                            // TODO: append prefix to paths, only send replies to relevant app
+                            for app in renderer_state.apps.values() {
+                                app.renderer2app_send
+                                    .send(Renderer2AppMsg::R2AMessage(R2AMessage::Update(R2AUpdate {
+                                        replies: replies.clone(),
+                                    })))
+                                    .await?;
+                            }
+                        }
+                        R2AMessage::Open(R2AOpen { path }) => {
+                            if path.is_empty() {
+                                info!("Open(\"/\") from renderer, opening all windows");
+                                for app in renderer_state.apps.values() {
+                                    app.renderer2app_send
+                                        .send(Renderer2AppMsg::R2AMessage(R2AMessage::Open(R2AOpen {
+                                            path: path.clone(),
+                                        })))
+                                        .await?;
+                                }
+                            } else {
+                                info!("Open({:?}) from renderer, ignoring", &path);
+
+                            }
+                        }
+                        R2AMessage::Error(err) => {
+                            error!("Renderer error: {err:?}");
+                        }
+                    }
+                }
+
+                a2r = renderer_state.app2renderer_recv.as_mut().unwrap().recv() => {
+                    let (app_id, a2r_msg) = a2r.unwrap();
+                    Self::renderer_handle_a2r_msg(renderer_state, &mut renderer_stdout, app_id, a2r_msg).await?;
+                }
+            }
+        }
+    }
+
+    async fn renderer_handle_a2r_msg(
+        renderer_state: &mut RendererState,
+        renderer_stdout: &mut File,
+        app_id: usize,
+        a2r_msg: App2RendererMsg,
+    ) -> anyhow::Result<()> {
+        match a2r_msg {
+            App2RendererMsg::NewApp { renderer2app_send } => {
+                renderer_state
+                    .apps
+                    .insert(app_id, RendererAppState { renderer2app_send });
+
+                // Open initial window
+                renderer_state.apps[&app_id]
+                    .renderer2app_send
+                    .send(Renderer2AppMsg::R2AMessage(R2AMessage::Open(R2AOpen {
+                        path: "".to_string(),
+                    })))
+                    .await?;
+            }
+            App2RendererMsg::A2RMessage(inner) => {
+                // debug!("A2R: {:?}", &inner);
+                renderer_stdout.send(&inner).await?;
+                renderer_stdout.flush().await?;
+            }
+        };
+        Ok(())
+    }
+
+    #[allow(clippy::absurd_extreme_comparisons)]
+    async fn renderer_recv_hello(
+        mut renderer_stdin: &mut File,
+        renderer_stdout: &mut File,
     ) -> anyhow::Result<()> {
         // Get hello
         {
@@ -98,12 +268,11 @@ impl MainLoop {
                 .await?;
             renderer_stdout.flush().await?;
             debug!("connected!");
-        }
-
+        };
         Ok(())
     }
 
-    async fn send_hello(app_stdin: &mut File, app_stdout: &mut File) -> anyhow::Result<()> {
+    async fn app_send_hello(app_stdin: &mut File, app_stdout: &mut File) -> anyhow::Result<()> {
         // Send hello
         {
             debug!("sending hello");
@@ -157,6 +326,9 @@ impl MainLoop {
     async fn run_inner(self, sock_addr: &str) -> anyhow::Result<()> {
         let (app_send, mut app_recv) = mpsc::channel(8);
         let (renderer_send, mut renderer_recv) = mpsc::channel(8);
+        let (app2renderer_send, app2renderer_recv) = mpsc::channel(8);
+        self.renderer_mutex.lock().await.app2renderer_recv = Some(app2renderer_recv);
+
         let _this = Arc::new(self);
 
         let this = _this.clone();
@@ -198,13 +370,28 @@ impl MainLoop {
 
         let this = _this.clone();
         let app_handler = tokio::spawn(async move {
+            let mut app_counter = 0usize;
             loop {
+                let app2renderer_send = app2renderer_send.clone();
+                let app_id = app_counter;
+                app_counter += 1;
                 let (input, output) = app_recv.recv().await.unwrap();
                 info!("Got app");
                 let this = this.clone();
+                // TODO: tweak queue bound?
+                let (renderer2app_send, renderer2app_recv) = mpsc::channel(8);
 
                 tokio::spawn(async move {
-                    this.handle_app(input, output).await.unwrap();
+                    this.handle_app(
+                        app_id,
+                        input,
+                        output,
+                        renderer2app_send,
+                        renderer2app_recv,
+                        app2renderer_send,
+                    )
+                    .await
+                    .unwrap_or_else(|e| error!("App handler error: {:?}", e));
                 });
             }
         });
@@ -290,5 +477,19 @@ fn fds_into_two_files(fds: Vec<OwnedFd>) -> (File, File) {
         .collect::<Vec<_>>()
         .try_into()
         .unwrap();
+
     (input, output)
+}
+
+#[derive(Debug)]
+enum Renderer2AppMsg {
+    R2AMessage(R2AMessage),
+}
+
+#[derive(Debug)]
+enum App2RendererMsg {
+    NewApp {
+        renderer2app_send: Sender<Renderer2AppMsg>,
+    },
+    A2RMessage(A2RMessage),
 }

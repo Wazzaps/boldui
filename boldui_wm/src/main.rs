@@ -1,14 +1,16 @@
 #![feature(unix_socket_ancillary_data)]
 #![feature(io_error_more)]
+#![allow(clippy::read_zero_byte_vec)] // False positives :(
 
 extern crate core;
 
 use crate::cli::{AppSubcommand, AttachSubcommand, ServerSubcommand, SubCommandEnum};
 use crate::utils::unwrap_or_str;
 use boldui_protocol::{WmHello, WmHelloAction, WM_REQ_MAGIC};
+use nix::fcntl::{fcntl, FcntlArg, OFlag};
 use std::io::IoSlice;
 use std::mem::size_of;
-use std::os::fd::AsFd;
+use std::os::fd::{AsFd, AsRawFd};
 use tokio_seqpacket::ancillary::AncillaryMessageWriter;
 use tokio_seqpacket::UnixSeqpacket;
 use tracing::info;
@@ -95,10 +97,23 @@ async fn do_app(sock_addr: &str, app_args: &[&str]) {
     sa_buf.resize(256, 0u8);
     let mut sa = AncillaryMessageWriter::new(&mut sa_buf);
 
-    let fds = &[
-        proc.stdin.as_ref().unwrap().as_fd(),
-        proc.stdout.as_ref().unwrap().as_fd(),
-    ];
+    let stdin = proc.stdin.as_ref().unwrap().as_fd();
+    let stdout = proc.stdout.as_ref().unwrap().as_fd();
+
+    // The O_NONBLOCK flag breaks everything in the server
+    unsafe {
+        let mut flags =
+            OFlag::from_bits_unchecked(fcntl(stdin.as_raw_fd(), FcntlArg::F_GETFL).unwrap());
+        flags.remove(OFlag::O_NDELAY | OFlag::O_NONBLOCK);
+        fcntl(stdin.as_raw_fd(), FcntlArg::F_SETFL(flags)).unwrap();
+
+        let mut flags =
+            OFlag::from_bits_unchecked(fcntl(stdout.as_raw_fd(), FcntlArg::F_GETFL).unwrap());
+        flags.remove(OFlag::O_NDELAY | OFlag::O_NONBLOCK);
+        fcntl(stdout.as_raw_fd(), FcntlArg::F_SETFL(flags)).unwrap();
+    };
+
+    let fds = &[stdin, stdout];
     info!("fds: {:?}", fds);
     sa.add_fds(fds).unwrap();
     sock.send_vectored_with_ancillary(&[IoSlice::new(&hello_buf)], &mut sa)
@@ -109,6 +124,7 @@ async fn do_app(sock_addr: &str, app_args: &[&str]) {
 
     // Wait for app to exit, then exit with the same exit code
     let exit_status = proc.wait().await.unwrap();
+    info!("`boldui_wm app` exiting");
     std::process::exit(exit_status.code().unwrap_or(1));
 }
 
