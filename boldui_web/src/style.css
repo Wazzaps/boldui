@@ -1,0 +1,9 @@
+body {
+  margin: 0;
+  background: #000;
+}
+
+#app {
+  border: 1px solid #474;
+  user-select: none;
+}
