@@ -53,6 +53,7 @@ interface PartialMatchA2RMessage<R> {
 type MatchA2RMessage<R> = PartialMatchA2RMessage<R> | FullMatchA2RMessage<R>;
 
 export abstract class A2RMessage {
+  static _variant: string = undefined as unknown as string;
 abstract serialize(serializer: Serializer): void;
 
 static deserialize(deserializer: Deserializer): A2RMessage {
@@ -65,7 +66,7 @@ static deserialize(deserializer: Deserializer): A2RMessage {
   }
 }
 match<R>(handlers: MatchA2RMessage<R>): R {
-  let handler = (handlers as any)[this.constructor.name.slice(17)];
+  let handler = (handlers as any)[(this.constructor as any)._variant];
   return (handler || (handlers as any)['_'])(this);
 }
 
@@ -73,6 +74,7 @@ match<R>(handlers: MatchA2RMessage<R>): R {
 
 
 export class A2RMessageVariantUpdate extends A2RMessage {
+  static _variant = "Update";
 
 constructor (public value: A2RUpdate) {
   super();
@@ -91,6 +93,7 @@ static load(deserializer: Deserializer): A2RMessageVariantUpdate {
 }
 
 export class A2RMessageVariantError extends A2RMessage {
+  static _variant = "Error";
 
 constructor (public value: Error) {
   super();
@@ -109,6 +112,7 @@ static load(deserializer: Deserializer): A2RMessageVariantError {
 }
 
 export class A2RMessageVariantCompressedUpdate extends A2RMessage {
+  static _variant = "CompressedUpdate";
 
 constructor (public value: Seq<uint8>) {
   super();
@@ -146,6 +150,7 @@ interface PartialMatchA2RReparentScene<R> {
 type MatchA2RReparentScene<R> = PartialMatchA2RReparentScene<R> | FullMatchA2RReparentScene<R>;
 
 export abstract class A2RReparentScene {
+  static _variant: string = undefined as unknown as string;
 abstract serialize(serializer: Serializer): void;
 
 static deserialize(deserializer: Deserializer): A2RReparentScene {
@@ -160,7 +165,7 @@ static deserialize(deserializer: Deserializer): A2RReparentScene {
   }
 }
 match<R>(handlers: MatchA2RReparentScene<R>): R {
-  let handler = (handlers as any)[this.constructor.name.slice(23)];
+  let handler = (handlers as any)[(this.constructor as any)._variant];
   return (handler || (handlers as any)['_'])(this);
 }
 
@@ -168,6 +173,7 @@ match<R>(handlers: MatchA2RReparentScene<R>): R {
 
 
 export class A2RReparentSceneVariantInside extends A2RReparentScene {
+  static _variant = "Inside";
 
 constructor (public value: uint32) {
   super();
@@ -186,6 +192,7 @@ static load(deserializer: Deserializer): A2RReparentSceneVariantInside {
 }
 
 export class A2RReparentSceneVariantAfter extends A2RReparentScene {
+  static _variant = "After";
 
 constructor (public value: uint32) {
   super();
@@ -204,6 +211,7 @@ static load(deserializer: Deserializer): A2RReparentSceneVariantAfter {
 }
 
 export class A2RReparentSceneVariantRoot extends A2RReparentScene {
+  static _variant = "Root";
 constructor () {
   super();
 }
@@ -219,6 +227,7 @@ static load(deserializer: Deserializer): A2RReparentSceneVariantRoot {
 }
 
 export class A2RReparentSceneVariantDisconnect extends A2RReparentScene {
+  static _variant = "Disconnect";
 constructor () {
   super();
 }
@@ -234,6 +243,7 @@ static load(deserializer: Deserializer): A2RReparentSceneVariantDisconnect {
 }
 
 export class A2RReparentSceneVariantHide extends A2RReparentScene {
+  static _variant = "Hide";
 constructor () {
   super();
 }
@@ -322,6 +332,7 @@ interface PartialMatchCmdsCommand<R> {
 type MatchCmdsCommand<R> = PartialMatchCmdsCommand<R> | FullMatchCmdsCommand<R>;
 
 export abstract class CmdsCommand {
+  static _variant: string = undefined as unknown as string;
 abstract serialize(serializer: Serializer): void;
 
 static deserialize(deserializer: Deserializer): CmdsCommand {
@@ -335,7 +346,7 @@ static deserialize(deserializer: Deserializer): CmdsCommand {
   }
 }
 match<R>(handlers: MatchCmdsCommand<R>): R {
-  let handler = (handlers as any)[this.constructor.name.slice(18)];
+  let handler = (handlers as any)[(this.constructor as any)._variant];
   return (handler || (handlers as any)['_'])(this);
 }
 
@@ -343,6 +354,7 @@ match<R>(handlers: MatchCmdsCommand<R>): R {
 
 
 export class CmdsCommandVariantClear extends CmdsCommand {
+  static _variant = "Clear";
 
 constructor (public color: OpId) {
   super();
@@ -361,6 +373,7 @@ static load(deserializer: Deserializer): CmdsCommandVariantClear {
 }
 
 export class CmdsCommandVariantDrawRect extends CmdsCommand {
+  static _variant = "DrawRect";
 
 constructor (public paint: OpId, public rect: OpId) {
   super();
@@ -381,6 +394,7 @@ static load(deserializer: Deserializer): CmdsCommandVariantDrawRect {
 }
 
 export class CmdsCommandVariantDrawRoundRect extends CmdsCommand {
+  static _variant = "DrawRoundRect";
 
 constructor (public paint: OpId, public rect: OpId, public radius: OpId) {
   super();
@@ -403,6 +417,7 @@ static load(deserializer: Deserializer): CmdsCommandVariantDrawRoundRect {
 }
 
 export class CmdsCommandVariantDrawCenteredText extends CmdsCommand {
+  static _variant = "DrawCenteredText";
 
 constructor (public text: OpId, public paint: OpId, public center: OpId) {
   super();
@@ -496,6 +511,7 @@ interface PartialMatchEA2RMessage<R> {
 type MatchEA2RMessage<R> = PartialMatchEA2RMessage<R> | FullMatchEA2RMessage<R>;
 
 export abstract class EA2RMessage {
+  static _variant: string = undefined as unknown as string;
 abstract serialize(serializer: Serializer): void;
 
 static deserialize(deserializer: Deserializer): EA2RMessage {
@@ -509,7 +525,7 @@ static deserialize(deserializer: Deserializer): EA2RMessage {
   }
 }
 match<R>(handlers: MatchEA2RMessage<R>): R {
-  let handler = (handlers as any)[this.constructor.name.slice(18)];
+  let handler = (handlers as any)[(this.constructor as any)._variant];
   return (handler || (handlers as any)['_'])(this);
 }
 
@@ -517,6 +533,7 @@ match<R>(handlers: MatchEA2RMessage<R>): R {
 
 
 export class EA2RMessageVariantCreatedExternalWidget extends EA2RMessage {
+  static _variant = "CreatedExternalWidget";
 
 constructor (public texture_info: Seq<uint8>) {
   super();
@@ -535,6 +552,7 @@ static load(deserializer: Deserializer): EA2RMessageVariantCreatedExternalWidget
 }
 
 export class EA2RMessageVariantSpontaneousUpdate extends EA2RMessage {
+  static _variant = "SpontaneousUpdate";
 constructor () {
   super();
 }
@@ -550,6 +568,7 @@ static load(deserializer: Deserializer): EA2RMessageVariantSpontaneousUpdate {
 }
 
 export class EA2RMessageVariantUpdateHandled extends EA2RMessage {
+  static _variant = "UpdateHandled";
 constructor () {
   super();
 }
@@ -565,6 +584,7 @@ static load(deserializer: Deserializer): EA2RMessageVariantUpdateHandled {
 }
 
 export class EA2RMessageVariantError extends EA2RMessage {
+  static _variant = "Error";
 
 constructor (public value: Error) {
   super();
@@ -611,6 +631,7 @@ interface PartialMatchEventType<R> {
 type MatchEventType<R> = PartialMatchEventType<R> | FullMatchEventType<R>;
 
 export abstract class EventType {
+  static _variant: string = undefined as unknown as string;
 abstract serialize(serializer: Serializer): void;
 
 static deserialize(deserializer: Deserializer): EventType {
@@ -621,7 +642,7 @@ static deserialize(deserializer: Deserializer): EventType {
   }
 }
 match<R>(handlers: MatchEventType<R>): R {
-  let handler = (handlers as any)[this.constructor.name.slice(16)];
+  let handler = (handlers as any)[(this.constructor as any)._variant];
   return (handler || (handlers as any)['_'])(this);
 }
 
@@ -629,6 +650,7 @@ match<R>(handlers: MatchEventType<R>): R {
 
 
 export class EventTypeVariantClick extends EventType {
+  static _variant = "Click";
 
 constructor (public rect: OpId) {
   super();
@@ -704,6 +726,7 @@ interface PartialMatchHandlerCmd<R> {
 type MatchHandlerCmd<R> = PartialMatchHandlerCmd<R> | FullMatchHandlerCmd<R>;
 
 export abstract class HandlerCmd {
+  static _variant: string = undefined as unknown as string;
 abstract serialize(serializer: Serializer): void;
 
 static deserialize(deserializer: Deserializer): HandlerCmd {
@@ -720,7 +743,7 @@ static deserialize(deserializer: Deserializer): HandlerCmd {
   }
 }
 match<R>(handlers: MatchHandlerCmd<R>): R {
-  let handler = (handlers as any)[this.constructor.name.slice(17)];
+  let handler = (handlers as any)[(this.constructor as any)._variant];
   return (handler || (handlers as any)['_'])(this);
 }
 
@@ -728,6 +751,7 @@ match<R>(handlers: MatchHandlerCmd<R>): R {
 
 
 export class HandlerCmdVariantNop extends HandlerCmd {
+  static _variant = "Nop";
 constructor () {
   super();
 }
@@ -743,6 +767,7 @@ static load(deserializer: Deserializer): HandlerCmdVariantNop {
 }
 
 export class HandlerCmdVariantAllocateWindowId extends HandlerCmd {
+  static _variant = "AllocateWindowId";
 constructor () {
   super();
 }
@@ -758,6 +783,7 @@ static load(deserializer: Deserializer): HandlerCmdVariantAllocateWindowId {
 }
 
 export class HandlerCmdVariantReparentScene extends HandlerCmd {
+  static _variant = "ReparentScene";
 
 constructor (public scene: uint32, public to: A2RReparentScene) {
   super();
@@ -778,6 +804,7 @@ static load(deserializer: Deserializer): HandlerCmdVariantReparentScene {
 }
 
 export class HandlerCmdVariantUpdateVar extends HandlerCmd {
+  static _variant = "UpdateVar";
 
 constructor (public var_: VarId, public value: OpId) {
   super();
@@ -798,6 +825,7 @@ static load(deserializer: Deserializer): HandlerCmdVariantUpdateVar {
 }
 
 export class HandlerCmdVariantDebugMessage extends HandlerCmd {
+  static _variant = "DebugMessage";
 
 constructor (public msg: str) {
   super();
@@ -816,6 +844,7 @@ static load(deserializer: Deserializer): HandlerCmdVariantDebugMessage {
 }
 
 export class HandlerCmdVariantReply extends HandlerCmd {
+  static _variant = "Reply";
 
 constructor (public path: str, public params: Seq<OpId>) {
   super();
@@ -836,6 +865,7 @@ static load(deserializer: Deserializer): HandlerCmdVariantReply {
 }
 
 export class HandlerCmdVariantIf extends HandlerCmd {
+  static _variant = "If";
 
 constructor (public condition: OpId, public then: HandlerCmd, public or_else: HandlerCmd) {
   super();
@@ -922,6 +952,7 @@ interface PartialMatchOpsOperation<R> {
 type MatchOpsOperation<R> = PartialMatchOpsOperation<R> | FullMatchOpsOperation<R>;
 
 export abstract class OpsOperation {
+  static _variant: string = undefined as unknown as string;
 abstract serialize(serializer: Serializer): void;
 
 static deserialize(deserializer: Deserializer): OpsOperation {
@@ -950,7 +981,7 @@ static deserialize(deserializer: Deserializer): OpsOperation {
   }
 }
 match<R>(handlers: MatchOpsOperation<R>): R {
-  let handler = (handlers as any)[this.constructor.name.slice(19)];
+  let handler = (handlers as any)[(this.constructor as any)._variant];
   return (handler || (handlers as any)['_'])(this);
 }
 
@@ -958,6 +989,7 @@ match<R>(handlers: MatchOpsOperation<R>): R {
 
 
 export class OpsOperationVariantValue extends OpsOperation {
+  static _variant = "Value";
 
 constructor (public value: Value) {
   super();
@@ -976,6 +1008,7 @@ static load(deserializer: Deserializer): OpsOperationVariantValue {
 }
 
 export class OpsOperationVariantVar extends OpsOperation {
+  static _variant = "Var";
 
 constructor (public value: VarId) {
   super();
@@ -994,6 +1027,7 @@ static load(deserializer: Deserializer): OpsOperationVariantVar {
 }
 
 export class OpsOperationVariantGetTime extends OpsOperation {
+  static _variant = "GetTime";
 constructor () {
   super();
 }
@@ -1009,6 +1043,7 @@ static load(deserializer: Deserializer): OpsOperationVariantGetTime {
 }
 
 export class OpsOperationVariantGetTimeAndClamp extends OpsOperation {
+  static _variant = "GetTimeAndClamp";
 
 constructor (public low: OpId, public high: OpId) {
   super();
@@ -1029,6 +1064,7 @@ static load(deserializer: Deserializer): OpsOperationVariantGetTimeAndClamp {
 }
 
 export class OpsOperationVariantAdd extends OpsOperation {
+  static _variant = "Add";
 
 constructor (public a: OpId, public b: OpId) {
   super();
@@ -1049,6 +1085,7 @@ static load(deserializer: Deserializer): OpsOperationVariantAdd {
 }
 
 export class OpsOperationVariantNeg extends OpsOperation {
+  static _variant = "Neg";
 
 constructor (public a: OpId) {
   super();
@@ -1067,6 +1104,7 @@ static load(deserializer: Deserializer): OpsOperationVariantNeg {
 }
 
 export class OpsOperationVariantMul extends OpsOperation {
+  static _variant = "Mul";
 
 constructor (public a: OpId, public b: OpId) {
   super();
@@ -1087,6 +1125,7 @@ static load(deserializer: Deserializer): OpsOperationVariantMul {
 }
 
 export class OpsOperationVariantDiv extends OpsOperation {
+  static _variant = "Div";
 
 constructor (public a: OpId, public b: OpId) {
   super();
@@ -1107,6 +1146,7 @@ static load(deserializer: Deserializer): OpsOperationVariantDiv {
 }
 
 export class OpsOperationVariantFloorDiv extends OpsOperation {
+  static _variant = "FloorDiv";
 
 constructor (public a: OpId, public b: OpId) {
   super();
@@ -1127,6 +1167,7 @@ static load(deserializer: Deserializer): OpsOperationVariantFloorDiv {
 }
 
 export class OpsOperationVariantEq extends OpsOperation {
+  static _variant = "Eq";
 
 constructor (public a: OpId, public b: OpId) {
   super();
@@ -1147,6 +1188,7 @@ static load(deserializer: Deserializer): OpsOperationVariantEq {
 }
 
 export class OpsOperationVariantMin extends OpsOperation {
+  static _variant = "Min";
 
 constructor (public a: OpId, public b: OpId) {
   super();
@@ -1167,6 +1209,7 @@ static load(deserializer: Deserializer): OpsOperationVariantMin {
 }
 
 export class OpsOperationVariantMax extends OpsOperation {
+  static _variant = "Max";
 
 constructor (public a: OpId, public b: OpId) {
   super();
@@ -1187,6 +1230,7 @@ static load(deserializer: Deserializer): OpsOperationVariantMax {
 }
 
 export class OpsOperationVariantAbs extends OpsOperation {
+  static _variant = "Abs";
 
 constructor (public a: OpId) {
   super();
@@ -1205,6 +1249,7 @@ static load(deserializer: Deserializer): OpsOperationVariantAbs {
 }
 
 export class OpsOperationVariantSin extends OpsOperation {
+  static _variant = "Sin";
 
 constructor (public a: OpId) {
   super();
@@ -1223,6 +1268,7 @@ static load(deserializer: Deserializer): OpsOperationVariantSin {
 }
 
 export class OpsOperationVariantCos extends OpsOperation {
+  static _variant = "Cos";
 
 constructor (public a: OpId) {
   super();
@@ -1241,6 +1287,7 @@ static load(deserializer: Deserializer): OpsOperationVariantCos {
 }
 
 export class OpsOperationVariantMakePoint extends OpsOperation {
+  static _variant = "MakePoint";
 
 constructor (public left: OpId, public top: OpId) {
   super();
@@ -1261,6 +1308,7 @@ static load(deserializer: Deserializer): OpsOperationVariantMakePoint {
 }
 
 export class OpsOperationVariantMakeRectFromPoints extends OpsOperation {
+  static _variant = "MakeRectFromPoints";
 
 constructor (public left_top: OpId, public right_bottom: OpId) {
   super();
@@ -1281,6 +1329,7 @@ static load(deserializer: Deserializer): OpsOperationVariantMakeRectFromPoints {
 }
 
 export class OpsOperationVariantMakeRectFromSides extends OpsOperation {
+  static _variant = "MakeRectFromSides";
 
 constructor (public left: OpId, public top: OpId, public right: OpId, public bottom: OpId) {
   super();
@@ -1305,6 +1354,7 @@ static load(deserializer: Deserializer): OpsOperationVariantMakeRectFromSides {
 }
 
 export class OpsOperationVariantToString extends OpsOperation {
+  static _variant = "ToString";
 
 constructor (public a: OpId) {
   super();
@@ -1371,6 +1421,7 @@ interface PartialMatchR2AMessage<R> {
 type MatchR2AMessage<R> = PartialMatchR2AMessage<R> | FullMatchR2AMessage<R>;
 
 export abstract class R2AMessage {
+  static _variant: string = undefined as unknown as string;
 abstract serialize(serializer: Serializer): void;
 
 static deserialize(deserializer: Deserializer): R2AMessage {
@@ -1383,7 +1434,7 @@ static deserialize(deserializer: Deserializer): R2AMessage {
   }
 }
 match<R>(handlers: MatchR2AMessage<R>): R {
-  let handler = (handlers as any)[this.constructor.name.slice(17)];
+  let handler = (handlers as any)[(this.constructor as any)._variant];
   return (handler || (handlers as any)['_'])(this);
 }
 
@@ -1391,6 +1442,7 @@ match<R>(handlers: MatchR2AMessage<R>): R {
 
 
 export class R2AMessageVariantUpdate extends R2AMessage {
+  static _variant = "Update";
 
 constructor (public value: R2AUpdate) {
   super();
@@ -1409,6 +1461,7 @@ static load(deserializer: Deserializer): R2AMessageVariantUpdate {
 }
 
 export class R2AMessageVariantOpen extends R2AMessage {
+  static _variant = "Open";
 
 constructor (public value: R2AOpen) {
   super();
@@ -1427,6 +1480,7 @@ static load(deserializer: Deserializer): R2AMessageVariantOpen {
 }
 
 export class R2AMessageVariantError extends R2AMessage {
+  static _variant = "Error";
 
 constructor (public value: Error) {
   super();
@@ -1540,6 +1594,7 @@ interface PartialMatchR2EAMessage<R> {
 type MatchR2EAMessage<R> = PartialMatchR2EAMessage<R> | FullMatchR2EAMessage<R>;
 
 export abstract class R2EAMessage {
+  static _variant: string = undefined as unknown as string;
 abstract serialize(serializer: Serializer): void;
 
 static deserialize(deserializer: Deserializer): R2EAMessage {
@@ -1552,7 +1607,7 @@ static deserialize(deserializer: Deserializer): R2EAMessage {
   }
 }
 match<R>(handlers: MatchR2EAMessage<R>): R {
-  let handler = (handlers as any)[this.constructor.name.slice(18)];
+  let handler = (handlers as any)[(this.constructor as any)._variant];
   return (handler || (handlers as any)['_'])(this);
 }
 
@@ -1560,6 +1615,7 @@ match<R>(handlers: MatchR2EAMessage<R>): R {
 
 
 export class R2EAMessageVariantUpdate extends R2EAMessage {
+  static _variant = "Update";
 
 constructor (public value: R2EAUpdate) {
   super();
@@ -1578,6 +1634,7 @@ static load(deserializer: Deserializer): R2EAMessageVariantUpdate {
 }
 
 export class R2EAMessageVariantOpen extends R2EAMessage {
+  static _variant = "Open";
 
 constructor (public value: R2EAOpen) {
   super();
@@ -1596,6 +1653,7 @@ static load(deserializer: Deserializer): R2EAMessageVariantOpen {
 }
 
 export class R2EAMessageVariantError extends R2EAMessage {
+  static _variant = "Error";
 
 constructor (public value: Error) {
   super();
@@ -1665,6 +1723,7 @@ interface PartialMatchValue<R> {
 type MatchValue<R> = PartialMatchValue<R> | FullMatchValue<R>;
 
 export abstract class Value {
+  static _variant: string = undefined as unknown as string;
 abstract serialize(serializer: Serializer): void;
 
 static deserialize(deserializer: Deserializer): Value {
@@ -1680,7 +1739,7 @@ static deserialize(deserializer: Deserializer): Value {
   }
 }
 match<R>(handlers: MatchValue<R>): R {
-  let handler = (handlers as any)[this.constructor.name.slice(12)];
+  let handler = (handlers as any)[(this.constructor as any)._variant];
   return (handler || (handlers as any)['_'])(this);
 }
 
@@ -1688,6 +1747,7 @@ match<R>(handlers: MatchValue<R>): R {
 
 
 export class ValueVariantSint64 extends Value {
+  static _variant = "Sint64";
 
 constructor (public value: int64) {
   super();
@@ -1706,6 +1766,7 @@ static load(deserializer: Deserializer): ValueVariantSint64 {
 }
 
 export class ValueVariantDouble extends Value {
+  static _variant = "Double";
 
 constructor (public value: float64) {
   super();
@@ -1724,6 +1785,7 @@ static load(deserializer: Deserializer): ValueVariantDouble {
 }
 
 export class ValueVariantString extends Value {
+  static _variant = "String";
 
 constructor (public value: str) {
   super();
@@ -1742,6 +1804,7 @@ static load(deserializer: Deserializer): ValueVariantString {
 }
 
 export class ValueVariantColor extends Value {
+  static _variant = "Color";
 
 constructor (public value: Color) {
   super();
@@ -1760,6 +1823,7 @@ static load(deserializer: Deserializer): ValueVariantColor {
 }
 
 export class ValueVariantPoint extends Value {
+  static _variant = "Point";
 
 constructor (public left: float64, public top: float64) {
   super();
@@ -1780,6 +1844,7 @@ static load(deserializer: Deserializer): ValueVariantPoint {
 }
 
 export class ValueVariantRect extends Value {
+  static _variant = "Rect";
 
 constructor (public left: float64, public top: float64, public right: float64, public bottom: float64) {
   super();

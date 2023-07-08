@@ -264,7 +264,7 @@ export class StateMachine {
                 } else if (state.parent === "root") {
                     this.rootScenes.delete(reparent.scene);
                 } else {
-                    let parent = this.sceneStates.get(state.parent)!;
+                    let parent = this.sceneStates.get(state.parent as number)!;
                     // Remove ourselves from our parent's children
                     const childIdx = parent.children.indexOf(reparent.scene);
                     parent.children.splice(childIdx, 1);

@@ -529,6 +529,7 @@ return list;
                 "export class {0}Variant{1} extends {0} {{",
                 base, name
             )?;
+            writeln!(self.out, "  static _variant = \"{}\";", name)?;
             variant_base_name = format!("{0}Variant", base);
         } else {
             self.output_comment(name)?;
@@ -651,6 +652,10 @@ return list;
 
         self.output_comment(name)?;
         writeln!(self.out, "export abstract class {} {{", name)?;
+        writeln!(
+            self.out,
+            "  static _variant: string = undefined as unknown as string;"
+        )?;
         if self.generator.config.serialization {
             writeln!(
                 self.out,
@@ -689,11 +694,10 @@ switch (index) {{"#,
         writeln!(
             self.out,
             "match<R>(handlers: Match{0}<R>): R {{
-  let handler = (handlers as any)[this.constructor.name.slice({1})];
+  let handler = (handlers as any)[(this.constructor as any)._variant];
   return (handler || (handlers as any)['_'])(this);
 }}\n",
-            name,
-            name.len() + "Variant".len()
+            name
         )?;
         writeln!(self.out, "}}\n")?;
         self.output_variants(name, variants)?;
