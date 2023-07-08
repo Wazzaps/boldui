@@ -37,7 +37,10 @@ def calc_reply_handler(state: CalculatorState, _query_params: Dict[str, str], va
         case "x²":
             state.expr += "²"
         case "=":
-            state.expr = calculate(state.expr)
+            try:
+                state.expr = calculate(state.expr)
+            except Exception as e:
+                state.expr = "Error"
             if state.expr.endswith(".0"):
                 state.expr = state.expr[:-2]
         case "⌫":
