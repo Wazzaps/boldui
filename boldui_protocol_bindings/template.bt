@@ -250,13 +250,18 @@ struct Error {
 
 
 enum <uint32> EventType_TAGS {
-    EventType_Click = 0,
+    EventType_MouseDown = 0,
+    EventType_MouseUp = 1,
 };
 
 struct EventType {
     enum EventType_TAGS _tag;
 
     if (_tag == 0) {
+        OpId rect;
+    }
+
+    if (_tag == 1) {
         OpId rect;
     }
 
@@ -339,13 +344,18 @@ enum <uint32> OpsOperation_TAGS {
     OpsOperation_Eq = 9,
     OpsOperation_Min = 10,
     OpsOperation_Max = 11,
-    OpsOperation_Abs = 12,
-    OpsOperation_Sin = 13,
-    OpsOperation_Cos = 14,
-    OpsOperation_MakePoint = 15,
-    OpsOperation_MakeRectFromPoints = 16,
-    OpsOperation_MakeRectFromSides = 17,
-    OpsOperation_ToString = 18,
+    OpsOperation_Or = 12,
+    OpsOperation_And = 13,
+    OpsOperation_GreaterThan = 14,
+    OpsOperation_Abs = 15,
+    OpsOperation_Sin = 16,
+    OpsOperation_Cos = 17,
+    OpsOperation_MakePoint = 18,
+    OpsOperation_MakeRectFromPoints = 19,
+    OpsOperation_MakeRectFromSides = 20,
+    OpsOperation_MakeColor = 21,
+    OpsOperation_ToString = 22,
+    OpsOperation_If = 23,
 };
 
 struct OpsOperation {
@@ -408,35 +418,63 @@ struct OpsOperation {
 
     if (_tag == 12) {
         OpId a;
+        OpId b;
     }
 
     if (_tag == 13) {
         OpId a;
+        OpId b;
     }
 
     if (_tag == 14) {
         OpId a;
+        OpId b;
     }
 
     if (_tag == 15) {
+        OpId a;
+    }
+
+    if (_tag == 16) {
+        OpId a;
+    }
+
+    if (_tag == 17) {
+        OpId a;
+    }
+
+    if (_tag == 18) {
         OpId left;
         OpId top;
     }
 
-    if (_tag == 16) {
+    if (_tag == 19) {
         OpId left_top;
         OpId right_bottom;
     }
 
-    if (_tag == 17) {
+    if (_tag == 20) {
         OpId left;
         OpId top;
         OpId right;
         OpId bottom;
     }
 
-    if (_tag == 18) {
+    if (_tag == 21) {
+        OpId r;
+        OpId g;
+        OpId b;
         OpId a;
+    }
+
+    if (_tag == 22) {
+        OpId a;
+    }
+
+    if (_tag == 23) {
+        OpId condition;
+        OpId then;
+        OpId or_else;
     }
 
 };

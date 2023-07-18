@@ -4,7 +4,7 @@ import boldui
 import dataclasses
 from typing import Dict, Optional, List
 from boldui_protocol import *
-from boldui import OpWrapper, st
+from boldui import ClientSide, st
 
 # noinspection PyUnresolvedReferences
 from boldui import eprint, print

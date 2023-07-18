@@ -7,7 +7,7 @@ import boldui
 import dataclasses
 from typing import Dict, List
 from boldui_protocol import *
-from boldui import OpWrapper, st
+from boldui import ClientSide, st
 
 # noinspection PyUnresolvedReferences
 from boldui import eprint, print
@@ -97,7 +97,7 @@ def calc_view(state: CalculatorState, _query_params: Dict[str, str]):
     equals_button_color = s.hex_color(0xE66100)
     button_text_color = s.hex_color(0xFFFFFF)
 
-    def make_btn(color: OpWrapper, x: int, y: int, height: int, text: str, text_color: OpWrapper):
+    def make_btn(color: ClientSide, x: int, y: int, height: int, text: str, text_color: ClientSide):
         TOP_PADDING = 79.0
         LEFT_PADDING = 12.0
         X_PADDING = 4.0
@@ -119,7 +119,7 @@ def calc_view(state: CalculatorState, _query_params: Dict[str, str]):
 
         text_val = s.value(text)
         text_pos = s.point(
-            left=LEFT_PADDING + x * (X_PADDING + BTN_WIDTH) + BTN_WIDTH / 2.0,
+            left=s.value(LEFT_PADDING + x * (X_PADDING + BTN_WIDTH) + BTN_WIDTH / 2.0),
             top=TOP_PADDING + y * (Y_PADDING + BTN_HEIGHT) + (BTN_HEIGHT * height) / 2.0,
         )
         s.cmd_draw_centered_text(text=text_val, paint=text_color, center=text_pos)

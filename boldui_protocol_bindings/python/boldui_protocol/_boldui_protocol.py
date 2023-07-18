@@ -405,13 +405,20 @@ class EventType:
 
 
 @dataclass(frozen=True)
-class EventType__Click(EventType):
+class EventType__MouseDown(EventType):
     INDEX = 0  # type: int
     rect: "OpId"
 
 
+@dataclass(frozen=True)
+class EventType__MouseUp(EventType):
+    INDEX = 1  # type: int
+    rect: "OpId"
+
+
 EventType.VARIANTS = [
-    EventType__Click,
+    EventType__MouseDown,
+    EventType__MouseUp,
 ]
 
 
@@ -650,40 +657,61 @@ class OpsOperation__Max(OpsOperation):
 
 
 @dataclass(frozen=True)
-class OpsOperation__Abs(OpsOperation):
+class OpsOperation__Or(OpsOperation):
     INDEX = 12  # type: int
+    a: "OpId"
+    b: "OpId"
+
+
+@dataclass(frozen=True)
+class OpsOperation__And(OpsOperation):
+    INDEX = 13  # type: int
+    a: "OpId"
+    b: "OpId"
+
+
+@dataclass(frozen=True)
+class OpsOperation__GreaterThan(OpsOperation):
+    INDEX = 14  # type: int
+    a: "OpId"
+    b: "OpId"
+
+
+@dataclass(frozen=True)
+class OpsOperation__Abs(OpsOperation):
+    INDEX = 15  # type: int
     a: "OpId"
 
 
 @dataclass(frozen=True)
 class OpsOperation__Sin(OpsOperation):
-    INDEX = 13  # type: int
+    INDEX = 16  # type: int
     a: "OpId"
 
 
 @dataclass(frozen=True)
 class OpsOperation__Cos(OpsOperation):
-    INDEX = 14  # type: int
+    INDEX = 17  # type: int
     a: "OpId"
 
 
 @dataclass(frozen=True)
 class OpsOperation__MakePoint(OpsOperation):
-    INDEX = 15  # type: int
+    INDEX = 18  # type: int
     left: "OpId"
     top: "OpId"
 
 
 @dataclass(frozen=True)
 class OpsOperation__MakeRectFromPoints(OpsOperation):
-    INDEX = 16  # type: int
+    INDEX = 19  # type: int
     left_top: "OpId"
     right_bottom: "OpId"
 
 
 @dataclass(frozen=True)
 class OpsOperation__MakeRectFromSides(OpsOperation):
-    INDEX = 17  # type: int
+    INDEX = 20  # type: int
     left: "OpId"
     top: "OpId"
     right: "OpId"
@@ -691,9 +719,26 @@ class OpsOperation__MakeRectFromSides(OpsOperation):
 
 
 @dataclass(frozen=True)
-class OpsOperation__ToString(OpsOperation):
-    INDEX = 18  # type: int
+class OpsOperation__MakeColor(OpsOperation):
+    INDEX = 21  # type: int
+    r: "OpId"
+    g: "OpId"
+    b: "OpId"
     a: "OpId"
+
+
+@dataclass(frozen=True)
+class OpsOperation__ToString(OpsOperation):
+    INDEX = 22  # type: int
+    a: "OpId"
+
+
+@dataclass(frozen=True)
+class OpsOperation__If(OpsOperation):
+    INDEX = 23  # type: int
+    condition: "OpId"
+    then: "OpId"
+    or_else: "OpId"
 
 
 OpsOperation.VARIANTS = [
@@ -709,13 +754,18 @@ OpsOperation.VARIANTS = [
     OpsOperation__Eq,
     OpsOperation__Min,
     OpsOperation__Max,
+    OpsOperation__Or,
+    OpsOperation__And,
+    OpsOperation__GreaterThan,
     OpsOperation__Abs,
     OpsOperation__Sin,
     OpsOperation__Cos,
     OpsOperation__MakePoint,
     OpsOperation__MakeRectFromPoints,
     OpsOperation__MakeRectFromSides,
+    OpsOperation__MakeColor,
     OpsOperation__ToString,
+    OpsOperation__If,
 ]
 
 

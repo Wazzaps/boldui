@@ -253,6 +253,18 @@ pub enum OpsOperation {
         a: OpId,
         b: OpId,
     },
+    Or {
+        a: OpId,
+        b: OpId,
+    },
+    And {
+        a: OpId,
+        b: OpId,
+    },
+    GreaterThan {
+        a: OpId,
+        b: OpId,
+    },
     Abs {
         a: OpId,
     },
@@ -276,8 +288,19 @@ pub enum OpsOperation {
         right: OpId,
         bottom: OpId,
     },
+    MakeColor {
+        r: OpId,
+        g: OpId,
+        b: OpId,
+        a: OpId,
+    },
     ToString {
         a: OpId,
+    },
+    If {
+        condition: OpId,
+        then: OpId,
+        or_else: OpId,
     },
 }
 
@@ -310,7 +333,8 @@ pub struct Watch {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub enum EventType {
-    Click { rect: OpId },
+    MouseDown { rect: OpId },
+    MouseUp { rect: OpId },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]

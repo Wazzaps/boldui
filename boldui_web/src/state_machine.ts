@@ -1,47 +1,13 @@
 import {Communicator} from "./comm";
 import {
-    A2RReparentSceneVariantAfter,
-    A2RReparentSceneVariantDisconnect,
-    A2RReparentSceneVariantHide,
-    A2RReparentSceneVariantInside,
-    A2RReparentSceneVariantRoot,
     A2RUpdate,
     A2RUpdateScene,
     CmdsCommand,
-    CmdsCommandVariantClear,
-    CmdsCommandVariantDrawCenteredText,
-    CmdsCommandVariantDrawRect,
-    CmdsCommandVariantDrawRoundRect,
-    EventTypeVariantClick,
+    Color,
     HandlerBlock,
     HandlerCmd,
-    HandlerCmdVariantAllocateWindowId,
-    HandlerCmdVariantDebugMessage,
-    HandlerCmdVariantIf,
-    HandlerCmdVariantNop,
-    HandlerCmdVariantReparentScene,
-    HandlerCmdVariantReply,
-    HandlerCmdVariantUpdateVar,
     OpId,
     OpsOperation,
-    OpsOperationVariantAbs,
-    OpsOperationVariantAdd,
-    OpsOperationVariantCos,
-    OpsOperationVariantDiv,
-    OpsOperationVariantEq,
-    OpsOperationVariantGetTime,
-    OpsOperationVariantGetTimeAndClamp,
-    OpsOperationVariantMakePoint,
-    OpsOperationVariantMakeRectFromPoints,
-    OpsOperationVariantMakeRectFromSides,
-    OpsOperationVariantMax,
-    OpsOperationVariantMin,
-    OpsOperationVariantMul,
-    OpsOperationVariantNeg,
-    OpsOperationVariantSin,
-    OpsOperationVariantToString,
-    OpsOperationVariantValue,
-    OpsOperationVariantVar,
     R2AMessageVariantUpdate,
     R2AReply,
     R2AUpdate,
@@ -70,7 +36,7 @@ export class StateMachine {
     private sceneStates = new Map<number, SceneState>();
     private rootScenes = new Set();
     private context?: Value[];
-    private startTime = new Date().getTime();
+    private startTime = window.performance.now();
     private watchesToRun: HandlerBlock[] = [];
     public comm?: Communicator;
 
@@ -169,6 +135,7 @@ export class StateMachine {
         const app = document.getElementById("app") as unknown as SVGElement;
         const rootScene = this.rootScenes.values().next().value;
         if (rootScene) {
+            console.time("render");
             const scene = this.scenes.get(rootScene)!;
             if (location.hash.slice(1) != scene.uri) {
                 history.replaceState({}, "", `#${scene.uri}`);
@@ -198,54 +165,63 @@ export class StateMachine {
             this.watchesToRun.length = 0;
 
             app.onpointerdown = (e) => {
-                this.handleClick(rootScene, e.offsetX, e.offsetY);
+                this.handleRectEvent("MouseDown", rootScene, e.offsetX, e.offsetY);
+            }
+            app.onpointerup = (e) => {
+                this.handleRectEvent("MouseUp", rootScene, e.offsetX, e.offsetY);
             }
             if (state.dependsOnTime) {
                 requestAnimationFrame(this.renderAndRunWatches);
             }
+            console.timeEnd("render");
         }
     }
 
-    public handleClick = (scnIdx: number, x: number, y: number) => {
+    public handleRectEvent = (eventType: string, scnIdx: number, x: number, y: number) => {
         const scene = this.scenes.get(scnIdx)!;
         for (const [trigger, handler] of scene.event_handlers) {
-            trigger.match({
-                Click: (click: EventTypeVariantClick) => {
-                    let rect = this.asRect(this.lookupOp(click.rect));
-                    if (x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom) {
-                        this.context = [];
-                        this.evalOpList(handler.ops, this.context);
-                        for (let cmd of handler.cmds) {
-                            this.evalHandlerCmd(cmd);
-                        }
-                        this.context = undefined;
+            let handlers = {
+                _: (_: any) => {
+                }
+            }
+            // @ts-ignore
+            handlers[eventType] = (click: { rect: OpId }) => {
+                let rect = this.asRect(this.lookupOp(click.rect));
+                if (x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom) {
+                    this.context = [];
+                    this.evalOpList(handler.ops, this.context);
+                    for (let cmd of handler.cmds) {
+                        this.evalHandlerCmd(cmd);
                     }
-                },
-            });
+                    this.context = undefined;
+                }
+            };
+            trigger.match(handlers);
         }
+        requestAnimationFrame(this.renderAndRunWatches);
     }
 
     private evalDrawCmd = (cmd: CmdsCommand): string => {
         return cmd.match({
-            Clear: (clear: CmdsCommandVariantClear) => {
+            Clear: clear => {
                 const rootScene = this.rootScenes.values().next().value;
                 let paint = this.asRGBAColor(this.lookupOp(clear.color));
                 let width = this.asDouble(this.sceneStates.get(rootScene)?.varVals.get(":width")!);
                 let height = this.asDouble(this.sceneStates.get(rootScene)?.varVals.get(":height")!);
                 return `<rect x="0" y="0" width="${width}" height="${height}" style="fill:${paint};" />`;
             },
-            DrawRect: (drawRect: CmdsCommandVariantDrawRect) => {
+            DrawRect: drawRect => {
                 let paint = this.asRGBAColor(this.lookupOp(drawRect.paint));
                 let rect = this.asRect(this.lookupOp(drawRect.rect));
                 return `<rect x="${rect.left}" y="${rect.top}" width="${rect.right - rect.left}" height="${rect.bottom - rect.top}" style="fill:${paint};" />`;
             },
-            DrawRoundRect: (drawRect: CmdsCommandVariantDrawRoundRect) => {
+            DrawRoundRect: drawRect => {
                 let paint = this.asRGBAColor(this.lookupOp(drawRect.paint));
                 let rect = this.asRect(this.lookupOp(drawRect.rect));
                 let radius = this.asDouble(this.lookupOp(drawRect.radius));
                 return `<rect x="${rect.left}" y="${rect.top}" width="${rect.right - rect.left}" height="${rect.bottom - rect.top}" style="fill:${paint};" rx="${radius}" />`;
             },
-            DrawCenteredText: (drawCenteredText: CmdsCommandVariantDrawCenteredText) => {
+            DrawCenteredText: drawCenteredText => {
                 let text = this.asString(this.lookupOp(drawCenteredText.text));
                 let paint = this.asRGBAColor(this.lookupOp(drawCenteredText.paint));
                 let center = this.asPoint(this.lookupOp(drawCenteredText.center));
@@ -256,7 +232,7 @@ export class StateMachine {
 
     private evalHandlerCmd = (cmd: HandlerCmd) => {
         cmd.match({
-            ReparentScene: (reparent: HandlerCmdVariantReparentScene) => {
+            ReparentScene: reparent => {
                 // Remove previous parent
                 let state = this.sceneStates.get(reparent.scene)!;
                 if (!state.parent) {
@@ -274,49 +250,50 @@ export class StateMachine {
 
                 // Add new parent
                 reparent.to.match({
-                    Root: (_root: A2RReparentSceneVariantRoot) => {
+                    Root: _root => {
                         this.rootScenes.add(reparent.scene);
                         state.parent = "root";
                     },
-                    Inside: (inside: A2RReparentSceneVariantInside) => {
+                    Inside: inside => {
                         let newParent = this.sceneStates.get(inside.value)!;
                         newParent.children.push(reparent.scene);
                         state.parent = inside.value;
                     },
-                    After: (after: A2RReparentSceneVariantAfter) => {
+                    After: after => {
                         let sibling = this.sceneStates.get(after.value)!;
                         let newParentIdx = sibling.parent! as number;
                         let newParent = this.sceneStates.get(newParentIdx)!;
                         newParent.children.splice(after.value + 1, 0, reparent.scene);
                         state.parent = newParentIdx;
                     },
-                    Disconnect: (_disconnect: A2RReparentSceneVariantDisconnect) => {
+                    Disconnect: _disconnect => {
                         // Was already disconnected, nothing to do
                     },
-                    Hide: (_hide: A2RReparentSceneVariantHide) => {
+                    Hide: _hide => {
                         state.parent = "hidden";
                     },
                 });
             },
-            UpdateVar: (updateVar: HandlerCmdVariantUpdateVar) => {
+            UpdateVar: updateVar => {
                 let value = this.lookupOp(updateVar.value);
+                console.log(`UpdateVar ${updateVar.var_.scene} ${updateVar.var_.key} = ${debugFmt(value)}`);
                 this.sceneStates.get(updateVar.var_.scene)!.varVals.set(updateVar.var_.key, value);
             },
-            Reply: (reply: HandlerCmdVariantReply) => {
+            Reply: reply => {
                 let path = reply.path;
                 let params = reply.params.map((p: OpId) => this.lookupOp(p));
                 this.comm!.send(new R2AMessageVariantUpdate(new R2AUpdate([new R2AReply(path, params)])));
             },
-            AllocateWindowId: (allocateWindowId: HandlerCmdVariantAllocateWindowId) => {
+            AllocateWindowId: allocateWindowId => {
                 throw new Error(`AllocateWindowId not implemented: ${debugFmt(allocateWindowId)}`);
             },
-            DebugMessage: (debugMessage: HandlerCmdVariantDebugMessage) => {
+            DebugMessage: debugMessage => {
                 console.log("DebugMessage: " + debugMessage.msg);
             },
-            If: (if_: HandlerCmdVariantIf) => {
+            If: if_ => {
                 throw new Error(`If not implemented: ${debugFmt(if_)}`);
             },
-            Nop: (_nop: HandlerCmdVariantNop) => {
+            Nop: _nop => {
             },
         });
     }
@@ -349,6 +326,15 @@ export class StateMachine {
             Sint64: (v) => Number(v.value),
             _: (_v) => {
                 throw new Error("Invalid cast to double");
+            },
+        });
+    }
+
+    private asSint64 = (val: Value): bigint => {
+        return val.match({
+            Sint64: (v) => v.value,
+            _: (_v) => {
+                throw new Error("Invalid cast to Signed Int64");
             },
         });
     }
@@ -413,47 +399,66 @@ export class StateMachine {
 
 
         return op.match({
-            Value: (value: OpsOperationVariantValue) => value.value,
-            Var: ({value: var_}: OpsOperationVariantVar) => {
+            Value: value => value.value,
+            Var: ({value: var_}) => {
                 return this.lookupVar(new VarId(var_.scene, var_.key))!;
             },
-            Add: (add: OpsOperationVariantAdd) => {
+            Add: add => {
                 let a = this.asDouble(this.lookupOp(add.a));
                 let b = this.asDouble(this.lookupOp(add.b));
                 return new ValueVariantDouble(a + b);
             },
-            Mul: (mul: OpsOperationVariantMul) => {
+            Mul: mul => {
                 let a = this.asDouble(this.lookupOp(mul.a));
                 let b = this.asDouble(this.lookupOp(mul.b));
                 return new ValueVariantDouble(a * b);
             },
-            Min: (min: OpsOperationVariantMin) => {
+            Min: min => {
                 let a = this.asDouble(this.lookupOp(min.a));
                 let b = this.asDouble(this.lookupOp(min.b));
                 return new ValueVariantDouble(Math.min(a, b));
             },
-            Max: (max: OpsOperationVariantMax) => {
+            Max: max => {
                 let a = this.asDouble(this.lookupOp(max.a));
                 let b = this.asDouble(this.lookupOp(max.b));
                 return new ValueVariantDouble(Math.max(a, b));
             },
-            Abs: (abs: OpsOperationVariantAbs) => {
+            GreaterThan: gt => {
+                let a = this.asDouble(this.lookupOp(gt.a));
+                let b = this.asDouble(this.lookupOp(gt.b));
+                return new ValueVariantSint64(BigInt(a > b));
+            },
+            If: if_ => {
+                let condition = this.asSint64(this.lookupOp(if_.condition));
+                return condition ? this.lookupOp(if_.then) : this.lookupOp(if_.or_else);
+            },
+            And: and => {
+                let a = this.asSint64(this.lookupOp(and.a));
+                let b = this.asSint64(this.lookupOp(and.b));
+                return new ValueVariantSint64(BigInt(a && b));
+            },
+            Or: or => {
+                let a = this.asSint64(this.lookupOp(or.a));
+                let b = this.asSint64(this.lookupOp(or.b));
+                return new ValueVariantSint64(BigInt(a || b));
+            },
+            Abs: abs => {
                 let a = this.asDouble(this.lookupOp(abs.a));
                 return new ValueVariantDouble(Math.abs(a));
             },
-            Sin: (sin: OpsOperationVariantSin) => {
+            Sin: sin => {
                 let a = this.asDouble(this.lookupOp(sin.a));
                 return new ValueVariantDouble(Math.sin(a));
             },
-            Cos: (cos: OpsOperationVariantCos) => {
+            Cos: cos => {
                 let a = this.asDouble(this.lookupOp(cos.a));
                 return new ValueVariantDouble(Math.cos(a));
             },
-            Neg: (neg: OpsOperationVariantNeg) => {
+            Neg: neg => {
                 let a = this.asDouble(this.lookupOp(neg.a));
                 return new ValueVariantDouble(-a);
             },
-            Div: (div: OpsOperationVariantDiv) => {
+            Div: div => {
                 let a = this.asDouble(this.lookupOp(div.a));
                 let b = this.asDouble(this.lookupOp(div.b));
                 if (b === 0) {
@@ -461,7 +466,7 @@ export class StateMachine {
                 }
                 return new ValueVariantDouble(a / b);
             },
-            FloorDiv: (div: OpsOperationVariantDiv) => {
+            FloorDiv: div => {
                 let a = this.asDouble(this.lookupOp(div.a));
                 let b = this.asDouble(this.lookupOp(div.b));
                 if (b === 0) {
@@ -469,44 +474,53 @@ export class StateMachine {
                 }
                 return new ValueVariantSint64(BigInt(Math.floor(a / b)));
             },
-            MakeRectFromSides: (makeRectFromSides: OpsOperationVariantMakeRectFromSides) => {
+            MakeRectFromSides: makeRectFromSides => {
                 let left = this.asDouble(this.lookupOp(makeRectFromSides.left));
                 let top = this.asDouble(this.lookupOp(makeRectFromSides.top));
                 let right = this.asDouble(this.lookupOp(makeRectFromSides.right));
                 let bottom = this.asDouble(this.lookupOp(makeRectFromSides.bottom));
                 return new ValueVariantRect(left, top, right, bottom);
             },
-            MakeRectFromPoints: (makeRectFromPoints: OpsOperationVariantMakeRectFromPoints) => {
+            MakeRectFromPoints: makeRectFromPoints => {
                 let left_top = this.asPoint(this.lookupOp(makeRectFromPoints.left_top));
                 let right_bottom = this.asPoint(this.lookupOp(makeRectFromPoints.right_bottom));
                 return new ValueVariantRect(left_top.left, left_top.top, right_bottom.left, right_bottom.top);
             },
-            MakePoint: (makePoint: OpsOperationVariantMakePoint) => {
+            MakePoint: makePoint => {
                 let left = this.asDouble(this.lookupOp(makePoint.left));
                 let top = this.asDouble(this.lookupOp(makePoint.top));
                 return new ValueVariantPoint(left, top);
             },
-            GetTime: (_getTime: OpsOperationVariantGetTime) => {
+            MakeColor: makeColor => {
+                let r = Number(this.asSint64(this.lookupOp(makeColor.r)));
+                let g = Number(this.asSint64(this.lookupOp(makeColor.g)));
+                let b = Number(this.asSint64(this.lookupOp(makeColor.b)));
+                let a = Number(this.asSint64(this.lookupOp(makeColor.a)));
+                return new ValueVariantColor(new Color(r, g, b, a));
+            },
+            GetTime: _getTime => {
                 if (currentSceneState) {
+                    console.log("depends on time");
                     currentSceneState.dependsOnTime = true;
                 }
-                return new ValueVariantDouble(((new Date().getTime()) - this.startTime) / 1000);
+                return new ValueVariantDouble((window.performance.now() - this.startTime) / 1000);
             },
-            GetTimeAndClamp: (getTimeAndClamp: OpsOperationVariantGetTimeAndClamp) => {
+            GetTimeAndClamp: getTimeAndClamp => {
                 let low = this.asDouble(this.lookupOp(getTimeAndClamp.low));
                 let high = this.asDouble(this.lookupOp(getTimeAndClamp.high));
-                let val = ((new Date().getTime()) - this.startTime) / 1000;
+                let val = (window.performance.now() - this.startTime) / 1000;
                 if (currentSceneState && val < high) {
+                    console.log("scene depends on time");
                     currentSceneState.dependsOnTime = true;
                 }
                 return new ValueVariantDouble(Math.min(high, Math.max(low, val)));
             },
-            Eq: (eq: OpsOperationVariantEq) => {
+            Eq: eq => {
                 let a = this.lookupOp(eq.a);
                 let b = this.lookupOp(eq.b);
                 return new ValueVariantSint64(BigInt(objectEquals(a, b)));
             },
-            ToString: (toString: OpsOperationVariantToString) => {
+            ToString: toString => {
                 let a = this.lookupOp(toString.a);
                 return new ValueVariantString(a.toString());
             }

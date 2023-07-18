@@ -619,11 +619,13 @@ static deserialize(deserializer: Deserializer): Error {
 
 }
 interface FullMatchEventType<R> {
-  Click: (value: EventTypeVariantClick) => R,
+  MouseDown: (value: EventTypeVariantMouseDown) => R,
+  MouseUp: (value: EventTypeVariantMouseUp) => R,
 }
 
 interface PartialMatchEventType<R> {
-  Click?: (value: EventTypeVariantClick) => R,
+  MouseDown?: (value: EventTypeVariantMouseDown) => R,
+  MouseUp?: (value: EventTypeVariantMouseUp) => R,
   _: (value: EventType) => R,
 
 }
@@ -637,7 +639,8 @@ abstract serialize(serializer: Serializer): void;
 static deserialize(deserializer: Deserializer): EventType {
   const index = deserializer.deserializeVariantIndex();
   switch (index) {
-    case 0: return EventTypeVariantClick.load(deserializer);
+    case 0: return EventTypeVariantMouseDown.load(deserializer);
+    case 1: return EventTypeVariantMouseUp.load(deserializer);
     default: throw new window.Error("Unknown variant index for EventType: " + index);
   }
 }
@@ -649,8 +652,8 @@ match<R>(handlers: MatchEventType<R>): R {
 }
 
 
-export class EventTypeVariantClick extends EventType {
-  static _variant = "Click";
+export class EventTypeVariantMouseDown extends EventType {
+  static _variant = "MouseDown";
 
 constructor (public rect: OpId) {
   super();
@@ -661,9 +664,28 @@ public serialize(serializer: Serializer): void {
   this.rect.serialize(serializer);
 }
 
-static load(deserializer: Deserializer): EventTypeVariantClick {
+static load(deserializer: Deserializer): EventTypeVariantMouseDown {
   const rect = OpId.deserialize(deserializer);
-  return new EventTypeVariantClick(rect);
+  return new EventTypeVariantMouseDown(rect);
+}
+
+}
+
+export class EventTypeVariantMouseUp extends EventType {
+  static _variant = "MouseUp";
+
+constructor (public rect: OpId) {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(1);
+  this.rect.serialize(serializer);
+}
+
+static load(deserializer: Deserializer): EventTypeVariantMouseUp {
+  const rect = OpId.deserialize(deserializer);
+  return new EventTypeVariantMouseUp(rect);
 }
 
 }
@@ -916,13 +938,18 @@ interface FullMatchOpsOperation<R> {
   Eq: (value: OpsOperationVariantEq) => R,
   Min: (value: OpsOperationVariantMin) => R,
   Max: (value: OpsOperationVariantMax) => R,
+  Or: (value: OpsOperationVariantOr) => R,
+  And: (value: OpsOperationVariantAnd) => R,
+  GreaterThan: (value: OpsOperationVariantGreaterThan) => R,
   Abs: (value: OpsOperationVariantAbs) => R,
   Sin: (value: OpsOperationVariantSin) => R,
   Cos: (value: OpsOperationVariantCos) => R,
   MakePoint: (value: OpsOperationVariantMakePoint) => R,
   MakeRectFromPoints: (value: OpsOperationVariantMakeRectFromPoints) => R,
   MakeRectFromSides: (value: OpsOperationVariantMakeRectFromSides) => R,
+  MakeColor: (value: OpsOperationVariantMakeColor) => R,
   ToString: (value: OpsOperationVariantToString) => R,
+  If: (value: OpsOperationVariantIf) => R,
 }
 
 interface PartialMatchOpsOperation<R> {
@@ -938,13 +965,18 @@ interface PartialMatchOpsOperation<R> {
   Eq?: (value: OpsOperationVariantEq) => R,
   Min?: (value: OpsOperationVariantMin) => R,
   Max?: (value: OpsOperationVariantMax) => R,
+  Or?: (value: OpsOperationVariantOr) => R,
+  And?: (value: OpsOperationVariantAnd) => R,
+  GreaterThan?: (value: OpsOperationVariantGreaterThan) => R,
   Abs?: (value: OpsOperationVariantAbs) => R,
   Sin?: (value: OpsOperationVariantSin) => R,
   Cos?: (value: OpsOperationVariantCos) => R,
   MakePoint?: (value: OpsOperationVariantMakePoint) => R,
   MakeRectFromPoints?: (value: OpsOperationVariantMakeRectFromPoints) => R,
   MakeRectFromSides?: (value: OpsOperationVariantMakeRectFromSides) => R,
+  MakeColor?: (value: OpsOperationVariantMakeColor) => R,
   ToString?: (value: OpsOperationVariantToString) => R,
+  If?: (value: OpsOperationVariantIf) => R,
   _: (value: OpsOperation) => R,
 
 }
@@ -970,13 +1002,18 @@ static deserialize(deserializer: Deserializer): OpsOperation {
     case 9: return OpsOperationVariantEq.load(deserializer);
     case 10: return OpsOperationVariantMin.load(deserializer);
     case 11: return OpsOperationVariantMax.load(deserializer);
-    case 12: return OpsOperationVariantAbs.load(deserializer);
-    case 13: return OpsOperationVariantSin.load(deserializer);
-    case 14: return OpsOperationVariantCos.load(deserializer);
-    case 15: return OpsOperationVariantMakePoint.load(deserializer);
-    case 16: return OpsOperationVariantMakeRectFromPoints.load(deserializer);
-    case 17: return OpsOperationVariantMakeRectFromSides.load(deserializer);
-    case 18: return OpsOperationVariantToString.load(deserializer);
+    case 12: return OpsOperationVariantOr.load(deserializer);
+    case 13: return OpsOperationVariantAnd.load(deserializer);
+    case 14: return OpsOperationVariantGreaterThan.load(deserializer);
+    case 15: return OpsOperationVariantAbs.load(deserializer);
+    case 16: return OpsOperationVariantSin.load(deserializer);
+    case 17: return OpsOperationVariantCos.load(deserializer);
+    case 18: return OpsOperationVariantMakePoint.load(deserializer);
+    case 19: return OpsOperationVariantMakeRectFromPoints.load(deserializer);
+    case 20: return OpsOperationVariantMakeRectFromSides.load(deserializer);
+    case 21: return OpsOperationVariantMakeColor.load(deserializer);
+    case 22: return OpsOperationVariantToString.load(deserializer);
+    case 23: return OpsOperationVariantIf.load(deserializer);
     default: throw new window.Error("Unknown variant index for OpsOperation: " + index);
   }
 }
@@ -1229,6 +1266,69 @@ static load(deserializer: Deserializer): OpsOperationVariantMax {
 
 }
 
+export class OpsOperationVariantOr extends OpsOperation {
+  static _variant = "Or";
+
+constructor (public a: OpId, public b: OpId) {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(12);
+  this.a.serialize(serializer);
+  this.b.serialize(serializer);
+}
+
+static load(deserializer: Deserializer): OpsOperationVariantOr {
+  const a = OpId.deserialize(deserializer);
+  const b = OpId.deserialize(deserializer);
+  return new OpsOperationVariantOr(a,b);
+}
+
+}
+
+export class OpsOperationVariantAnd extends OpsOperation {
+  static _variant = "And";
+
+constructor (public a: OpId, public b: OpId) {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(13);
+  this.a.serialize(serializer);
+  this.b.serialize(serializer);
+}
+
+static load(deserializer: Deserializer): OpsOperationVariantAnd {
+  const a = OpId.deserialize(deserializer);
+  const b = OpId.deserialize(deserializer);
+  return new OpsOperationVariantAnd(a,b);
+}
+
+}
+
+export class OpsOperationVariantGreaterThan extends OpsOperation {
+  static _variant = "GreaterThan";
+
+constructor (public a: OpId, public b: OpId) {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(14);
+  this.a.serialize(serializer);
+  this.b.serialize(serializer);
+}
+
+static load(deserializer: Deserializer): OpsOperationVariantGreaterThan {
+  const a = OpId.deserialize(deserializer);
+  const b = OpId.deserialize(deserializer);
+  return new OpsOperationVariantGreaterThan(a,b);
+}
+
+}
+
 export class OpsOperationVariantAbs extends OpsOperation {
   static _variant = "Abs";
 
@@ -1237,7 +1337,7 @@ constructor (public a: OpId) {
 }
 
 public serialize(serializer: Serializer): void {
-  serializer.serializeVariantIndex(12);
+  serializer.serializeVariantIndex(15);
   this.a.serialize(serializer);
 }
 
@@ -1256,7 +1356,7 @@ constructor (public a: OpId) {
 }
 
 public serialize(serializer: Serializer): void {
-  serializer.serializeVariantIndex(13);
+  serializer.serializeVariantIndex(16);
   this.a.serialize(serializer);
 }
 
@@ -1275,7 +1375,7 @@ constructor (public a: OpId) {
 }
 
 public serialize(serializer: Serializer): void {
-  serializer.serializeVariantIndex(14);
+  serializer.serializeVariantIndex(17);
   this.a.serialize(serializer);
 }
 
@@ -1294,7 +1394,7 @@ constructor (public left: OpId, public top: OpId) {
 }
 
 public serialize(serializer: Serializer): void {
-  serializer.serializeVariantIndex(15);
+  serializer.serializeVariantIndex(18);
   this.left.serialize(serializer);
   this.top.serialize(serializer);
 }
@@ -1315,7 +1415,7 @@ constructor (public left_top: OpId, public right_bottom: OpId) {
 }
 
 public serialize(serializer: Serializer): void {
-  serializer.serializeVariantIndex(16);
+  serializer.serializeVariantIndex(19);
   this.left_top.serialize(serializer);
   this.right_bottom.serialize(serializer);
 }
@@ -1336,7 +1436,7 @@ constructor (public left: OpId, public top: OpId, public right: OpId, public bot
 }
 
 public serialize(serializer: Serializer): void {
-  serializer.serializeVariantIndex(17);
+  serializer.serializeVariantIndex(20);
   this.left.serialize(serializer);
   this.top.serialize(serializer);
   this.right.serialize(serializer);
@@ -1353,6 +1453,31 @@ static load(deserializer: Deserializer): OpsOperationVariantMakeRectFromSides {
 
 }
 
+export class OpsOperationVariantMakeColor extends OpsOperation {
+  static _variant = "MakeColor";
+
+constructor (public r: OpId, public g: OpId, public b: OpId, public a: OpId) {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(21);
+  this.r.serialize(serializer);
+  this.g.serialize(serializer);
+  this.b.serialize(serializer);
+  this.a.serialize(serializer);
+}
+
+static load(deserializer: Deserializer): OpsOperationVariantMakeColor {
+  const r = OpId.deserialize(deserializer);
+  const g = OpId.deserialize(deserializer);
+  const b = OpId.deserialize(deserializer);
+  const a = OpId.deserialize(deserializer);
+  return new OpsOperationVariantMakeColor(r,g,b,a);
+}
+
+}
+
 export class OpsOperationVariantToString extends OpsOperation {
   static _variant = "ToString";
 
@@ -1361,13 +1486,36 @@ constructor (public a: OpId) {
 }
 
 public serialize(serializer: Serializer): void {
-  serializer.serializeVariantIndex(18);
+  serializer.serializeVariantIndex(22);
   this.a.serialize(serializer);
 }
 
 static load(deserializer: Deserializer): OpsOperationVariantToString {
   const a = OpId.deserialize(deserializer);
   return new OpsOperationVariantToString(a);
+}
+
+}
+
+export class OpsOperationVariantIf extends OpsOperation {
+  static _variant = "If";
+
+constructor (public condition: OpId, public then: OpId, public or_else: OpId) {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(23);
+  this.condition.serialize(serializer);
+  this.then.serialize(serializer);
+  this.or_else.serialize(serializer);
+}
+
+static load(deserializer: Deserializer): OpsOperationVariantIf {
+  const condition = OpId.deserialize(deserializer);
+  const then = OpId.deserialize(deserializer);
+  const or_else = OpId.deserialize(deserializer);
+  return new OpsOperationVariantIf(condition,then,or_else);
 }
 
 }

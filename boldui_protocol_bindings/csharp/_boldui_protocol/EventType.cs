@@ -14,7 +14,8 @@ namespace _boldui_protocol {
         public static EventType Deserialize(Serde.IDeserializer deserializer) {
             int index = deserializer.deserialize_variant_index();
             switch (index) {
-                case 0: return Click.Load(deserializer);
+                case 0: return MouseDown.Load(deserializer);
+                case 1: return MouseUp.Load(deserializer);
                 default: throw new Serde.DeserializationException("Unknown variant index for EventType: " + index);
             }
         }
@@ -48,7 +49,8 @@ namespace _boldui_protocol {
         }
         public override int GetHashCode() {
             switch (this) {
-            case Click x: return x.GetHashCode();
+            case MouseDown x: return x.GetHashCode();
+            case MouseUp x: return x.GetHashCode();
             default: throw new InvalidOperationException("Unknown variant type");
             }
         }
@@ -59,7 +61,8 @@ namespace _boldui_protocol {
             if (ReferenceEquals(this, other)) return true;
             if (GetType() != other.GetType()) return false;
             switch (this) {
-            case Click x: return x.Equals((Click)other);
+            case MouseDown x: return x.Equals((MouseDown)other);
+            case MouseUp x: return x.Equals((MouseUp)other);
             default: throw new InvalidOperationException("Unknown variant type");
             }
         }
@@ -70,10 +73,10 @@ namespace _boldui_protocol {
         object ICloneable.Clone() => Clone();
 
 
-        public sealed class Click: EventType, IEquatable<Click>, ICloneable {
+        public sealed class MouseDown: EventType, IEquatable<MouseDown>, ICloneable {
             public OpId rect;
 
-            public Click(OpId _rect) {
+            public MouseDown(OpId _rect) {
                 if (_rect == null) throw new ArgumentNullException(nameof(_rect));
                 rect = _rect;
             }
@@ -85,20 +88,65 @@ namespace _boldui_protocol {
                 serializer.decrease_container_depth();
             }
 
-            internal static Click Load(Serde.IDeserializer deserializer) {
+            internal static MouseDown Load(Serde.IDeserializer deserializer) {
                 deserializer.increase_container_depth();
-                Click obj = new Click(
+                MouseDown obj = new MouseDown(
                 	OpId.Deserialize(deserializer));
                 deserializer.decrease_container_depth();
                 return obj;
             }
-            public override bool Equals(object obj) => obj is Click other && Equals(other);
+            public override bool Equals(object obj) => obj is MouseDown other && Equals(other);
 
-            public static bool operator ==(Click left, Click right) => Equals(left, right);
+            public static bool operator ==(MouseDown left, MouseDown right) => Equals(left, right);
 
-            public static bool operator !=(Click left, Click right) => !Equals(left, right);
+            public static bool operator !=(MouseDown left, MouseDown right) => !Equals(left, right);
 
-            public bool Equals(Click other) {
+            public bool Equals(MouseDown other) {
+                if (other == null) return false;
+                if (ReferenceEquals(this, other)) return true;
+                if (!rect.Equals(other.rect)) return false;
+                return true;
+            }
+
+            public override int GetHashCode() {
+                unchecked {
+                    int value = 7;
+                    value = 31 * value + rect.GetHashCode();
+                    return value;
+                }
+            }
+
+        }
+
+        public sealed class MouseUp: EventType, IEquatable<MouseUp>, ICloneable {
+            public OpId rect;
+
+            public MouseUp(OpId _rect) {
+                if (_rect == null) throw new ArgumentNullException(nameof(_rect));
+                rect = _rect;
+            }
+
+            public override void Serialize(Serde.ISerializer serializer) {
+                serializer.increase_container_depth();
+                serializer.serialize_variant_index(1);
+                rect.Serialize(serializer);
+                serializer.decrease_container_depth();
+            }
+
+            internal static MouseUp Load(Serde.IDeserializer deserializer) {
+                deserializer.increase_container_depth();
+                MouseUp obj = new MouseUp(
+                	OpId.Deserialize(deserializer));
+                deserializer.decrease_container_depth();
+                return obj;
+            }
+            public override bool Equals(object obj) => obj is MouseUp other && Equals(other);
+
+            public static bool operator ==(MouseUp left, MouseUp right) => Equals(left, right);
+
+            public static bool operator !=(MouseUp left, MouseUp right) => !Equals(left, right);
+
+            public bool Equals(MouseUp other) {
                 if (other == null) return false;
                 if (ReferenceEquals(this, other)) return true;
                 if (!rect.Equals(other.rect)) return false;

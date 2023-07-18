@@ -1,5 +1,3 @@
-#![feature(exit_status_error)]
-
 use boldui_protocol::*;
 use serde_reflection::{Tracer, TracerConfig};
 use std::mem::size_of;
@@ -37,6 +35,7 @@ pub fn main() {
         .trace_simple_type::<EA2RExtendedHelloResponse>()
         .unwrap();
     tracer.trace_simple_type::<EA2RMessage>().unwrap();
+    tracer.trace_simple_type::<EventType>().unwrap();
     let registry = tracer.registry().unwrap();
 
     // Make sure type sizes are in check (do not depend on this, this is for internal use (prevent memory balooning))
@@ -77,8 +76,6 @@ pub fn main() {
         .spawn()
         .unwrap()
         .wait()
-        .unwrap()
-        .exit_ok()
         .unwrap();
 
     // Write 010 Binary Template
