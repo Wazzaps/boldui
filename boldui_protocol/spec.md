@@ -29,19 +29,15 @@ boldui --devtools -- <APP-CMD>
 
 ### Renderer State
 
+- An ephemeral key-value store (the "variables")
 - A tree of <u>**Scenes**</u>
     - Each scene consists of:
         - A unique non-zero 32-bit Scene ID
-        - A <u>**Transform**</u> (2D transformation matrix)
-        - A <u>**Paint**</u> (Affects how the scene is rendered, e.g. foreground blur)
-        - A <u>**Backdrop Paint**</u> (Affects how parts under the scene are rendered, e.g. background blur)
-        - A <u>**Clip**</u> (Masks the scene)
-        - A list of <u>**Renderer Variable Declarations**</u>
+        - A list of <u>**Attributes**</u>, which are key-value pairs of (uint32 -> <u>**Value**</u>)
         - A list of <u>**Operations**</u>
-        - A list of <u>**Commands**</u>
+        - A list of <u>**Draw Commands**</u>
         - A list of <u>**Watches**</u>
-        - A list of <u>**Sub-Scenes**</u> (Scenes that are rendered after this scene)
-        - A URI for the current scene
+        - A list of <u>**Sub-Scenes**</u> (Scenes that are rendered after and on top of this scene)
 - A list of root scenes, each producing a window if applicable (or just the first one filling the framebuffer)
 
 ## BoldUI App Spec v0.1
@@ -50,7 +46,7 @@ See the Protocol spec for information about implementing an app that will connec
 
 ### Reconnectable Scenes
 
-The URI of a scene should lead to the same synchronized scene even when connected-to simultaneously from multiple renderers.
+The URI of a root scene should lead to the same synchronized scene even when connected-to simultaneously from multiple renderers.
 
 This should be handled by adding a query parameter named `session` with a random UUID when creating the scene.
 
@@ -103,14 +99,9 @@ A2RMessage__Update(A2RUpdate(
     updated_scenes=[
         A2RUpdateScene(
             id=1,
-            paint=0,
-            backdrop=0,
-            transform=0,
-            clip=0,
-            uri='/?session=...',
+            attrs={},  # ...
             ops=[],  # ...
             cmds=[],  # ...
-            var_decls={},  # ...
             watches=[],  # ...
             event_handlers=[],  # ...
         )
@@ -153,6 +144,32 @@ When the block is executed, the operation list is evaluated, and the results are
 
 Can be triggered in response to events, watches, or by updates from the app.
 
+
+### Scene attributes
+
+Attributes which affect the rendering of the scene, can refer to the output of **Operations** from the current scene.
+
+- `0`: `transform`: 2D transformation matrix
+- `1`: `paint`: Affects how the scene is rendered, e.g. tint or foreground blur
+- `2`: `backdrop_paint`: Affects how parts under the scene are rendered, e.g. tint or background blur
+- `3`: `clip`: Masks the scene
+- `4`: `uri`: The URI of the scene
+- `5`: `size`: The initial size of the window (or the fixed size of the subscene)
+- `6`: `window_id`: An opaque id passed from the renderer as a query parameter, used to associate `open` requests with the opened window
+- `7`: `window_initial_position`: The initial position of the window
+- `8`: `window_initial_state`: The initial state of the window, one of:
+    - `0`: `Auto`
+    - `1`: `Unmaximized`
+    - `2`: `Maximized`
+    - `3`: `Minimized`
+    - `4`: `Fullscreen`
+- `9`: `window_title`: The title of the window
+- `10`: `window_icon`: The icon of the window
+- `11`: `window_decorations`: Whether the window should have decorations, one of:
+    - `0`: `Auto`
+    - `1`: `None`
+    - `2`: `Overlay`
+
 ### Operations
 
 List of mathematical operations performed when a scene is drawn, or a handler is triggered.
@@ -163,9 +180,9 @@ TODO: Also defines primitives such as "Transformation Matrix", "Paint", "Clip", 
 
 TODO: Expand and list them, meanwhile see `protocol/src/lib.rs`.
 
-### Commands
+### Draw commands
 
-Draw primitives, event handler regions, (etc.), that use the results from previous **operations** to actually define the scene.
+Draw primitives that use the results from previous **operations** to actually draw the scene.
 
 **Partial list:**
 
@@ -176,24 +193,6 @@ Draw primitives, event handler regions, (etc.), that use the results from previo
 - `Image`: Draws an image
 
 TODO: Expand and list all of them
-
-### Variables
-
-Scene-attached state that can be referenced inside operations.
-
-Can be one of the following types: `SInt64`, `Double`, `String`, `Color`, `Point`, `Rect`.
-
-Created by a declaration in `A2RUpdateScene.var_decls`, and get deleted if their declaration is removed.
-
-The value given in the declaration is the default value, replaced by `HandlerCmd::UpdateVar` handler commands during the lifetime of the scene.
-
-Some special values affect the rendering of root scenes:
-
-- `:width`, `:height`: Created by the renderer on root windows, specifies the current width of the window
-- `:click_x`, `:click_y`, `:click_button`: Created by the renderer on root windows during handling of a click event, specifies the click info
-- `:window_initial_size_x`, `:window_initial_size_y`: Supplied by the app (optional), specifies the initial window size of the window (if windowing supported)
-- `:window_title`: Supplied by the app (optional), specifies the window title (if windowing supported)
-- `:window_id`: Supplied by the app (optional), mirrors the value of the `window_id` query parameter during the `Open` that opened the window(s)
 
 ### Watches
 
@@ -209,6 +208,20 @@ Handlers that execute when a given (variable-dependent) condition becomes true.
 Lists of handler commands that trigger when a certain condition is met
 
 TODO: Expand
+
+### Variables
+
+Global state that can be referenced inside operations.
+
+Can be one of the following types: `SInt64`, `Double`, `String`, `Color`, `Resource`, `VarRef`, `Point`, `Rect`.
+
+Created with `HandlerCmd::SetVar`, and deleted with `HandlerCmd::DeleteVar`.
+
+Some special variables available during rendering / special contexts:
+
+- `:width_WID`, `:height_WID`: Specifies the current size of the window (WID replaced with decimal window id)
+- `:click_x`, `:click_y`, `:click_button`: Available during handling of a MouseUp or MouseDown event, specifies the click info
+- `:mouse_x`, `:mouse_y`: Available during handling of a MouseMove event, specifies the cursor position
 
 ## BoldUI Window Manager Spec v0.1
 

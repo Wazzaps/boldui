@@ -111,13 +111,13 @@ class A2RReparentScene:
 @dataclass(frozen=True)
 class A2RReparentScene__Inside(A2RReparentScene):
     INDEX = 0  # type: int
-    value: st.uint32
+    value: "OpId"
 
 
 @dataclass(frozen=True)
 class A2RReparentScene__After(A2RReparentScene):
     INDEX = 1  # type: int
-    value: st.uint32
+    value: "OpId"
 
 
 @dataclass(frozen=True)
@@ -151,6 +151,8 @@ A2RReparentScene.VARIANTS = [
 class A2RUpdate:
     updated_scenes: typing.Sequence["A2RUpdateScene"]
     run_blocks: typing.Sequence["HandlerBlock"]
+    resource_chunks: typing.Sequence["ResourceChunk"]
+    resource_deallocs: typing.Sequence["ResourceDealloc"]
     external_app_requests: typing.Sequence["ExternalAppRequest"]
 
     def bincode_serialize(self) -> bytes:
@@ -171,17 +173,11 @@ class A2RUpdate:
 @dataclass(frozen=True)
 class A2RUpdateScene:
     id: st.uint32
-    paint: "OpId"
-    backdrop: "OpId"
-    transform: "OpId"
-    clip: "OpId"
-    uri: str
-    dimensions: "OpId"
+    attrs: typing.Dict[st.uint32, "OpId"]
     ops: typing.Sequence["OpsOperation"]
     cmds: typing.Sequence["CmdsCommand"]
-    var_decls: typing.Dict[str, "Value"]
     watches: typing.Sequence["Watch"]
-    event_handlers: typing.Sequence[typing.Tuple["EventType", "HandlerBlock"]]
+    event_handlers: typing.Sequence["EventHandler"]
 
     def bincode_serialize(self) -> bytes:
         return bincode.serialize(self, A2RUpdateScene)
@@ -245,11 +241,19 @@ class CmdsCommand__DrawCenteredText(CmdsCommand):
     center: "OpId"
 
 
+@dataclass(frozen=True)
+class CmdsCommand__DrawImage(CmdsCommand):
+    INDEX = 4  # type: int
+    res: "OpId"
+    top_left: "OpId"
+
+
 CmdsCommand.VARIANTS = [
     CmdsCommand__Clear,
     CmdsCommand__DrawRect,
     CmdsCommand__DrawRoundRect,
     CmdsCommand__DrawCenteredText,
+    CmdsCommand__DrawImage,
 ]
 
 
@@ -386,6 +390,27 @@ class Error:
         return bincode.deserialize_stream(input, Error)
 
 
+@dataclass(frozen=True)
+class EventHandler:
+    event_type: "EventType"
+    handler: "HandlerBlock"
+    continue_handling: "OpId"
+
+    def bincode_serialize(self) -> bytes:
+        return bincode.serialize(self, EventHandler)
+
+    @staticmethod
+    def bincode_deserialize(input: bytes) -> "EventHandler":
+        v, buffer = bincode.deserialize(input, EventHandler)
+        if buffer:
+            raise st.DeserializationError("Some input bytes were not read")
+        return v
+
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "EventHandler":
+        return bincode.deserialize_stream(input, EventHandler)
+
+
 class EventType:
     VARIANTS = []  # type: typing.Sequence[typing.Type[EventType]]
 
@@ -416,9 +441,16 @@ class EventType__MouseUp(EventType):
     rect: "OpId"
 
 
+@dataclass(frozen=True)
+class EventType__MouseMove(EventType):
+    INDEX = 2  # type: int
+    rect: "OpId"
+
+
 EventType.VARIANTS = [
     EventType__MouseDown,
     EventType__MouseUp,
+    EventType__MouseMove,
 ]
 
 
@@ -495,45 +527,76 @@ class HandlerCmd__AllocateWindowId(HandlerCmd):
 @dataclass(frozen=True)
 class HandlerCmd__ReparentScene(HandlerCmd):
     INDEX = 2  # type: int
-    scene: st.uint32
+    scene: "OpId"
     to: "A2RReparentScene"
 
 
 @dataclass(frozen=True)
-class HandlerCmd__UpdateVar(HandlerCmd):
+class HandlerCmd__SetVar(HandlerCmd):
     INDEX = 3  # type: int
     var: "VarId"
     value: "OpId"
 
 
 @dataclass(frozen=True)
-class HandlerCmd__DebugMessage(HandlerCmd):
+class HandlerCmd__SetVarByRef(HandlerCmd):
     INDEX = 4  # type: int
+    var: "OpId"
+    value: "OpId"
+
+
+@dataclass(frozen=True)
+class HandlerCmd__DeleteVar(HandlerCmd):
+    INDEX = 5  # type: int
+    var: "VarId"
+    value: "OpId"
+
+
+@dataclass(frozen=True)
+class HandlerCmd__DeleteVarByRef(HandlerCmd):
+    INDEX = 6  # type: int
+    var: "OpId"
+    value: "OpId"
+
+
+@dataclass(frozen=True)
+class HandlerCmd__DebugMessage(HandlerCmd):
+    INDEX = 7  # type: int
     msg: str
 
 
 @dataclass(frozen=True)
 class HandlerCmd__Reply(HandlerCmd):
-    INDEX = 5  # type: int
+    INDEX = 8  # type: int
     path: str
     params: typing.Sequence["OpId"]
 
 
 @dataclass(frozen=True)
+class HandlerCmd__Open(HandlerCmd):
+    INDEX = 9  # type: int
+    path: str
+
+
+@dataclass(frozen=True)
 class HandlerCmd__If(HandlerCmd):
-    INDEX = 6  # type: int
+    INDEX = 10  # type: int
     condition: "OpId"
-    then: "HandlerCmd"
-    or_else: "HandlerCmd"
+    then: typing.Sequence["HandlerCmd"]
+    or_else: typing.Sequence["HandlerCmd"]
 
 
 HandlerCmd.VARIANTS = [
     HandlerCmd__Nop,
     HandlerCmd__AllocateWindowId,
     HandlerCmd__ReparentScene,
-    HandlerCmd__UpdateVar,
+    HandlerCmd__SetVar,
+    HandlerCmd__SetVarByRef,
+    HandlerCmd__DeleteVar,
+    HandlerCmd__DeleteVarByRef,
     HandlerCmd__DebugMessage,
     HandlerCmd__Reply,
+    HandlerCmd__Open,
     HandlerCmd__If,
 ]
 
@@ -643,75 +706,82 @@ class OpsOperation__Eq(OpsOperation):
 
 
 @dataclass(frozen=True)
-class OpsOperation__Min(OpsOperation):
+class OpsOperation__Neq(OpsOperation):
     INDEX = 10  # type: int
     a: "OpId"
     b: "OpId"
 
 
 @dataclass(frozen=True)
-class OpsOperation__Max(OpsOperation):
+class OpsOperation__Min(OpsOperation):
     INDEX = 11  # type: int
     a: "OpId"
     b: "OpId"
 
 
 @dataclass(frozen=True)
-class OpsOperation__Or(OpsOperation):
+class OpsOperation__Max(OpsOperation):
     INDEX = 12  # type: int
     a: "OpId"
     b: "OpId"
 
 
 @dataclass(frozen=True)
-class OpsOperation__And(OpsOperation):
+class OpsOperation__Or(OpsOperation):
     INDEX = 13  # type: int
     a: "OpId"
     b: "OpId"
 
 
 @dataclass(frozen=True)
-class OpsOperation__GreaterThan(OpsOperation):
+class OpsOperation__And(OpsOperation):
     INDEX = 14  # type: int
     a: "OpId"
     b: "OpId"
 
 
 @dataclass(frozen=True)
-class OpsOperation__Abs(OpsOperation):
+class OpsOperation__GreaterThan(OpsOperation):
     INDEX = 15  # type: int
     a: "OpId"
+    b: "OpId"
 
 
 @dataclass(frozen=True)
-class OpsOperation__Sin(OpsOperation):
+class OpsOperation__Abs(OpsOperation):
     INDEX = 16  # type: int
     a: "OpId"
 
 
 @dataclass(frozen=True)
-class OpsOperation__Cos(OpsOperation):
+class OpsOperation__Sin(OpsOperation):
     INDEX = 17  # type: int
     a: "OpId"
 
 
 @dataclass(frozen=True)
-class OpsOperation__MakePoint(OpsOperation):
+class OpsOperation__Cos(OpsOperation):
     INDEX = 18  # type: int
+    a: "OpId"
+
+
+@dataclass(frozen=True)
+class OpsOperation__MakePoint(OpsOperation):
+    INDEX = 19  # type: int
     left: "OpId"
     top: "OpId"
 
 
 @dataclass(frozen=True)
 class OpsOperation__MakeRectFromPoints(OpsOperation):
-    INDEX = 19  # type: int
+    INDEX = 20  # type: int
     left_top: "OpId"
     right_bottom: "OpId"
 
 
 @dataclass(frozen=True)
 class OpsOperation__MakeRectFromSides(OpsOperation):
-    INDEX = 20  # type: int
+    INDEX = 21  # type: int
     left: "OpId"
     top: "OpId"
     right: "OpId"
@@ -720,7 +790,7 @@ class OpsOperation__MakeRectFromSides(OpsOperation):
 
 @dataclass(frozen=True)
 class OpsOperation__MakeColor(OpsOperation):
-    INDEX = 21  # type: int
+    INDEX = 22  # type: int
     r: "OpId"
     g: "OpId"
     b: "OpId"
@@ -729,13 +799,31 @@ class OpsOperation__MakeColor(OpsOperation):
 
 @dataclass(frozen=True)
 class OpsOperation__ToString(OpsOperation):
-    INDEX = 22  # type: int
+    INDEX = 23  # type: int
     a: "OpId"
 
 
 @dataclass(frozen=True)
+class OpsOperation__GetImageDimensions(OpsOperation):
+    INDEX = 24  # type: int
+    res: "OpId"
+
+
+@dataclass(frozen=True)
+class OpsOperation__GetPointTop(OpsOperation):
+    INDEX = 25  # type: int
+    point: "OpId"
+
+
+@dataclass(frozen=True)
+class OpsOperation__GetPointLeft(OpsOperation):
+    INDEX = 26  # type: int
+    point: "OpId"
+
+
+@dataclass(frozen=True)
 class OpsOperation__If(OpsOperation):
-    INDEX = 23  # type: int
+    INDEX = 27  # type: int
     condition: "OpId"
     then: "OpId"
     or_else: "OpId"
@@ -752,6 +840,7 @@ OpsOperation.VARIANTS = [
     OpsOperation__Div,
     OpsOperation__FloorDiv,
     OpsOperation__Eq,
+    OpsOperation__Neq,
     OpsOperation__Min,
     OpsOperation__Max,
     OpsOperation__Or,
@@ -765,6 +854,9 @@ OpsOperation.VARIANTS = [
     OpsOperation__MakeRectFromSides,
     OpsOperation__MakeColor,
     OpsOperation__ToString,
+    OpsOperation__GetImageDimensions,
+    OpsOperation__GetPointTop,
+    OpsOperation__GetPointLeft,
     OpsOperation__If,
 ]
 
@@ -1033,6 +1125,154 @@ class R2EAUpdate:
         return bincode.deserialize_stream(input, R2EAUpdate)
 
 
+@dataclass(frozen=True)
+class ResourceChunk:
+    id: st.uint32
+    offset: st.uint64
+    data: typing.Sequence[st.uint8]
+
+    def bincode_serialize(self) -> bytes:
+        return bincode.serialize(self, ResourceChunk)
+
+    @staticmethod
+    def bincode_deserialize(input: bytes) -> "ResourceChunk":
+        v, buffer = bincode.deserialize(input, ResourceChunk)
+        if buffer:
+            raise st.DeserializationError("Some input bytes were not read")
+        return v
+
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "ResourceChunk":
+        return bincode.deserialize_stream(input, ResourceChunk)
+
+
+@dataclass(frozen=True)
+class ResourceDealloc:
+    id: st.uint32
+    offset: st.uint64
+    length: st.uint64
+
+    def bincode_serialize(self) -> bytes:
+        return bincode.serialize(self, ResourceDealloc)
+
+    @staticmethod
+    def bincode_deserialize(input: bytes) -> "ResourceDealloc":
+        v, buffer = bincode.deserialize(input, ResourceDealloc)
+        if buffer:
+            raise st.DeserializationError("Some input bytes were not read")
+        return v
+
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "ResourceDealloc":
+        return bincode.deserialize_stream(input, ResourceDealloc)
+
+
+class SceneAttr:
+    VARIANTS = []  # type: typing.Sequence[typing.Type[SceneAttr]]
+
+    def bincode_serialize(self) -> bytes:
+        return bincode.serialize(self, SceneAttr)
+
+    @staticmethod
+    def bincode_deserialize(input: bytes) -> "SceneAttr":
+        v, buffer = bincode.deserialize(input, SceneAttr)
+        if buffer:
+            raise st.DeserializationError("Some input bytes were not read")
+        return v
+
+    @staticmethod
+    def bincode_deserialize_stream(input: BinaryIO) -> "SceneAttr":
+        return bincode.deserialize_stream(input, SceneAttr)
+
+
+@dataclass(frozen=True)
+class SceneAttr__Transform(SceneAttr):
+    INDEX = 0  # type: int
+    pass
+
+
+@dataclass(frozen=True)
+class SceneAttr__Paint(SceneAttr):
+    INDEX = 1  # type: int
+    pass
+
+
+@dataclass(frozen=True)
+class SceneAttr__BackdropPaint(SceneAttr):
+    INDEX = 2  # type: int
+    pass
+
+
+@dataclass(frozen=True)
+class SceneAttr__Clip(SceneAttr):
+    INDEX = 3  # type: int
+    pass
+
+
+@dataclass(frozen=True)
+class SceneAttr__Uri(SceneAttr):
+    INDEX = 4  # type: int
+    pass
+
+
+@dataclass(frozen=True)
+class SceneAttr__Size(SceneAttr):
+    INDEX = 5  # type: int
+    pass
+
+
+@dataclass(frozen=True)
+class SceneAttr__WindowId(SceneAttr):
+    INDEX = 6  # type: int
+    pass
+
+
+@dataclass(frozen=True)
+class SceneAttr__WindowInitialPosition(SceneAttr):
+    INDEX = 7  # type: int
+    pass
+
+
+@dataclass(frozen=True)
+class SceneAttr__WindowInitialState(SceneAttr):
+    INDEX = 8  # type: int
+    pass
+
+
+@dataclass(frozen=True)
+class SceneAttr__WindowTitle(SceneAttr):
+    INDEX = 9  # type: int
+    pass
+
+
+@dataclass(frozen=True)
+class SceneAttr__WindowIcon(SceneAttr):
+    INDEX = 10  # type: int
+    pass
+
+
+@dataclass(frozen=True)
+class SceneAttr__WindowDecorations(SceneAttr):
+    INDEX = 11  # type: int
+    pass
+
+
+SceneAttr.VARIANTS = [
+    SceneAttr__Transform,
+    SceneAttr__Paint,
+    SceneAttr__BackdropPaint,
+    SceneAttr__Clip,
+    SceneAttr__Uri,
+    SceneAttr__Size,
+    SceneAttr__WindowId,
+    SceneAttr__WindowInitialPosition,
+    SceneAttr__WindowInitialState,
+    SceneAttr__WindowTitle,
+    SceneAttr__WindowIcon,
+    SceneAttr__WindowDecorations,
+]
+
+
 class Value:
     VARIANTS = []  # type: typing.Sequence[typing.Type[Value]]
 
@@ -1076,15 +1316,27 @@ class Value__Color(Value):
 
 
 @dataclass(frozen=True)
-class Value__Point(Value):
+class Value__Resource(Value):
     INDEX = 4  # type: int
+    value: st.uint32
+
+
+@dataclass(frozen=True)
+class Value__VarRef(Value):
+    INDEX = 5  # type: int
+    value: "VarId"
+
+
+@dataclass(frozen=True)
+class Value__Point(Value):
+    INDEX = 6  # type: int
     left: st.float64
     top: st.float64
 
 
 @dataclass(frozen=True)
 class Value__Rect(Value):
-    INDEX = 5  # type: int
+    INDEX = 7  # type: int
     left: st.float64
     top: st.float64
     right: st.float64
@@ -1096,6 +1348,8 @@ Value.VARIANTS = [
     Value__Double,
     Value__String,
     Value__Color,
+    Value__Resource,
+    Value__VarRef,
     Value__Point,
     Value__Rect,
 ]
@@ -1103,7 +1357,6 @@ Value.VARIANTS = [
 
 @dataclass(frozen=True)
 class VarId:
-    scene: st.uint32
     key: str
 
     def bincode_serialize(self) -> bytes:

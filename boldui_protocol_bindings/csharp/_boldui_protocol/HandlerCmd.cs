@@ -17,10 +17,14 @@ namespace _boldui_protocol {
                 case 0: return Nop.Load(deserializer);
                 case 1: return AllocateWindowId.Load(deserializer);
                 case 2: return ReparentScene.Load(deserializer);
-                case 3: return UpdateVar.Load(deserializer);
-                case 4: return DebugMessage.Load(deserializer);
-                case 5: return Reply.Load(deserializer);
-                case 6: return If.Load(deserializer);
+                case 3: return SetVar.Load(deserializer);
+                case 4: return SetVarByRef.Load(deserializer);
+                case 5: return DeleteVar.Load(deserializer);
+                case 6: return DeleteVarByRef.Load(deserializer);
+                case 7: return DebugMessage.Load(deserializer);
+                case 8: return Reply.Load(deserializer);
+                case 9: return Open.Load(deserializer);
+                case 10: return If.Load(deserializer);
                 default: throw new Serde.DeserializationException("Unknown variant index for HandlerCmd: " + index);
             }
         }
@@ -57,9 +61,13 @@ namespace _boldui_protocol {
             case Nop x: return x.GetHashCode();
             case AllocateWindowId x: return x.GetHashCode();
             case ReparentScene x: return x.GetHashCode();
-            case UpdateVar x: return x.GetHashCode();
+            case SetVar x: return x.GetHashCode();
+            case SetVarByRef x: return x.GetHashCode();
+            case DeleteVar x: return x.GetHashCode();
+            case DeleteVarByRef x: return x.GetHashCode();
             case DebugMessage x: return x.GetHashCode();
             case Reply x: return x.GetHashCode();
+            case Open x: return x.GetHashCode();
             case If x: return x.GetHashCode();
             default: throw new InvalidOperationException("Unknown variant type");
             }
@@ -74,9 +82,13 @@ namespace _boldui_protocol {
             case Nop x: return x.Equals((Nop)other);
             case AllocateWindowId x: return x.Equals((AllocateWindowId)other);
             case ReparentScene x: return x.Equals((ReparentScene)other);
-            case UpdateVar x: return x.Equals((UpdateVar)other);
+            case SetVar x: return x.Equals((SetVar)other);
+            case SetVarByRef x: return x.Equals((SetVarByRef)other);
+            case DeleteVar x: return x.Equals((DeleteVar)other);
+            case DeleteVarByRef x: return x.Equals((DeleteVarByRef)other);
             case DebugMessage x: return x.Equals((DebugMessage)other);
             case Reply x: return x.Equals((Reply)other);
+            case Open x: return x.Equals((Open)other);
             case If x: return x.Equals((If)other);
             default: throw new InvalidOperationException("Unknown variant type");
             }
@@ -165,10 +177,11 @@ namespace _boldui_protocol {
         }
 
         public sealed class ReparentScene: HandlerCmd, IEquatable<ReparentScene>, ICloneable {
-            public uint scene;
+            public OpId scene;
             public A2RReparentScene to;
 
-            public ReparentScene(uint _scene, A2RReparentScene _to) {
+            public ReparentScene(OpId _scene, A2RReparentScene _to) {
+                if (_scene == null) throw new ArgumentNullException(nameof(_scene));
                 scene = _scene;
                 if (_to == null) throw new ArgumentNullException(nameof(_to));
                 to = _to;
@@ -177,7 +190,7 @@ namespace _boldui_protocol {
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
                 serializer.serialize_variant_index(2);
-                serializer.serialize_u32(scene);
+                scene.Serialize(serializer);
                 to.Serialize(serializer);
                 serializer.decrease_container_depth();
             }
@@ -185,7 +198,7 @@ namespace _boldui_protocol {
             internal static ReparentScene Load(Serde.IDeserializer deserializer) {
                 deserializer.increase_container_depth();
                 ReparentScene obj = new ReparentScene(
-                	deserializer.deserialize_u32(),
+                	OpId.Deserialize(deserializer),
                 	A2RReparentScene.Deserialize(deserializer));
                 deserializer.decrease_container_depth();
                 return obj;
@@ -215,11 +228,11 @@ namespace _boldui_protocol {
 
         }
 
-        public sealed class UpdateVar: HandlerCmd, IEquatable<UpdateVar>, ICloneable {
+        public sealed class SetVar: HandlerCmd, IEquatable<SetVar>, ICloneable {
             public VarId var;
             public OpId value;
 
-            public UpdateVar(VarId _var, OpId _value) {
+            public SetVar(VarId _var, OpId _value) {
                 if (_var == null) throw new ArgumentNullException(nameof(_var));
                 var = _var;
                 if (_value == null) throw new ArgumentNullException(nameof(_value));
@@ -234,21 +247,177 @@ namespace _boldui_protocol {
                 serializer.decrease_container_depth();
             }
 
-            internal static UpdateVar Load(Serde.IDeserializer deserializer) {
+            internal static SetVar Load(Serde.IDeserializer deserializer) {
                 deserializer.increase_container_depth();
-                UpdateVar obj = new UpdateVar(
+                SetVar obj = new SetVar(
                 	VarId.Deserialize(deserializer),
                 	OpId.Deserialize(deserializer));
                 deserializer.decrease_container_depth();
                 return obj;
             }
-            public override bool Equals(object obj) => obj is UpdateVar other && Equals(other);
+            public override bool Equals(object obj) => obj is SetVar other && Equals(other);
 
-            public static bool operator ==(UpdateVar left, UpdateVar right) => Equals(left, right);
+            public static bool operator ==(SetVar left, SetVar right) => Equals(left, right);
 
-            public static bool operator !=(UpdateVar left, UpdateVar right) => !Equals(left, right);
+            public static bool operator !=(SetVar left, SetVar right) => !Equals(left, right);
 
-            public bool Equals(UpdateVar other) {
+            public bool Equals(SetVar other) {
+                if (other == null) return false;
+                if (ReferenceEquals(this, other)) return true;
+                if (!var.Equals(other.var)) return false;
+                if (!value.Equals(other.value)) return false;
+                return true;
+            }
+
+            public override int GetHashCode() {
+                unchecked {
+                    int value = 7;
+                    value = 31 * value + var.GetHashCode();
+                    value = 31 * value + value.GetHashCode();
+                    return value;
+                }
+            }
+
+        }
+
+        public sealed class SetVarByRef: HandlerCmd, IEquatable<SetVarByRef>, ICloneable {
+            public OpId var;
+            public OpId value;
+
+            public SetVarByRef(OpId _var, OpId _value) {
+                if (_var == null) throw new ArgumentNullException(nameof(_var));
+                var = _var;
+                if (_value == null) throw new ArgumentNullException(nameof(_value));
+                value = _value;
+            }
+
+            public override void Serialize(Serde.ISerializer serializer) {
+                serializer.increase_container_depth();
+                serializer.serialize_variant_index(4);
+                var.Serialize(serializer);
+                value.Serialize(serializer);
+                serializer.decrease_container_depth();
+            }
+
+            internal static SetVarByRef Load(Serde.IDeserializer deserializer) {
+                deserializer.increase_container_depth();
+                SetVarByRef obj = new SetVarByRef(
+                	OpId.Deserialize(deserializer),
+                	OpId.Deserialize(deserializer));
+                deserializer.decrease_container_depth();
+                return obj;
+            }
+            public override bool Equals(object obj) => obj is SetVarByRef other && Equals(other);
+
+            public static bool operator ==(SetVarByRef left, SetVarByRef right) => Equals(left, right);
+
+            public static bool operator !=(SetVarByRef left, SetVarByRef right) => !Equals(left, right);
+
+            public bool Equals(SetVarByRef other) {
+                if (other == null) return false;
+                if (ReferenceEquals(this, other)) return true;
+                if (!var.Equals(other.var)) return false;
+                if (!value.Equals(other.value)) return false;
+                return true;
+            }
+
+            public override int GetHashCode() {
+                unchecked {
+                    int value = 7;
+                    value = 31 * value + var.GetHashCode();
+                    value = 31 * value + value.GetHashCode();
+                    return value;
+                }
+            }
+
+        }
+
+        public sealed class DeleteVar: HandlerCmd, IEquatable<DeleteVar>, ICloneable {
+            public VarId var;
+            public OpId value;
+
+            public DeleteVar(VarId _var, OpId _value) {
+                if (_var == null) throw new ArgumentNullException(nameof(_var));
+                var = _var;
+                if (_value == null) throw new ArgumentNullException(nameof(_value));
+                value = _value;
+            }
+
+            public override void Serialize(Serde.ISerializer serializer) {
+                serializer.increase_container_depth();
+                serializer.serialize_variant_index(5);
+                var.Serialize(serializer);
+                value.Serialize(serializer);
+                serializer.decrease_container_depth();
+            }
+
+            internal static DeleteVar Load(Serde.IDeserializer deserializer) {
+                deserializer.increase_container_depth();
+                DeleteVar obj = new DeleteVar(
+                	VarId.Deserialize(deserializer),
+                	OpId.Deserialize(deserializer));
+                deserializer.decrease_container_depth();
+                return obj;
+            }
+            public override bool Equals(object obj) => obj is DeleteVar other && Equals(other);
+
+            public static bool operator ==(DeleteVar left, DeleteVar right) => Equals(left, right);
+
+            public static bool operator !=(DeleteVar left, DeleteVar right) => !Equals(left, right);
+
+            public bool Equals(DeleteVar other) {
+                if (other == null) return false;
+                if (ReferenceEquals(this, other)) return true;
+                if (!var.Equals(other.var)) return false;
+                if (!value.Equals(other.value)) return false;
+                return true;
+            }
+
+            public override int GetHashCode() {
+                unchecked {
+                    int value = 7;
+                    value = 31 * value + var.GetHashCode();
+                    value = 31 * value + value.GetHashCode();
+                    return value;
+                }
+            }
+
+        }
+
+        public sealed class DeleteVarByRef: HandlerCmd, IEquatable<DeleteVarByRef>, ICloneable {
+            public OpId var;
+            public OpId value;
+
+            public DeleteVarByRef(OpId _var, OpId _value) {
+                if (_var == null) throw new ArgumentNullException(nameof(_var));
+                var = _var;
+                if (_value == null) throw new ArgumentNullException(nameof(_value));
+                value = _value;
+            }
+
+            public override void Serialize(Serde.ISerializer serializer) {
+                serializer.increase_container_depth();
+                serializer.serialize_variant_index(6);
+                var.Serialize(serializer);
+                value.Serialize(serializer);
+                serializer.decrease_container_depth();
+            }
+
+            internal static DeleteVarByRef Load(Serde.IDeserializer deserializer) {
+                deserializer.increase_container_depth();
+                DeleteVarByRef obj = new DeleteVarByRef(
+                	OpId.Deserialize(deserializer),
+                	OpId.Deserialize(deserializer));
+                deserializer.decrease_container_depth();
+                return obj;
+            }
+            public override bool Equals(object obj) => obj is DeleteVarByRef other && Equals(other);
+
+            public static bool operator ==(DeleteVarByRef left, DeleteVarByRef right) => Equals(left, right);
+
+            public static bool operator !=(DeleteVarByRef left, DeleteVarByRef right) => !Equals(left, right);
+
+            public bool Equals(DeleteVarByRef other) {
                 if (other == null) return false;
                 if (ReferenceEquals(this, other)) return true;
                 if (!var.Equals(other.var)) return false;
@@ -277,7 +446,7 @@ namespace _boldui_protocol {
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
-                serializer.serialize_variant_index(4);
+                serializer.serialize_variant_index(7);
                 serializer.serialize_str(msg);
                 serializer.decrease_container_depth();
             }
@@ -325,7 +494,7 @@ namespace _boldui_protocol {
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
-                serializer.serialize_variant_index(5);
+                serializer.serialize_variant_index(8);
                 serializer.serialize_str(path);
                 TraitHelpers.serialize_vector_OpId(params, serializer);
                 serializer.decrease_container_depth();
@@ -364,12 +533,57 @@ namespace _boldui_protocol {
 
         }
 
+        public sealed class Open: HandlerCmd, IEquatable<Open>, ICloneable {
+            public string path;
+
+            public Open(string _path) {
+                if (_path == null) throw new ArgumentNullException(nameof(_path));
+                path = _path;
+            }
+
+            public override void Serialize(Serde.ISerializer serializer) {
+                serializer.increase_container_depth();
+                serializer.serialize_variant_index(9);
+                serializer.serialize_str(path);
+                serializer.decrease_container_depth();
+            }
+
+            internal static Open Load(Serde.IDeserializer deserializer) {
+                deserializer.increase_container_depth();
+                Open obj = new Open(
+                	deserializer.deserialize_str());
+                deserializer.decrease_container_depth();
+                return obj;
+            }
+            public override bool Equals(object obj) => obj is Open other && Equals(other);
+
+            public static bool operator ==(Open left, Open right) => Equals(left, right);
+
+            public static bool operator !=(Open left, Open right) => !Equals(left, right);
+
+            public bool Equals(Open other) {
+                if (other == null) return false;
+                if (ReferenceEquals(this, other)) return true;
+                if (!path.Equals(other.path)) return false;
+                return true;
+            }
+
+            public override int GetHashCode() {
+                unchecked {
+                    int value = 7;
+                    value = 31 * value + path.GetHashCode();
+                    return value;
+                }
+            }
+
+        }
+
         public sealed class If: HandlerCmd, IEquatable<If>, ICloneable {
             public OpId condition;
-            public HandlerCmd then;
-            public HandlerCmd or_else;
+            public Serde.ValueArray<HandlerCmd> then;
+            public Serde.ValueArray<HandlerCmd> or_else;
 
-            public If(OpId _condition, HandlerCmd _then, HandlerCmd _or_else) {
+            public If(OpId _condition, Serde.ValueArray<HandlerCmd> _then, Serde.ValueArray<HandlerCmd> _or_else) {
                 if (_condition == null) throw new ArgumentNullException(nameof(_condition));
                 condition = _condition;
                 if (_then == null) throw new ArgumentNullException(nameof(_then));
@@ -380,10 +594,10 @@ namespace _boldui_protocol {
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
-                serializer.serialize_variant_index(6);
+                serializer.serialize_variant_index(10);
                 condition.Serialize(serializer);
-                then.Serialize(serializer);
-                or_else.Serialize(serializer);
+                TraitHelpers.serialize_vector_HandlerCmd(then, serializer);
+                TraitHelpers.serialize_vector_HandlerCmd(or_else, serializer);
                 serializer.decrease_container_depth();
             }
 
@@ -391,8 +605,8 @@ namespace _boldui_protocol {
                 deserializer.increase_container_depth();
                 If obj = new If(
                 	OpId.Deserialize(deserializer),
-                	HandlerCmd.Deserialize(deserializer),
-                	HandlerCmd.Deserialize(deserializer));
+                	TraitHelpers.deserialize_vector_HandlerCmd(deserializer),
+                	TraitHelpers.deserialize_vector_HandlerCmd(deserializer));
                 deserializer.decrease_container_depth();
                 return obj;
             }

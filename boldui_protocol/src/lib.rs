@@ -150,6 +150,8 @@ pub enum Value {
     Double(f64),
     String(String),
     Color(Color),
+    Resource(ResourceId),
+    VarRef(VarId),
     Point {
         left: f64,
         top: f64,
@@ -200,6 +202,7 @@ pub enum EA2RMessage {
 }
 
 pub type SceneId = u32;
+pub type ResourceId = u32;
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, Default, Eq, PartialEq)]
 pub struct OpId {
@@ -209,7 +212,6 @@ pub struct OpId {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialOrd, Ord, Eq, PartialEq)]
 pub struct VarId {
-    pub scene: SceneId,
     pub key: String,
 }
 
@@ -242,6 +244,10 @@ pub enum OpsOperation {
         b: OpId,
     },
     Eq {
+        a: OpId,
+        b: OpId,
+    },
+    Neq {
         a: OpId,
         b: OpId,
     },
@@ -297,6 +303,16 @@ pub enum OpsOperation {
     ToString {
         a: OpId,
     },
+    /// Also works for videos
+    GetImageDimensions {
+        res: OpId,
+    },
+    GetPointTop {
+        point: OpId,
+    },
+    GetPointLeft {
+        point: OpId,
+    },
     If {
         condition: OpId,
         then: OpId,
@@ -323,6 +339,10 @@ pub enum CmdsCommand {
         paint: OpId,
         center: OpId,
     },
+    DrawImage {
+        res: OpId,
+        top_left: OpId,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -335,32 +355,33 @@ pub struct Watch {
 pub enum EventType {
     MouseDown { rect: OpId },
     MouseUp { rect: OpId },
+    MouseMove { rect: OpId },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct EventHandler {
+    event_type: EventType,
+    handler: HandlerBlock,
+    continue_handling: OpId,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct A2RUpdateScene {
     pub id: SceneId,
-    pub paint: OpId,
-    pub backdrop: OpId,
-    pub transform: OpId,
-    pub clip: OpId,
-    pub uri: String,
-    pub dimensions: OpId,
-
+    pub attrs: BTreeMap<u32, OpId>,
     pub ops: Vec<OpsOperation>,
     pub cmds: Vec<CmdsCommand>,
-    pub var_decls: BTreeMap<String, Value>,
     pub watches: Vec<Watch>,
-    pub event_handlers: Vec<(EventType, HandlerBlock)>,
+    pub event_handlers: Vec<EventHandler>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum A2RReparentScene {
     /// Place as first sub-scene of target scene
-    Inside(SceneId),
+    Inside(OpId),
 
     /// Place as next sibling of target scene
-    After(SceneId),
+    After(OpId),
 
     /// Create window from scene
     Root,
@@ -377,11 +398,23 @@ pub enum HandlerCmd {
     Nop,
     AllocateWindowId,
     ReparentScene {
-        scene: SceneId,
+        scene: OpId,
         to: A2RReparentScene,
     },
-    UpdateVar {
+    SetVar {
         var: VarId,
+        value: OpId,
+    },
+    SetVarByRef {
+        var: OpId,
+        value: OpId,
+    },
+    DeleteVar {
+        var: VarId,
+        value: OpId,
+    },
+    DeleteVarByRef {
+        var: OpId,
         value: OpId,
     },
     DebugMessage {
@@ -391,17 +424,34 @@ pub enum HandlerCmd {
         path: String,
         params: Vec<OpId>,
     },
+    Open {
+        path: String,
+    },
     If {
         condition: OpId,
-        then: Box<HandlerCmd>,
-        or_else: Box<HandlerCmd>,
+        then: Vec<HandlerCmd>,
+        or_else: Vec<HandlerCmd>,
     },
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct HandlerBlock {
     pub ops: Vec<OpsOperation>,
     pub cmds: Vec<HandlerCmd>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ResourceChunk {
+    pub id: ResourceId,
+    pub offset: u64,
+    pub data: Vec<u8>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ResourceDealloc {
+    pub id: ResourceId,
+    pub offset: u64,
+    pub length: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -414,7 +464,38 @@ pub struct ExternalAppRequest {
 pub struct A2RUpdate {
     pub updated_scenes: Vec<A2RUpdateScene>,
     pub run_blocks: Vec<HandlerBlock>,
+    pub resource_chunks: Vec<ResourceChunk>,
+    pub resource_deallocs: Vec<ResourceDealloc>,
     pub external_app_requests: Vec<ExternalAppRequest>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[repr(u32)]
+pub enum SceneAttr {
+    /// 2D transformation matrix
+    Transform = 0,
+    /// Affects how the scene is rendered, e.g. tint or foreground blur
+    Paint,
+    /// Affects how parts under the scene are rendered, e.g. tint or background blur
+    BackdropPaint,
+    /// Masks the scene
+    Clip,
+    /// The URI of the scene
+    Uri,
+    /// The initial size of the window (or the fixed size of the subscene)
+    Size,
+    /// An opaque id passed from the renderer as a query parameter, used to associate `open` requests with the opened window
+    WindowId,
+    /// The initial position of the window
+    WindowInitialPosition,
+    /// The initial state of the window, one of:
+    WindowInitialState,
+    /// The title of the window
+    WindowTitle,
+    /// The icon of the window
+    WindowIcon,
+    /// Whether the window should have decorations, one of:
+    WindowDecorations,
 }
 
 #[derive(Debug, Clone)]

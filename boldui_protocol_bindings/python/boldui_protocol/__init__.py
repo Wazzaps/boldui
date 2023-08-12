@@ -12,4 +12,5 @@ LATEST_EA_MAJOR_VER = 0
 LATEST_EA_MINOR_VER = 1
 
 SceneId = st.uint32
+ResourceId = st.uint32
 NullOpId = OpId(st.uint32(0), st.uint32(0))

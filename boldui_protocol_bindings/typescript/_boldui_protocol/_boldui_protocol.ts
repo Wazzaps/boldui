@@ -54,6 +54,7 @@ type MatchA2RMessage<R> = PartialMatchA2RMessage<R> | FullMatchA2RMessage<R>;
 
 export abstract class A2RMessage {
   static _variant: string = undefined as unknown as string;
+  static _tag: number;
 abstract serialize(serializer: Serializer): void;
 
 static deserialize(deserializer: Deserializer): A2RMessage {
@@ -75,6 +76,7 @@ match<R>(handlers: MatchA2RMessage<R>): R {
 
 export class A2RMessageVariantUpdate extends A2RMessage {
   static _variant = "Update";
+  static _tag = 0;
 
 constructor (public value: A2RUpdate) {
   super();
@@ -94,6 +96,7 @@ static load(deserializer: Deserializer): A2RMessageVariantUpdate {
 
 export class A2RMessageVariantError extends A2RMessage {
   static _variant = "Error";
+  static _tag = 1;
 
 constructor (public value: Error) {
   super();
@@ -113,6 +116,7 @@ static load(deserializer: Deserializer): A2RMessageVariantError {
 
 export class A2RMessageVariantCompressedUpdate extends A2RMessage {
   static _variant = "CompressedUpdate";
+  static _tag = 2;
 
 constructor (public value: Seq<uint8>) {
   super();
@@ -151,6 +155,7 @@ type MatchA2RReparentScene<R> = PartialMatchA2RReparentScene<R> | FullMatchA2RRe
 
 export abstract class A2RReparentScene {
   static _variant: string = undefined as unknown as string;
+  static _tag: number;
 abstract serialize(serializer: Serializer): void;
 
 static deserialize(deserializer: Deserializer): A2RReparentScene {
@@ -174,18 +179,19 @@ match<R>(handlers: MatchA2RReparentScene<R>): R {
 
 export class A2RReparentSceneVariantInside extends A2RReparentScene {
   static _variant = "Inside";
+  static _tag = 0;
 
-constructor (public value: uint32) {
+constructor (public value: OpId) {
   super();
 }
 
 public serialize(serializer: Serializer): void {
   serializer.serializeVariantIndex(0);
-  serializer.serializeU32(this.value);
+  this.value.serialize(serializer);
 }
 
 static load(deserializer: Deserializer): A2RReparentSceneVariantInside {
-  const value = deserializer.deserializeU32();
+  const value = OpId.deserialize(deserializer);
   return new A2RReparentSceneVariantInside(value);
 }
 
@@ -193,18 +199,19 @@ static load(deserializer: Deserializer): A2RReparentSceneVariantInside {
 
 export class A2RReparentSceneVariantAfter extends A2RReparentScene {
   static _variant = "After";
+  static _tag = 1;
 
-constructor (public value: uint32) {
+constructor (public value: OpId) {
   super();
 }
 
 public serialize(serializer: Serializer): void {
   serializer.serializeVariantIndex(1);
-  serializer.serializeU32(this.value);
+  this.value.serialize(serializer);
 }
 
 static load(deserializer: Deserializer): A2RReparentSceneVariantAfter {
-  const value = deserializer.deserializeU32();
+  const value = OpId.deserialize(deserializer);
   return new A2RReparentSceneVariantAfter(value);
 }
 
@@ -212,6 +219,7 @@ static load(deserializer: Deserializer): A2RReparentSceneVariantAfter {
 
 export class A2RReparentSceneVariantRoot extends A2RReparentScene {
   static _variant = "Root";
+  static _tag = 2;
 constructor () {
   super();
 }
@@ -228,6 +236,7 @@ static load(deserializer: Deserializer): A2RReparentSceneVariantRoot {
 
 export class A2RReparentSceneVariantDisconnect extends A2RReparentScene {
   static _variant = "Disconnect";
+  static _tag = 3;
 constructor () {
   super();
 }
@@ -244,6 +253,7 @@ static load(deserializer: Deserializer): A2RReparentSceneVariantDisconnect {
 
 export class A2RReparentSceneVariantHide extends A2RReparentScene {
   static _variant = "Hide";
+  static _tag = 4;
 constructor () {
   super();
 }
@@ -259,57 +269,49 @@ static load(deserializer: Deserializer): A2RReparentSceneVariantHide {
 }
 export class A2RUpdate {
 
-constructor (public updated_scenes: Seq<A2RUpdateScene>, public run_blocks: Seq<HandlerBlock>, public external_app_requests: Seq<ExternalAppRequest>) {
+constructor (public updated_scenes: Seq<A2RUpdateScene>, public run_blocks: Seq<HandlerBlock>, public resource_chunks: Seq<ResourceChunk>, public resource_deallocs: Seq<ResourceDealloc>, public external_app_requests: Seq<ExternalAppRequest>) {
 }
 
 public serialize(serializer: Serializer): void {
   Helpers.serializeVectorA2rUpdateScene(this.updated_scenes, serializer);
   Helpers.serializeVectorHandlerBlock(this.run_blocks, serializer);
+  Helpers.serializeVectorResourceChunk(this.resource_chunks, serializer);
+  Helpers.serializeVectorResourceDealloc(this.resource_deallocs, serializer);
   Helpers.serializeVectorExternalAppRequest(this.external_app_requests, serializer);
 }
 
 static deserialize(deserializer: Deserializer): A2RUpdate {
   const updated_scenes = Helpers.deserializeVectorA2rUpdateScene(deserializer);
   const run_blocks = Helpers.deserializeVectorHandlerBlock(deserializer);
+  const resource_chunks = Helpers.deserializeVectorResourceChunk(deserializer);
+  const resource_deallocs = Helpers.deserializeVectorResourceDealloc(deserializer);
   const external_app_requests = Helpers.deserializeVectorExternalAppRequest(deserializer);
-  return new A2RUpdate(updated_scenes,run_blocks,external_app_requests);
+  return new A2RUpdate(updated_scenes,run_blocks,resource_chunks,resource_deallocs,external_app_requests);
 }
 
 }
 export class A2RUpdateScene {
 
-constructor (public id: uint32, public paint: OpId, public backdrop: OpId, public transform: OpId, public clip: OpId, public uri: str, public dimensions: OpId, public ops: Seq<OpsOperation>, public cmds: Seq<CmdsCommand>, public var_decls: Map<str,Value>, public watches: Seq<Watch>, public event_handlers: Seq<Tuple<[EventType, HandlerBlock]>>) {
+constructor (public id: uint32, public attrs: Map<uint32,OpId>, public ops: Seq<OpsOperation>, public cmds: Seq<CmdsCommand>, public watches: Seq<Watch>, public event_handlers: Seq<EventHandler>) {
 }
 
 public serialize(serializer: Serializer): void {
   serializer.serializeU32(this.id);
-  this.paint.serialize(serializer);
-  this.backdrop.serialize(serializer);
-  this.transform.serialize(serializer);
-  this.clip.serialize(serializer);
-  serializer.serializeStr(this.uri);
-  this.dimensions.serialize(serializer);
+  Helpers.serializeMapU32ToOpId(this.attrs, serializer);
   Helpers.serializeVectorOpsOperation(this.ops, serializer);
   Helpers.serializeVectorCmdsCommand(this.cmds, serializer);
-  Helpers.serializeMapStrToValue(this.var_decls, serializer);
   Helpers.serializeVectorWatch(this.watches, serializer);
-  Helpers.serializeVectorTuple2EventTypeHandlerBlock(this.event_handlers, serializer);
+  Helpers.serializeVectorEventHandler(this.event_handlers, serializer);
 }
 
 static deserialize(deserializer: Deserializer): A2RUpdateScene {
   const id = deserializer.deserializeU32();
-  const paint = OpId.deserialize(deserializer);
-  const backdrop = OpId.deserialize(deserializer);
-  const transform = OpId.deserialize(deserializer);
-  const clip = OpId.deserialize(deserializer);
-  const uri = deserializer.deserializeStr();
-  const dimensions = OpId.deserialize(deserializer);
+  const attrs = Helpers.deserializeMapU32ToOpId(deserializer);
   const ops = Helpers.deserializeVectorOpsOperation(deserializer);
   const cmds = Helpers.deserializeVectorCmdsCommand(deserializer);
-  const var_decls = Helpers.deserializeMapStrToValue(deserializer);
   const watches = Helpers.deserializeVectorWatch(deserializer);
-  const event_handlers = Helpers.deserializeVectorTuple2EventTypeHandlerBlock(deserializer);
-  return new A2RUpdateScene(id,paint,backdrop,transform,clip,uri,dimensions,ops,cmds,var_decls,watches,event_handlers);
+  const event_handlers = Helpers.deserializeVectorEventHandler(deserializer);
+  return new A2RUpdateScene(id,attrs,ops,cmds,watches,event_handlers);
 }
 
 }
@@ -318,6 +320,7 @@ interface FullMatchCmdsCommand<R> {
   DrawRect: (value: CmdsCommandVariantDrawRect) => R,
   DrawRoundRect: (value: CmdsCommandVariantDrawRoundRect) => R,
   DrawCenteredText: (value: CmdsCommandVariantDrawCenteredText) => R,
+  DrawImage: (value: CmdsCommandVariantDrawImage) => R,
 }
 
 interface PartialMatchCmdsCommand<R> {
@@ -325,6 +328,7 @@ interface PartialMatchCmdsCommand<R> {
   DrawRect?: (value: CmdsCommandVariantDrawRect) => R,
   DrawRoundRect?: (value: CmdsCommandVariantDrawRoundRect) => R,
   DrawCenteredText?: (value: CmdsCommandVariantDrawCenteredText) => R,
+  DrawImage?: (value: CmdsCommandVariantDrawImage) => R,
   _: (value: CmdsCommand) => R,
 
 }
@@ -333,6 +337,7 @@ type MatchCmdsCommand<R> = PartialMatchCmdsCommand<R> | FullMatchCmdsCommand<R>;
 
 export abstract class CmdsCommand {
   static _variant: string = undefined as unknown as string;
+  static _tag: number;
 abstract serialize(serializer: Serializer): void;
 
 static deserialize(deserializer: Deserializer): CmdsCommand {
@@ -342,6 +347,7 @@ static deserialize(deserializer: Deserializer): CmdsCommand {
     case 1: return CmdsCommandVariantDrawRect.load(deserializer);
     case 2: return CmdsCommandVariantDrawRoundRect.load(deserializer);
     case 3: return CmdsCommandVariantDrawCenteredText.load(deserializer);
+    case 4: return CmdsCommandVariantDrawImage.load(deserializer);
     default: throw new window.Error("Unknown variant index for CmdsCommand: " + index);
   }
 }
@@ -355,6 +361,7 @@ match<R>(handlers: MatchCmdsCommand<R>): R {
 
 export class CmdsCommandVariantClear extends CmdsCommand {
   static _variant = "Clear";
+  static _tag = 0;
 
 constructor (public color: OpId) {
   super();
@@ -374,6 +381,7 @@ static load(deserializer: Deserializer): CmdsCommandVariantClear {
 
 export class CmdsCommandVariantDrawRect extends CmdsCommand {
   static _variant = "DrawRect";
+  static _tag = 1;
 
 constructor (public paint: OpId, public rect: OpId) {
   super();
@@ -395,6 +403,7 @@ static load(deserializer: Deserializer): CmdsCommandVariantDrawRect {
 
 export class CmdsCommandVariantDrawRoundRect extends CmdsCommand {
   static _variant = "DrawRoundRect";
+  static _tag = 2;
 
 constructor (public paint: OpId, public rect: OpId, public radius: OpId) {
   super();
@@ -418,6 +427,7 @@ static load(deserializer: Deserializer): CmdsCommandVariantDrawRoundRect {
 
 export class CmdsCommandVariantDrawCenteredText extends CmdsCommand {
   static _variant = "DrawCenteredText";
+  static _tag = 3;
 
 constructor (public text: OpId, public paint: OpId, public center: OpId) {
   super();
@@ -435,6 +445,28 @@ static load(deserializer: Deserializer): CmdsCommandVariantDrawCenteredText {
   const paint = OpId.deserialize(deserializer);
   const center = OpId.deserialize(deserializer);
   return new CmdsCommandVariantDrawCenteredText(text,paint,center);
+}
+
+}
+
+export class CmdsCommandVariantDrawImage extends CmdsCommand {
+  static _variant = "DrawImage";
+  static _tag = 4;
+
+constructor (public res: OpId, public top_left: OpId) {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(4);
+  this.res.serialize(serializer);
+  this.top_left.serialize(serializer);
+}
+
+static load(deserializer: Deserializer): CmdsCommandVariantDrawImage {
+  const res = OpId.deserialize(deserializer);
+  const top_left = OpId.deserialize(deserializer);
+  return new CmdsCommandVariantDrawImage(res,top_left);
 }
 
 }
@@ -512,6 +544,7 @@ type MatchEA2RMessage<R> = PartialMatchEA2RMessage<R> | FullMatchEA2RMessage<R>;
 
 export abstract class EA2RMessage {
   static _variant: string = undefined as unknown as string;
+  static _tag: number;
 abstract serialize(serializer: Serializer): void;
 
 static deserialize(deserializer: Deserializer): EA2RMessage {
@@ -534,6 +567,7 @@ match<R>(handlers: MatchEA2RMessage<R>): R {
 
 export class EA2RMessageVariantCreatedExternalWidget extends EA2RMessage {
   static _variant = "CreatedExternalWidget";
+  static _tag = 0;
 
 constructor (public texture_info: Seq<uint8>) {
   super();
@@ -553,6 +587,7 @@ static load(deserializer: Deserializer): EA2RMessageVariantCreatedExternalWidget
 
 export class EA2RMessageVariantSpontaneousUpdate extends EA2RMessage {
   static _variant = "SpontaneousUpdate";
+  static _tag = 1;
 constructor () {
   super();
 }
@@ -569,6 +604,7 @@ static load(deserializer: Deserializer): EA2RMessageVariantSpontaneousUpdate {
 
 export class EA2RMessageVariantUpdateHandled extends EA2RMessage {
   static _variant = "UpdateHandled";
+  static _tag = 2;
 constructor () {
   super();
 }
@@ -585,6 +621,7 @@ static load(deserializer: Deserializer): EA2RMessageVariantUpdateHandled {
 
 export class EA2RMessageVariantError extends EA2RMessage {
   static _variant = "Error";
+  static _tag = 3;
 
 constructor (public value: Error) {
   super();
@@ -618,14 +655,35 @@ static deserialize(deserializer: Deserializer): Error {
 }
 
 }
+export class EventHandler {
+
+constructor (public event_type: EventType, public handler: HandlerBlock, public continue_handling: OpId) {
+}
+
+public serialize(serializer: Serializer): void {
+  this.event_type.serialize(serializer);
+  this.handler.serialize(serializer);
+  this.continue_handling.serialize(serializer);
+}
+
+static deserialize(deserializer: Deserializer): EventHandler {
+  const event_type = EventType.deserialize(deserializer);
+  const handler = HandlerBlock.deserialize(deserializer);
+  const continue_handling = OpId.deserialize(deserializer);
+  return new EventHandler(event_type,handler,continue_handling);
+}
+
+}
 interface FullMatchEventType<R> {
   MouseDown: (value: EventTypeVariantMouseDown) => R,
   MouseUp: (value: EventTypeVariantMouseUp) => R,
+  MouseMove: (value: EventTypeVariantMouseMove) => R,
 }
 
 interface PartialMatchEventType<R> {
   MouseDown?: (value: EventTypeVariantMouseDown) => R,
   MouseUp?: (value: EventTypeVariantMouseUp) => R,
+  MouseMove?: (value: EventTypeVariantMouseMove) => R,
   _: (value: EventType) => R,
 
 }
@@ -634,6 +692,7 @@ type MatchEventType<R> = PartialMatchEventType<R> | FullMatchEventType<R>;
 
 export abstract class EventType {
   static _variant: string = undefined as unknown as string;
+  static _tag: number;
 abstract serialize(serializer: Serializer): void;
 
 static deserialize(deserializer: Deserializer): EventType {
@@ -641,6 +700,7 @@ static deserialize(deserializer: Deserializer): EventType {
   switch (index) {
     case 0: return EventTypeVariantMouseDown.load(deserializer);
     case 1: return EventTypeVariantMouseUp.load(deserializer);
+    case 2: return EventTypeVariantMouseMove.load(deserializer);
     default: throw new window.Error("Unknown variant index for EventType: " + index);
   }
 }
@@ -654,6 +714,7 @@ match<R>(handlers: MatchEventType<R>): R {
 
 export class EventTypeVariantMouseDown extends EventType {
   static _variant = "MouseDown";
+  static _tag = 0;
 
 constructor (public rect: OpId) {
   super();
@@ -673,6 +734,7 @@ static load(deserializer: Deserializer): EventTypeVariantMouseDown {
 
 export class EventTypeVariantMouseUp extends EventType {
   static _variant = "MouseUp";
+  static _tag = 1;
 
 constructor (public rect: OpId) {
   super();
@@ -686,6 +748,26 @@ public serialize(serializer: Serializer): void {
 static load(deserializer: Deserializer): EventTypeVariantMouseUp {
   const rect = OpId.deserialize(deserializer);
   return new EventTypeVariantMouseUp(rect);
+}
+
+}
+
+export class EventTypeVariantMouseMove extends EventType {
+  static _variant = "MouseMove";
+  static _tag = 2;
+
+constructor (public rect: OpId) {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(2);
+  this.rect.serialize(serializer);
+}
+
+static load(deserializer: Deserializer): EventTypeVariantMouseMove {
+  const rect = OpId.deserialize(deserializer);
+  return new EventTypeVariantMouseMove(rect);
 }
 
 }
@@ -727,9 +809,13 @@ interface FullMatchHandlerCmd<R> {
   Nop: (value: HandlerCmdVariantNop) => R,
   AllocateWindowId: (value: HandlerCmdVariantAllocateWindowId) => R,
   ReparentScene: (value: HandlerCmdVariantReparentScene) => R,
-  UpdateVar: (value: HandlerCmdVariantUpdateVar) => R,
+  SetVar: (value: HandlerCmdVariantSetVar) => R,
+  SetVarByRef: (value: HandlerCmdVariantSetVarByRef) => R,
+  DeleteVar: (value: HandlerCmdVariantDeleteVar) => R,
+  DeleteVarByRef: (value: HandlerCmdVariantDeleteVarByRef) => R,
   DebugMessage: (value: HandlerCmdVariantDebugMessage) => R,
   Reply: (value: HandlerCmdVariantReply) => R,
+  Open: (value: HandlerCmdVariantOpen) => R,
   If: (value: HandlerCmdVariantIf) => R,
 }
 
@@ -737,9 +823,13 @@ interface PartialMatchHandlerCmd<R> {
   Nop?: (value: HandlerCmdVariantNop) => R,
   AllocateWindowId?: (value: HandlerCmdVariantAllocateWindowId) => R,
   ReparentScene?: (value: HandlerCmdVariantReparentScene) => R,
-  UpdateVar?: (value: HandlerCmdVariantUpdateVar) => R,
+  SetVar?: (value: HandlerCmdVariantSetVar) => R,
+  SetVarByRef?: (value: HandlerCmdVariantSetVarByRef) => R,
+  DeleteVar?: (value: HandlerCmdVariantDeleteVar) => R,
+  DeleteVarByRef?: (value: HandlerCmdVariantDeleteVarByRef) => R,
   DebugMessage?: (value: HandlerCmdVariantDebugMessage) => R,
   Reply?: (value: HandlerCmdVariantReply) => R,
+  Open?: (value: HandlerCmdVariantOpen) => R,
   If?: (value: HandlerCmdVariantIf) => R,
   _: (value: HandlerCmd) => R,
 
@@ -749,6 +839,7 @@ type MatchHandlerCmd<R> = PartialMatchHandlerCmd<R> | FullMatchHandlerCmd<R>;
 
 export abstract class HandlerCmd {
   static _variant: string = undefined as unknown as string;
+  static _tag: number;
 abstract serialize(serializer: Serializer): void;
 
 static deserialize(deserializer: Deserializer): HandlerCmd {
@@ -757,10 +848,14 @@ static deserialize(deserializer: Deserializer): HandlerCmd {
     case 0: return HandlerCmdVariantNop.load(deserializer);
     case 1: return HandlerCmdVariantAllocateWindowId.load(deserializer);
     case 2: return HandlerCmdVariantReparentScene.load(deserializer);
-    case 3: return HandlerCmdVariantUpdateVar.load(deserializer);
-    case 4: return HandlerCmdVariantDebugMessage.load(deserializer);
-    case 5: return HandlerCmdVariantReply.load(deserializer);
-    case 6: return HandlerCmdVariantIf.load(deserializer);
+    case 3: return HandlerCmdVariantSetVar.load(deserializer);
+    case 4: return HandlerCmdVariantSetVarByRef.load(deserializer);
+    case 5: return HandlerCmdVariantDeleteVar.load(deserializer);
+    case 6: return HandlerCmdVariantDeleteVarByRef.load(deserializer);
+    case 7: return HandlerCmdVariantDebugMessage.load(deserializer);
+    case 8: return HandlerCmdVariantReply.load(deserializer);
+    case 9: return HandlerCmdVariantOpen.load(deserializer);
+    case 10: return HandlerCmdVariantIf.load(deserializer);
     default: throw new window.Error("Unknown variant index for HandlerCmd: " + index);
   }
 }
@@ -774,6 +869,7 @@ match<R>(handlers: MatchHandlerCmd<R>): R {
 
 export class HandlerCmdVariantNop extends HandlerCmd {
   static _variant = "Nop";
+  static _tag = 0;
 constructor () {
   super();
 }
@@ -790,6 +886,7 @@ static load(deserializer: Deserializer): HandlerCmdVariantNop {
 
 export class HandlerCmdVariantAllocateWindowId extends HandlerCmd {
   static _variant = "AllocateWindowId";
+  static _tag = 1;
 constructor () {
   super();
 }
@@ -806,27 +903,29 @@ static load(deserializer: Deserializer): HandlerCmdVariantAllocateWindowId {
 
 export class HandlerCmdVariantReparentScene extends HandlerCmd {
   static _variant = "ReparentScene";
+  static _tag = 2;
 
-constructor (public scene: uint32, public to: A2RReparentScene) {
+constructor (public scene: OpId, public to: A2RReparentScene) {
   super();
 }
 
 public serialize(serializer: Serializer): void {
   serializer.serializeVariantIndex(2);
-  serializer.serializeU32(this.scene);
+  this.scene.serialize(serializer);
   this.to.serialize(serializer);
 }
 
 static load(deserializer: Deserializer): HandlerCmdVariantReparentScene {
-  const scene = deserializer.deserializeU32();
+  const scene = OpId.deserialize(deserializer);
   const to = A2RReparentScene.deserialize(deserializer);
   return new HandlerCmdVariantReparentScene(scene,to);
 }
 
 }
 
-export class HandlerCmdVariantUpdateVar extends HandlerCmd {
-  static _variant = "UpdateVar";
+export class HandlerCmdVariantSetVar extends HandlerCmd {
+  static _variant = "SetVar";
+  static _tag = 3;
 
 constructor (public var_: VarId, public value: OpId) {
   super();
@@ -838,23 +937,90 @@ public serialize(serializer: Serializer): void {
   this.value.serialize(serializer);
 }
 
-static load(deserializer: Deserializer): HandlerCmdVariantUpdateVar {
+static load(deserializer: Deserializer): HandlerCmdVariantSetVar {
   const var_ = VarId.deserialize(deserializer);
   const value = OpId.deserialize(deserializer);
-  return new HandlerCmdVariantUpdateVar(var_,value);
+  return new HandlerCmdVariantSetVar(var_,value);
+}
+
+}
+
+export class HandlerCmdVariantSetVarByRef extends HandlerCmd {
+  static _variant = "SetVarByRef";
+  static _tag = 4;
+
+constructor (public var_: OpId, public value: OpId) {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(4);
+  this.var_.serialize(serializer);
+  this.value.serialize(serializer);
+}
+
+static load(deserializer: Deserializer): HandlerCmdVariantSetVarByRef {
+  const var_ = OpId.deserialize(deserializer);
+  const value = OpId.deserialize(deserializer);
+  return new HandlerCmdVariantSetVarByRef(var_,value);
+}
+
+}
+
+export class HandlerCmdVariantDeleteVar extends HandlerCmd {
+  static _variant = "DeleteVar";
+  static _tag = 5;
+
+constructor (public var_: VarId, public value: OpId) {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(5);
+  this.var_.serialize(serializer);
+  this.value.serialize(serializer);
+}
+
+static load(deserializer: Deserializer): HandlerCmdVariantDeleteVar {
+  const var_ = VarId.deserialize(deserializer);
+  const value = OpId.deserialize(deserializer);
+  return new HandlerCmdVariantDeleteVar(var_,value);
+}
+
+}
+
+export class HandlerCmdVariantDeleteVarByRef extends HandlerCmd {
+  static _variant = "DeleteVarByRef";
+  static _tag = 6;
+
+constructor (public var_: OpId, public value: OpId) {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(6);
+  this.var_.serialize(serializer);
+  this.value.serialize(serializer);
+}
+
+static load(deserializer: Deserializer): HandlerCmdVariantDeleteVarByRef {
+  const var_ = OpId.deserialize(deserializer);
+  const value = OpId.deserialize(deserializer);
+  return new HandlerCmdVariantDeleteVarByRef(var_,value);
 }
 
 }
 
 export class HandlerCmdVariantDebugMessage extends HandlerCmd {
   static _variant = "DebugMessage";
+  static _tag = 7;
 
 constructor (public msg: str) {
   super();
 }
 
 public serialize(serializer: Serializer): void {
-  serializer.serializeVariantIndex(4);
+  serializer.serializeVariantIndex(7);
   serializer.serializeStr(this.msg);
 }
 
@@ -867,13 +1033,14 @@ static load(deserializer: Deserializer): HandlerCmdVariantDebugMessage {
 
 export class HandlerCmdVariantReply extends HandlerCmd {
   static _variant = "Reply";
+  static _tag = 8;
 
 constructor (public path: str, public params: Seq<OpId>) {
   super();
 }
 
 public serialize(serializer: Serializer): void {
-  serializer.serializeVariantIndex(5);
+  serializer.serializeVariantIndex(8);
   serializer.serializeStr(this.path);
   Helpers.serializeVectorOpId(this.params, serializer);
 }
@@ -886,24 +1053,45 @@ static load(deserializer: Deserializer): HandlerCmdVariantReply {
 
 }
 
-export class HandlerCmdVariantIf extends HandlerCmd {
-  static _variant = "If";
+export class HandlerCmdVariantOpen extends HandlerCmd {
+  static _variant = "Open";
+  static _tag = 9;
 
-constructor (public condition: OpId, public then: HandlerCmd, public or_else: HandlerCmd) {
+constructor (public path: str) {
   super();
 }
 
 public serialize(serializer: Serializer): void {
-  serializer.serializeVariantIndex(6);
+  serializer.serializeVariantIndex(9);
+  serializer.serializeStr(this.path);
+}
+
+static load(deserializer: Deserializer): HandlerCmdVariantOpen {
+  const path = deserializer.deserializeStr();
+  return new HandlerCmdVariantOpen(path);
+}
+
+}
+
+export class HandlerCmdVariantIf extends HandlerCmd {
+  static _variant = "If";
+  static _tag = 10;
+
+constructor (public condition: OpId, public then: Seq<HandlerCmd>, public or_else: Seq<HandlerCmd>) {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(10);
   this.condition.serialize(serializer);
-  this.then.serialize(serializer);
-  this.or_else.serialize(serializer);
+  Helpers.serializeVectorHandlerCmd(this.then, serializer);
+  Helpers.serializeVectorHandlerCmd(this.or_else, serializer);
 }
 
 static load(deserializer: Deserializer): HandlerCmdVariantIf {
   const condition = OpId.deserialize(deserializer);
-  const then = HandlerCmd.deserialize(deserializer);
-  const or_else = HandlerCmd.deserialize(deserializer);
+  const then = Helpers.deserializeVectorHandlerCmd(deserializer);
+  const or_else = Helpers.deserializeVectorHandlerCmd(deserializer);
   return new HandlerCmdVariantIf(condition,then,or_else);
 }
 
@@ -936,6 +1124,7 @@ interface FullMatchOpsOperation<R> {
   Div: (value: OpsOperationVariantDiv) => R,
   FloorDiv: (value: OpsOperationVariantFloorDiv) => R,
   Eq: (value: OpsOperationVariantEq) => R,
+  Neq: (value: OpsOperationVariantNeq) => R,
   Min: (value: OpsOperationVariantMin) => R,
   Max: (value: OpsOperationVariantMax) => R,
   Or: (value: OpsOperationVariantOr) => R,
@@ -949,6 +1138,9 @@ interface FullMatchOpsOperation<R> {
   MakeRectFromSides: (value: OpsOperationVariantMakeRectFromSides) => R,
   MakeColor: (value: OpsOperationVariantMakeColor) => R,
   ToString: (value: OpsOperationVariantToString) => R,
+  GetImageDimensions: (value: OpsOperationVariantGetImageDimensions) => R,
+  GetPointTop: (value: OpsOperationVariantGetPointTop) => R,
+  GetPointLeft: (value: OpsOperationVariantGetPointLeft) => R,
   If: (value: OpsOperationVariantIf) => R,
 }
 
@@ -963,6 +1155,7 @@ interface PartialMatchOpsOperation<R> {
   Div?: (value: OpsOperationVariantDiv) => R,
   FloorDiv?: (value: OpsOperationVariantFloorDiv) => R,
   Eq?: (value: OpsOperationVariantEq) => R,
+  Neq?: (value: OpsOperationVariantNeq) => R,
   Min?: (value: OpsOperationVariantMin) => R,
   Max?: (value: OpsOperationVariantMax) => R,
   Or?: (value: OpsOperationVariantOr) => R,
@@ -976,6 +1169,9 @@ interface PartialMatchOpsOperation<R> {
   MakeRectFromSides?: (value: OpsOperationVariantMakeRectFromSides) => R,
   MakeColor?: (value: OpsOperationVariantMakeColor) => R,
   ToString?: (value: OpsOperationVariantToString) => R,
+  GetImageDimensions?: (value: OpsOperationVariantGetImageDimensions) => R,
+  GetPointTop?: (value: OpsOperationVariantGetPointTop) => R,
+  GetPointLeft?: (value: OpsOperationVariantGetPointLeft) => R,
   If?: (value: OpsOperationVariantIf) => R,
   _: (value: OpsOperation) => R,
 
@@ -985,6 +1181,7 @@ type MatchOpsOperation<R> = PartialMatchOpsOperation<R> | FullMatchOpsOperation<
 
 export abstract class OpsOperation {
   static _variant: string = undefined as unknown as string;
+  static _tag: number;
 abstract serialize(serializer: Serializer): void;
 
 static deserialize(deserializer: Deserializer): OpsOperation {
@@ -1000,20 +1197,24 @@ static deserialize(deserializer: Deserializer): OpsOperation {
     case 7: return OpsOperationVariantDiv.load(deserializer);
     case 8: return OpsOperationVariantFloorDiv.load(deserializer);
     case 9: return OpsOperationVariantEq.load(deserializer);
-    case 10: return OpsOperationVariantMin.load(deserializer);
-    case 11: return OpsOperationVariantMax.load(deserializer);
-    case 12: return OpsOperationVariantOr.load(deserializer);
-    case 13: return OpsOperationVariantAnd.load(deserializer);
-    case 14: return OpsOperationVariantGreaterThan.load(deserializer);
-    case 15: return OpsOperationVariantAbs.load(deserializer);
-    case 16: return OpsOperationVariantSin.load(deserializer);
-    case 17: return OpsOperationVariantCos.load(deserializer);
-    case 18: return OpsOperationVariantMakePoint.load(deserializer);
-    case 19: return OpsOperationVariantMakeRectFromPoints.load(deserializer);
-    case 20: return OpsOperationVariantMakeRectFromSides.load(deserializer);
-    case 21: return OpsOperationVariantMakeColor.load(deserializer);
-    case 22: return OpsOperationVariantToString.load(deserializer);
-    case 23: return OpsOperationVariantIf.load(deserializer);
+    case 10: return OpsOperationVariantNeq.load(deserializer);
+    case 11: return OpsOperationVariantMin.load(deserializer);
+    case 12: return OpsOperationVariantMax.load(deserializer);
+    case 13: return OpsOperationVariantOr.load(deserializer);
+    case 14: return OpsOperationVariantAnd.load(deserializer);
+    case 15: return OpsOperationVariantGreaterThan.load(deserializer);
+    case 16: return OpsOperationVariantAbs.load(deserializer);
+    case 17: return OpsOperationVariantSin.load(deserializer);
+    case 18: return OpsOperationVariantCos.load(deserializer);
+    case 19: return OpsOperationVariantMakePoint.load(deserializer);
+    case 20: return OpsOperationVariantMakeRectFromPoints.load(deserializer);
+    case 21: return OpsOperationVariantMakeRectFromSides.load(deserializer);
+    case 22: return OpsOperationVariantMakeColor.load(deserializer);
+    case 23: return OpsOperationVariantToString.load(deserializer);
+    case 24: return OpsOperationVariantGetImageDimensions.load(deserializer);
+    case 25: return OpsOperationVariantGetPointTop.load(deserializer);
+    case 26: return OpsOperationVariantGetPointLeft.load(deserializer);
+    case 27: return OpsOperationVariantIf.load(deserializer);
     default: throw new window.Error("Unknown variant index for OpsOperation: " + index);
   }
 }
@@ -1027,6 +1228,7 @@ match<R>(handlers: MatchOpsOperation<R>): R {
 
 export class OpsOperationVariantValue extends OpsOperation {
   static _variant = "Value";
+  static _tag = 0;
 
 constructor (public value: Value) {
   super();
@@ -1046,6 +1248,7 @@ static load(deserializer: Deserializer): OpsOperationVariantValue {
 
 export class OpsOperationVariantVar extends OpsOperation {
   static _variant = "Var";
+  static _tag = 1;
 
 constructor (public value: VarId) {
   super();
@@ -1065,6 +1268,7 @@ static load(deserializer: Deserializer): OpsOperationVariantVar {
 
 export class OpsOperationVariantGetTime extends OpsOperation {
   static _variant = "GetTime";
+  static _tag = 2;
 constructor () {
   super();
 }
@@ -1081,6 +1285,7 @@ static load(deserializer: Deserializer): OpsOperationVariantGetTime {
 
 export class OpsOperationVariantGetTimeAndClamp extends OpsOperation {
   static _variant = "GetTimeAndClamp";
+  static _tag = 3;
 
 constructor (public low: OpId, public high: OpId) {
   super();
@@ -1102,6 +1307,7 @@ static load(deserializer: Deserializer): OpsOperationVariantGetTimeAndClamp {
 
 export class OpsOperationVariantAdd extends OpsOperation {
   static _variant = "Add";
+  static _tag = 4;
 
 constructor (public a: OpId, public b: OpId) {
   super();
@@ -1123,6 +1329,7 @@ static load(deserializer: Deserializer): OpsOperationVariantAdd {
 
 export class OpsOperationVariantNeg extends OpsOperation {
   static _variant = "Neg";
+  static _tag = 5;
 
 constructor (public a: OpId) {
   super();
@@ -1142,6 +1349,7 @@ static load(deserializer: Deserializer): OpsOperationVariantNeg {
 
 export class OpsOperationVariantMul extends OpsOperation {
   static _variant = "Mul";
+  static _tag = 6;
 
 constructor (public a: OpId, public b: OpId) {
   super();
@@ -1163,6 +1371,7 @@ static load(deserializer: Deserializer): OpsOperationVariantMul {
 
 export class OpsOperationVariantDiv extends OpsOperation {
   static _variant = "Div";
+  static _tag = 7;
 
 constructor (public a: OpId, public b: OpId) {
   super();
@@ -1184,6 +1393,7 @@ static load(deserializer: Deserializer): OpsOperationVariantDiv {
 
 export class OpsOperationVariantFloorDiv extends OpsOperation {
   static _variant = "FloorDiv";
+  static _tag = 8;
 
 constructor (public a: OpId, public b: OpId) {
   super();
@@ -1205,6 +1415,7 @@ static load(deserializer: Deserializer): OpsOperationVariantFloorDiv {
 
 export class OpsOperationVariantEq extends OpsOperation {
   static _variant = "Eq";
+  static _tag = 9;
 
 constructor (public a: OpId, public b: OpId) {
   super();
@@ -1224,8 +1435,9 @@ static load(deserializer: Deserializer): OpsOperationVariantEq {
 
 }
 
-export class OpsOperationVariantMin extends OpsOperation {
-  static _variant = "Min";
+export class OpsOperationVariantNeq extends OpsOperation {
+  static _variant = "Neq";
+  static _tag = 10;
 
 constructor (public a: OpId, public b: OpId) {
   super();
@@ -1233,6 +1445,28 @@ constructor (public a: OpId, public b: OpId) {
 
 public serialize(serializer: Serializer): void {
   serializer.serializeVariantIndex(10);
+  this.a.serialize(serializer);
+  this.b.serialize(serializer);
+}
+
+static load(deserializer: Deserializer): OpsOperationVariantNeq {
+  const a = OpId.deserialize(deserializer);
+  const b = OpId.deserialize(deserializer);
+  return new OpsOperationVariantNeq(a,b);
+}
+
+}
+
+export class OpsOperationVariantMin extends OpsOperation {
+  static _variant = "Min";
+  static _tag = 11;
+
+constructor (public a: OpId, public b: OpId) {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(11);
   this.a.serialize(serializer);
   this.b.serialize(serializer);
 }
@@ -1247,13 +1481,14 @@ static load(deserializer: Deserializer): OpsOperationVariantMin {
 
 export class OpsOperationVariantMax extends OpsOperation {
   static _variant = "Max";
+  static _tag = 12;
 
 constructor (public a: OpId, public b: OpId) {
   super();
 }
 
 public serialize(serializer: Serializer): void {
-  serializer.serializeVariantIndex(11);
+  serializer.serializeVariantIndex(12);
   this.a.serialize(serializer);
   this.b.serialize(serializer);
 }
@@ -1268,13 +1503,14 @@ static load(deserializer: Deserializer): OpsOperationVariantMax {
 
 export class OpsOperationVariantOr extends OpsOperation {
   static _variant = "Or";
+  static _tag = 13;
 
 constructor (public a: OpId, public b: OpId) {
   super();
 }
 
 public serialize(serializer: Serializer): void {
-  serializer.serializeVariantIndex(12);
+  serializer.serializeVariantIndex(13);
   this.a.serialize(serializer);
   this.b.serialize(serializer);
 }
@@ -1289,13 +1525,14 @@ static load(deserializer: Deserializer): OpsOperationVariantOr {
 
 export class OpsOperationVariantAnd extends OpsOperation {
   static _variant = "And";
+  static _tag = 14;
 
 constructor (public a: OpId, public b: OpId) {
   super();
 }
 
 public serialize(serializer: Serializer): void {
-  serializer.serializeVariantIndex(13);
+  serializer.serializeVariantIndex(14);
   this.a.serialize(serializer);
   this.b.serialize(serializer);
 }
@@ -1310,13 +1547,14 @@ static load(deserializer: Deserializer): OpsOperationVariantAnd {
 
 export class OpsOperationVariantGreaterThan extends OpsOperation {
   static _variant = "GreaterThan";
+  static _tag = 15;
 
 constructor (public a: OpId, public b: OpId) {
   super();
 }
 
 public serialize(serializer: Serializer): void {
-  serializer.serializeVariantIndex(14);
+  serializer.serializeVariantIndex(15);
   this.a.serialize(serializer);
   this.b.serialize(serializer);
 }
@@ -1331,13 +1569,14 @@ static load(deserializer: Deserializer): OpsOperationVariantGreaterThan {
 
 export class OpsOperationVariantAbs extends OpsOperation {
   static _variant = "Abs";
+  static _tag = 16;
 
 constructor (public a: OpId) {
   super();
 }
 
 public serialize(serializer: Serializer): void {
-  serializer.serializeVariantIndex(15);
+  serializer.serializeVariantIndex(16);
   this.a.serialize(serializer);
 }
 
@@ -1350,13 +1589,14 @@ static load(deserializer: Deserializer): OpsOperationVariantAbs {
 
 export class OpsOperationVariantSin extends OpsOperation {
   static _variant = "Sin";
+  static _tag = 17;
 
 constructor (public a: OpId) {
   super();
 }
 
 public serialize(serializer: Serializer): void {
-  serializer.serializeVariantIndex(16);
+  serializer.serializeVariantIndex(17);
   this.a.serialize(serializer);
 }
 
@@ -1369,13 +1609,14 @@ static load(deserializer: Deserializer): OpsOperationVariantSin {
 
 export class OpsOperationVariantCos extends OpsOperation {
   static _variant = "Cos";
+  static _tag = 18;
 
 constructor (public a: OpId) {
   super();
 }
 
 public serialize(serializer: Serializer): void {
-  serializer.serializeVariantIndex(17);
+  serializer.serializeVariantIndex(18);
   this.a.serialize(serializer);
 }
 
@@ -1388,13 +1629,14 @@ static load(deserializer: Deserializer): OpsOperationVariantCos {
 
 export class OpsOperationVariantMakePoint extends OpsOperation {
   static _variant = "MakePoint";
+  static _tag = 19;
 
 constructor (public left: OpId, public top: OpId) {
   super();
 }
 
 public serialize(serializer: Serializer): void {
-  serializer.serializeVariantIndex(18);
+  serializer.serializeVariantIndex(19);
   this.left.serialize(serializer);
   this.top.serialize(serializer);
 }
@@ -1409,13 +1651,14 @@ static load(deserializer: Deserializer): OpsOperationVariantMakePoint {
 
 export class OpsOperationVariantMakeRectFromPoints extends OpsOperation {
   static _variant = "MakeRectFromPoints";
+  static _tag = 20;
 
 constructor (public left_top: OpId, public right_bottom: OpId) {
   super();
 }
 
 public serialize(serializer: Serializer): void {
-  serializer.serializeVariantIndex(19);
+  serializer.serializeVariantIndex(20);
   this.left_top.serialize(serializer);
   this.right_bottom.serialize(serializer);
 }
@@ -1430,13 +1673,14 @@ static load(deserializer: Deserializer): OpsOperationVariantMakeRectFromPoints {
 
 export class OpsOperationVariantMakeRectFromSides extends OpsOperation {
   static _variant = "MakeRectFromSides";
+  static _tag = 21;
 
 constructor (public left: OpId, public top: OpId, public right: OpId, public bottom: OpId) {
   super();
 }
 
 public serialize(serializer: Serializer): void {
-  serializer.serializeVariantIndex(20);
+  serializer.serializeVariantIndex(21);
   this.left.serialize(serializer);
   this.top.serialize(serializer);
   this.right.serialize(serializer);
@@ -1455,13 +1699,14 @@ static load(deserializer: Deserializer): OpsOperationVariantMakeRectFromSides {
 
 export class OpsOperationVariantMakeColor extends OpsOperation {
   static _variant = "MakeColor";
+  static _tag = 22;
 
 constructor (public r: OpId, public g: OpId, public b: OpId, public a: OpId) {
   super();
 }
 
 public serialize(serializer: Serializer): void {
-  serializer.serializeVariantIndex(21);
+  serializer.serializeVariantIndex(22);
   this.r.serialize(serializer);
   this.g.serialize(serializer);
   this.b.serialize(serializer);
@@ -1480,13 +1725,14 @@ static load(deserializer: Deserializer): OpsOperationVariantMakeColor {
 
 export class OpsOperationVariantToString extends OpsOperation {
   static _variant = "ToString";
+  static _tag = 23;
 
 constructor (public a: OpId) {
   super();
 }
 
 public serialize(serializer: Serializer): void {
-  serializer.serializeVariantIndex(22);
+  serializer.serializeVariantIndex(23);
   this.a.serialize(serializer);
 }
 
@@ -1497,15 +1743,76 @@ static load(deserializer: Deserializer): OpsOperationVariantToString {
 
 }
 
+export class OpsOperationVariantGetImageDimensions extends OpsOperation {
+  static _variant = "GetImageDimensions";
+  static _tag = 24;
+
+constructor (public res: OpId) {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(24);
+  this.res.serialize(serializer);
+}
+
+static load(deserializer: Deserializer): OpsOperationVariantGetImageDimensions {
+  const res = OpId.deserialize(deserializer);
+  return new OpsOperationVariantGetImageDimensions(res);
+}
+
+}
+
+export class OpsOperationVariantGetPointTop extends OpsOperation {
+  static _variant = "GetPointTop";
+  static _tag = 25;
+
+constructor (public point: OpId) {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(25);
+  this.point.serialize(serializer);
+}
+
+static load(deserializer: Deserializer): OpsOperationVariantGetPointTop {
+  const point = OpId.deserialize(deserializer);
+  return new OpsOperationVariantGetPointTop(point);
+}
+
+}
+
+export class OpsOperationVariantGetPointLeft extends OpsOperation {
+  static _variant = "GetPointLeft";
+  static _tag = 26;
+
+constructor (public point: OpId) {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(26);
+  this.point.serialize(serializer);
+}
+
+static load(deserializer: Deserializer): OpsOperationVariantGetPointLeft {
+  const point = OpId.deserialize(deserializer);
+  return new OpsOperationVariantGetPointLeft(point);
+}
+
+}
+
 export class OpsOperationVariantIf extends OpsOperation {
   static _variant = "If";
+  static _tag = 27;
 
 constructor (public condition: OpId, public then: OpId, public or_else: OpId) {
   super();
 }
 
 public serialize(serializer: Serializer): void {
-  serializer.serializeVariantIndex(23);
+  serializer.serializeVariantIndex(27);
   this.condition.serialize(serializer);
   this.then.serialize(serializer);
   this.or_else.serialize(serializer);
@@ -1570,6 +1877,7 @@ type MatchR2AMessage<R> = PartialMatchR2AMessage<R> | FullMatchR2AMessage<R>;
 
 export abstract class R2AMessage {
   static _variant: string = undefined as unknown as string;
+  static _tag: number;
 abstract serialize(serializer: Serializer): void;
 
 static deserialize(deserializer: Deserializer): R2AMessage {
@@ -1591,6 +1899,7 @@ match<R>(handlers: MatchR2AMessage<R>): R {
 
 export class R2AMessageVariantUpdate extends R2AMessage {
   static _variant = "Update";
+  static _tag = 0;
 
 constructor (public value: R2AUpdate) {
   super();
@@ -1610,6 +1919,7 @@ static load(deserializer: Deserializer): R2AMessageVariantUpdate {
 
 export class R2AMessageVariantOpen extends R2AMessage {
   static _variant = "Open";
+  static _tag = 1;
 
 constructor (public value: R2AOpen) {
   super();
@@ -1629,6 +1939,7 @@ static load(deserializer: Deserializer): R2AMessageVariantOpen {
 
 export class R2AMessageVariantError extends R2AMessage {
   static _variant = "Error";
+  static _tag = 2;
 
 constructor (public value: Error) {
   super();
@@ -1743,6 +2054,7 @@ type MatchR2EAMessage<R> = PartialMatchR2EAMessage<R> | FullMatchR2EAMessage<R>;
 
 export abstract class R2EAMessage {
   static _variant: string = undefined as unknown as string;
+  static _tag: number;
 abstract serialize(serializer: Serializer): void;
 
 static deserialize(deserializer: Deserializer): R2EAMessage {
@@ -1764,6 +2076,7 @@ match<R>(handlers: MatchR2EAMessage<R>): R {
 
 export class R2EAMessageVariantUpdate extends R2EAMessage {
   static _variant = "Update";
+  static _tag = 0;
 
 constructor (public value: R2EAUpdate) {
   super();
@@ -1783,6 +2096,7 @@ static load(deserializer: Deserializer): R2EAMessageVariantUpdate {
 
 export class R2EAMessageVariantOpen extends R2EAMessage {
   static _variant = "Open";
+  static _tag = 1;
 
 constructor (public value: R2EAOpen) {
   super();
@@ -1802,6 +2116,7 @@ static load(deserializer: Deserializer): R2EAMessageVariantOpen {
 
 export class R2EAMessageVariantError extends R2EAMessage {
   static _variant = "Error";
+  static _tag = 2;
 
 constructor (public value: Error) {
   super();
@@ -1848,11 +2163,319 @@ static deserialize(deserializer: Deserializer): R2EAUpdate {
 }
 
 }
+export class ResourceChunk {
+
+constructor (public id: uint32, public offset: uint64, public data: Seq<uint8>) {
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeU32(this.id);
+  serializer.serializeU64(this.offset);
+  Helpers.serializeVectorU8(this.data, serializer);
+}
+
+static deserialize(deserializer: Deserializer): ResourceChunk {
+  const id = deserializer.deserializeU32();
+  const offset = deserializer.deserializeU64();
+  const data = Helpers.deserializeVectorU8(deserializer);
+  return new ResourceChunk(id,offset,data);
+}
+
+}
+export class ResourceDealloc {
+
+constructor (public id: uint32, public offset: uint64, public length: uint64) {
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeU32(this.id);
+  serializer.serializeU64(this.offset);
+  serializer.serializeU64(this.length);
+}
+
+static deserialize(deserializer: Deserializer): ResourceDealloc {
+  const id = deserializer.deserializeU32();
+  const offset = deserializer.deserializeU64();
+  const length = deserializer.deserializeU64();
+  return new ResourceDealloc(id,offset,length);
+}
+
+}
+interface FullMatchSceneAttr<R> {
+  Transform: (value: SceneAttrVariantTransform) => R,
+  Paint: (value: SceneAttrVariantPaint) => R,
+  BackdropPaint: (value: SceneAttrVariantBackdropPaint) => R,
+  Clip: (value: SceneAttrVariantClip) => R,
+  Uri: (value: SceneAttrVariantUri) => R,
+  Size: (value: SceneAttrVariantSize) => R,
+  WindowId: (value: SceneAttrVariantWindowId) => R,
+  WindowInitialPosition: (value: SceneAttrVariantWindowInitialPosition) => R,
+  WindowInitialState: (value: SceneAttrVariantWindowInitialState) => R,
+  WindowTitle: (value: SceneAttrVariantWindowTitle) => R,
+  WindowIcon: (value: SceneAttrVariantWindowIcon) => R,
+  WindowDecorations: (value: SceneAttrVariantWindowDecorations) => R,
+}
+
+interface PartialMatchSceneAttr<R> {
+  Transform?: (value: SceneAttrVariantTransform) => R,
+  Paint?: (value: SceneAttrVariantPaint) => R,
+  BackdropPaint?: (value: SceneAttrVariantBackdropPaint) => R,
+  Clip?: (value: SceneAttrVariantClip) => R,
+  Uri?: (value: SceneAttrVariantUri) => R,
+  Size?: (value: SceneAttrVariantSize) => R,
+  WindowId?: (value: SceneAttrVariantWindowId) => R,
+  WindowInitialPosition?: (value: SceneAttrVariantWindowInitialPosition) => R,
+  WindowInitialState?: (value: SceneAttrVariantWindowInitialState) => R,
+  WindowTitle?: (value: SceneAttrVariantWindowTitle) => R,
+  WindowIcon?: (value: SceneAttrVariantWindowIcon) => R,
+  WindowDecorations?: (value: SceneAttrVariantWindowDecorations) => R,
+  _: (value: SceneAttr) => R,
+
+}
+
+type MatchSceneAttr<R> = PartialMatchSceneAttr<R> | FullMatchSceneAttr<R>;
+
+export abstract class SceneAttr {
+  static _variant: string = undefined as unknown as string;
+  static _tag: number;
+abstract serialize(serializer: Serializer): void;
+
+static deserialize(deserializer: Deserializer): SceneAttr {
+  const index = deserializer.deserializeVariantIndex();
+  switch (index) {
+    case 0: return SceneAttrVariantTransform.load(deserializer);
+    case 1: return SceneAttrVariantPaint.load(deserializer);
+    case 2: return SceneAttrVariantBackdropPaint.load(deserializer);
+    case 3: return SceneAttrVariantClip.load(deserializer);
+    case 4: return SceneAttrVariantUri.load(deserializer);
+    case 5: return SceneAttrVariantSize.load(deserializer);
+    case 6: return SceneAttrVariantWindowId.load(deserializer);
+    case 7: return SceneAttrVariantWindowInitialPosition.load(deserializer);
+    case 8: return SceneAttrVariantWindowInitialState.load(deserializer);
+    case 9: return SceneAttrVariantWindowTitle.load(deserializer);
+    case 10: return SceneAttrVariantWindowIcon.load(deserializer);
+    case 11: return SceneAttrVariantWindowDecorations.load(deserializer);
+    default: throw new window.Error("Unknown variant index for SceneAttr: " + index);
+  }
+}
+match<R>(handlers: MatchSceneAttr<R>): R {
+  let handler = (handlers as any)[(this.constructor as any)._variant];
+  return (handler || (handlers as any)['_'])(this);
+}
+
+}
+
+
+export class SceneAttrVariantTransform extends SceneAttr {
+  static _variant = "Transform";
+  static _tag = 0;
+constructor () {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(0);
+}
+
+static load(deserializer: Deserializer): SceneAttrVariantTransform {
+  return new SceneAttrVariantTransform();
+}
+
+}
+
+export class SceneAttrVariantPaint extends SceneAttr {
+  static _variant = "Paint";
+  static _tag = 1;
+constructor () {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(1);
+}
+
+static load(deserializer: Deserializer): SceneAttrVariantPaint {
+  return new SceneAttrVariantPaint();
+}
+
+}
+
+export class SceneAttrVariantBackdropPaint extends SceneAttr {
+  static _variant = "BackdropPaint";
+  static _tag = 2;
+constructor () {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(2);
+}
+
+static load(deserializer: Deserializer): SceneAttrVariantBackdropPaint {
+  return new SceneAttrVariantBackdropPaint();
+}
+
+}
+
+export class SceneAttrVariantClip extends SceneAttr {
+  static _variant = "Clip";
+  static _tag = 3;
+constructor () {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(3);
+}
+
+static load(deserializer: Deserializer): SceneAttrVariantClip {
+  return new SceneAttrVariantClip();
+}
+
+}
+
+export class SceneAttrVariantUri extends SceneAttr {
+  static _variant = "Uri";
+  static _tag = 4;
+constructor () {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(4);
+}
+
+static load(deserializer: Deserializer): SceneAttrVariantUri {
+  return new SceneAttrVariantUri();
+}
+
+}
+
+export class SceneAttrVariantSize extends SceneAttr {
+  static _variant = "Size";
+  static _tag = 5;
+constructor () {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(5);
+}
+
+static load(deserializer: Deserializer): SceneAttrVariantSize {
+  return new SceneAttrVariantSize();
+}
+
+}
+
+export class SceneAttrVariantWindowId extends SceneAttr {
+  static _variant = "WindowId";
+  static _tag = 6;
+constructor () {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(6);
+}
+
+static load(deserializer: Deserializer): SceneAttrVariantWindowId {
+  return new SceneAttrVariantWindowId();
+}
+
+}
+
+export class SceneAttrVariantWindowInitialPosition extends SceneAttr {
+  static _variant = "WindowInitialPosition";
+  static _tag = 7;
+constructor () {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(7);
+}
+
+static load(deserializer: Deserializer): SceneAttrVariantWindowInitialPosition {
+  return new SceneAttrVariantWindowInitialPosition();
+}
+
+}
+
+export class SceneAttrVariantWindowInitialState extends SceneAttr {
+  static _variant = "WindowInitialState";
+  static _tag = 8;
+constructor () {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(8);
+}
+
+static load(deserializer: Deserializer): SceneAttrVariantWindowInitialState {
+  return new SceneAttrVariantWindowInitialState();
+}
+
+}
+
+export class SceneAttrVariantWindowTitle extends SceneAttr {
+  static _variant = "WindowTitle";
+  static _tag = 9;
+constructor () {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(9);
+}
+
+static load(deserializer: Deserializer): SceneAttrVariantWindowTitle {
+  return new SceneAttrVariantWindowTitle();
+}
+
+}
+
+export class SceneAttrVariantWindowIcon extends SceneAttr {
+  static _variant = "WindowIcon";
+  static _tag = 10;
+constructor () {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(10);
+}
+
+static load(deserializer: Deserializer): SceneAttrVariantWindowIcon {
+  return new SceneAttrVariantWindowIcon();
+}
+
+}
+
+export class SceneAttrVariantWindowDecorations extends SceneAttr {
+  static _variant = "WindowDecorations";
+  static _tag = 11;
+constructor () {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(11);
+}
+
+static load(deserializer: Deserializer): SceneAttrVariantWindowDecorations {
+  return new SceneAttrVariantWindowDecorations();
+}
+
+}
 interface FullMatchValue<R> {
   Sint64: (value: ValueVariantSint64) => R,
   Double: (value: ValueVariantDouble) => R,
   String: (value: ValueVariantString) => R,
   Color: (value: ValueVariantColor) => R,
+  Resource: (value: ValueVariantResource) => R,
+  VarRef: (value: ValueVariantVarRef) => R,
   Point: (value: ValueVariantPoint) => R,
   Rect: (value: ValueVariantRect) => R,
 }
@@ -1862,6 +2485,8 @@ interface PartialMatchValue<R> {
   Double?: (value: ValueVariantDouble) => R,
   String?: (value: ValueVariantString) => R,
   Color?: (value: ValueVariantColor) => R,
+  Resource?: (value: ValueVariantResource) => R,
+  VarRef?: (value: ValueVariantVarRef) => R,
   Point?: (value: ValueVariantPoint) => R,
   Rect?: (value: ValueVariantRect) => R,
   _: (value: Value) => R,
@@ -1872,6 +2497,7 @@ type MatchValue<R> = PartialMatchValue<R> | FullMatchValue<R>;
 
 export abstract class Value {
   static _variant: string = undefined as unknown as string;
+  static _tag: number;
 abstract serialize(serializer: Serializer): void;
 
 static deserialize(deserializer: Deserializer): Value {
@@ -1881,8 +2507,10 @@ static deserialize(deserializer: Deserializer): Value {
     case 1: return ValueVariantDouble.load(deserializer);
     case 2: return ValueVariantString.load(deserializer);
     case 3: return ValueVariantColor.load(deserializer);
-    case 4: return ValueVariantPoint.load(deserializer);
-    case 5: return ValueVariantRect.load(deserializer);
+    case 4: return ValueVariantResource.load(deserializer);
+    case 5: return ValueVariantVarRef.load(deserializer);
+    case 6: return ValueVariantPoint.load(deserializer);
+    case 7: return ValueVariantRect.load(deserializer);
     default: throw new window.Error("Unknown variant index for Value: " + index);
   }
 }
@@ -1896,6 +2524,7 @@ match<R>(handlers: MatchValue<R>): R {
 
 export class ValueVariantSint64 extends Value {
   static _variant = "Sint64";
+  static _tag = 0;
 
 constructor (public value: int64) {
   super();
@@ -1915,6 +2544,7 @@ static load(deserializer: Deserializer): ValueVariantSint64 {
 
 export class ValueVariantDouble extends Value {
   static _variant = "Double";
+  static _tag = 1;
 
 constructor (public value: float64) {
   super();
@@ -1934,6 +2564,7 @@ static load(deserializer: Deserializer): ValueVariantDouble {
 
 export class ValueVariantString extends Value {
   static _variant = "String";
+  static _tag = 2;
 
 constructor (public value: str) {
   super();
@@ -1953,6 +2584,7 @@ static load(deserializer: Deserializer): ValueVariantString {
 
 export class ValueVariantColor extends Value {
   static _variant = "Color";
+  static _tag = 3;
 
 constructor (public value: Color) {
   super();
@@ -1970,15 +2602,56 @@ static load(deserializer: Deserializer): ValueVariantColor {
 
 }
 
+export class ValueVariantResource extends Value {
+  static _variant = "Resource";
+  static _tag = 4;
+
+constructor (public value: uint32) {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(4);
+  serializer.serializeU32(this.value);
+}
+
+static load(deserializer: Deserializer): ValueVariantResource {
+  const value = deserializer.deserializeU32();
+  return new ValueVariantResource(value);
+}
+
+}
+
+export class ValueVariantVarRef extends Value {
+  static _variant = "VarRef";
+  static _tag = 5;
+
+constructor (public value: VarId) {
+  super();
+}
+
+public serialize(serializer: Serializer): void {
+  serializer.serializeVariantIndex(5);
+  this.value.serialize(serializer);
+}
+
+static load(deserializer: Deserializer): ValueVariantVarRef {
+  const value = VarId.deserialize(deserializer);
+  return new ValueVariantVarRef(value);
+}
+
+}
+
 export class ValueVariantPoint extends Value {
   static _variant = "Point";
+  static _tag = 6;
 
 constructor (public left: float64, public top: float64) {
   super();
 }
 
 public serialize(serializer: Serializer): void {
-  serializer.serializeVariantIndex(4);
+  serializer.serializeVariantIndex(6);
   serializer.serializeF64(this.left);
   serializer.serializeF64(this.top);
 }
@@ -1993,13 +2666,14 @@ static load(deserializer: Deserializer): ValueVariantPoint {
 
 export class ValueVariantRect extends Value {
   static _variant = "Rect";
+  static _tag = 7;
 
 constructor (public left: float64, public top: float64, public right: float64, public bottom: float64) {
   super();
 }
 
 public serialize(serializer: Serializer): void {
-  serializer.serializeVariantIndex(5);
+  serializer.serializeVariantIndex(7);
   serializer.serializeF64(this.left);
   serializer.serializeF64(this.top);
   serializer.serializeF64(this.right);
@@ -2017,18 +2691,16 @@ static load(deserializer: Deserializer): ValueVariantRect {
 }
 export class VarId {
 
-constructor (public scene: uint32, public key: str) {
+constructor (public key: str) {
 }
 
 public serialize(serializer: Serializer): void {
-  serializer.serializeU32(this.scene);
   serializer.serializeStr(this.key);
 }
 
 static deserialize(deserializer: Deserializer): VarId {
-  const scene = deserializer.deserializeU32();
   const key = deserializer.deserializeStr();
-  return new VarId(scene,key);
+  return new VarId(key);
 }
 
 }
@@ -2050,25 +2722,25 @@ static deserialize(deserializer: Deserializer): Watch {
 
 }
 export class Helpers {
-  static serializeMapStrToValue(value: Map<str,Value>, serializer: Serializer): void {
+  static serializeMapU32ToOpId(value: Map<uint32,OpId>, serializer: Serializer): void {
     serializer.serializeLen(value.size);
     const offsets: number[] = [];
     for (const [k, v] of value.entries()) {
       offsets.push(serializer.getBufferOffset());
-      serializer.serializeStr(k);
+      serializer.serializeU32(k);
       v.serialize(serializer);
     }
     serializer.sortMapEntries(offsets);
   }
 
-  static deserializeMapStrToValue(deserializer: Deserializer): Map<str,Value> {
+  static deserializeMapU32ToOpId(deserializer: Deserializer): Map<uint32,OpId> {
     const length = deserializer.deserializeLen();
-    const obj = new Map<str, Value>();
+    const obj = new Map<uint32, OpId>();
     let previousKeyStart = 0;
     let previousKeyEnd = 0;
     for (let i = 0; i < length; i++) {
         const keyStart = deserializer.getBufferOffset();
-        const key = deserializer.deserializeStr();
+        const key = deserializer.deserializeU32();
         const keyEnd = deserializer.getBufferOffset();
         if (i > 0) {
             deserializer.checkThatKeySlicesAreIncreasing(
@@ -2077,7 +2749,7 @@ export class Helpers {
         }
         previousKeyStart = keyStart;
         previousKeyEnd = keyEnd;
-        const value = Value.deserialize(deserializer);
+        const value = OpId.deserialize(deserializer);
         obj.set(key, value);
     }
     return obj;
@@ -2099,18 +2771,6 @@ export class Helpers {
     } else {
         return Error.deserialize(deserializer);
     }
-  }
-
-  static serializeTuple2EventTypeHandlerBlock(value: Tuple<[EventType, HandlerBlock]>, serializer: Serializer): void {
-    value[0].serialize(serializer);
-    value[1].serialize(serializer);
-  }
-
-  static deserializeTuple2EventTypeHandlerBlock(deserializer: Deserializer): Tuple<[EventType, HandlerBlock]> {
-    return [
-        EventType.deserialize(deserializer),
-        HandlerBlock.deserialize(deserializer)
-    ];
   }
 
   static serializeTuple2StrValue(value: Tuple<[str, Value]>, serializer: Serializer): void {
@@ -2153,6 +2813,22 @@ export class Helpers {
     const list: Seq<CmdsCommand> = [];
     for (let i = 0; i < length; i++) {
         list.push(CmdsCommand.deserialize(deserializer));
+    }
+    return list;
+  }
+
+  static serializeVectorEventHandler(value: Seq<EventHandler>, serializer: Serializer): void {
+    serializer.serializeLen(value.length);
+    value.forEach((item: EventHandler) => {
+        item.serialize(serializer);
+    });
+  }
+
+  static deserializeVectorEventHandler(deserializer: Deserializer): Seq<EventHandler> {
+    const length = deserializer.deserializeLen();
+    const list: Seq<EventHandler> = [];
+    for (let i = 0; i < length; i++) {
+        list.push(EventHandler.deserialize(deserializer));
     }
     return list;
   }
@@ -2253,6 +2929,38 @@ export class Helpers {
     return list;
   }
 
+  static serializeVectorResourceChunk(value: Seq<ResourceChunk>, serializer: Serializer): void {
+    serializer.serializeLen(value.length);
+    value.forEach((item: ResourceChunk) => {
+        item.serialize(serializer);
+    });
+  }
+
+  static deserializeVectorResourceChunk(deserializer: Deserializer): Seq<ResourceChunk> {
+    const length = deserializer.deserializeLen();
+    const list: Seq<ResourceChunk> = [];
+    for (let i = 0; i < length; i++) {
+        list.push(ResourceChunk.deserialize(deserializer));
+    }
+    return list;
+  }
+
+  static serializeVectorResourceDealloc(value: Seq<ResourceDealloc>, serializer: Serializer): void {
+    serializer.serializeLen(value.length);
+    value.forEach((item: ResourceDealloc) => {
+        item.serialize(serializer);
+    });
+  }
+
+  static deserializeVectorResourceDealloc(deserializer: Deserializer): Seq<ResourceDealloc> {
+    const length = deserializer.deserializeLen();
+    const list: Seq<ResourceDealloc> = [];
+    for (let i = 0; i < length; i++) {
+        list.push(ResourceDealloc.deserialize(deserializer));
+    }
+    return list;
+  }
+
   static serializeVectorValue(value: Seq<Value>, serializer: Serializer): void {
     serializer.serializeLen(value.length);
     value.forEach((item: Value) => {
@@ -2281,22 +2989,6 @@ export class Helpers {
     const list: Seq<Watch> = [];
     for (let i = 0; i < length; i++) {
         list.push(Watch.deserialize(deserializer));
-    }
-    return list;
-  }
-
-  static serializeVectorTuple2EventTypeHandlerBlock(value: Seq<Tuple<[EventType, HandlerBlock]>>, serializer: Serializer): void {
-    serializer.serializeLen(value.length);
-    value.forEach((item: Tuple<[EventType, HandlerBlock]>) => {
-        Helpers.serializeTuple2EventTypeHandlerBlock(item, serializer);
-    });
-  }
-
-  static deserializeVectorTuple2EventTypeHandlerBlock(deserializer: Deserializer): Seq<Tuple<[EventType, HandlerBlock]>> {
-    const length = deserializer.deserializeLen();
-    const list: Seq<Tuple<[EventType, HandlerBlock]>> = [];
-    for (let i = 0; i < length; i++) {
-        list.push(Helpers.deserializeTuple2EventTypeHandlerBlock(deserializer));
     }
     return list;
   }

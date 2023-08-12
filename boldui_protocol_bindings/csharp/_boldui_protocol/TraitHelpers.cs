@@ -7,26 +7,26 @@ using System.Numerics;
 
 namespace _boldui_protocol {
     static class TraitHelpers {
-        public static void serialize_map_str_to_Value(Serde.ValueDictionary<string, Value> value, Serde.ISerializer serializer) {
+        public static void serialize_map_u32_to_OpId(Serde.ValueDictionary<uint, OpId> value, Serde.ISerializer serializer) {
             serializer.serialize_len(value.Count);
             int[] offsets = new int[value.Count];
             int count = 0;
-            foreach (KeyValuePair<string, Value> entry in value) {
+            foreach (KeyValuePair<uint, OpId> entry in value) {
                 offsets[count++] = serializer.get_buffer_offset();
-                serializer.serialize_str(entry.Key);
+                serializer.serialize_u32(entry.Key);
                 entry.Value.Serialize(serializer);
             }
             serializer.sort_map_entries(offsets);
         }
 
-        public static Serde.ValueDictionary<string, Value> deserialize_map_str_to_Value(Serde.IDeserializer deserializer) {
+        public static Serde.ValueDictionary<uint, OpId> deserialize_map_u32_to_OpId(Serde.IDeserializer deserializer) {
             long length = deserializer.deserialize_len();
-            var obj = new Dictionary<string, Value>();
+            var obj = new Dictionary<uint, OpId>();
             int previous_key_start = 0;
             int previous_key_end = 0;
             for (long i = 0; i < length; i++) {
                 int key_start = deserializer.get_buffer_offset();
-                var key = deserializer.deserialize_str();
+                var key = deserializer.deserialize_u32();
                 int key_end = deserializer.get_buffer_offset();
                 if (i > 0) {
                     deserializer.check_that_key_slices_are_increasing(
@@ -35,10 +35,10 @@ namespace _boldui_protocol {
                 }
                 previous_key_start = key_start;
                 previous_key_end = key_end;
-                var value = Value.Deserialize(deserializer);
+                var value = OpId.Deserialize(deserializer);
                 obj[key] = value;
             }
-            return new Serde.ValueDictionary<string, Value>(obj);
+            return new Serde.ValueDictionary<uint, OpId>(obj);
         }
 
         public static void serialize_option_Error(Serde.Option<Error> value, Serde.ISerializer serializer) {
@@ -57,18 +57,6 @@ namespace _boldui_protocol {
             } else {
                 return Serde.Option<Error>.Some(Error.Deserialize(deserializer));
             }
-        }
-
-        public static void serialize_tuple2_EventType_HandlerBlock((EventType, HandlerBlock) value, Serde.ISerializer serializer) {
-            value.Item1.Serialize(serializer);
-            value.Item2.Serialize(serializer);
-        }
-
-        public static (EventType, HandlerBlock) deserialize_tuple2_EventType_HandlerBlock(Serde.IDeserializer deserializer) {
-            return (
-                EventType.Deserialize(deserializer),
-                HandlerBlock.Deserialize(deserializer)
-            );
         }
 
         public static void serialize_tuple2_str_Value((string, Value) value, Serde.ISerializer serializer) {
@@ -113,6 +101,22 @@ namespace _boldui_protocol {
                 obj[i] = CmdsCommand.Deserialize(deserializer);
             }
             return new Serde.ValueArray<CmdsCommand>(obj);
+        }
+
+        public static void serialize_vector_EventHandler(Serde.ValueArray<EventHandler> value, Serde.ISerializer serializer) {
+            serializer.serialize_len(value.Count);
+            foreach (var item in value) {
+                item.Serialize(serializer);
+            }
+        }
+
+        public static Serde.ValueArray<EventHandler> deserialize_vector_EventHandler(Serde.IDeserializer deserializer) {
+            long length = deserializer.deserialize_len();
+            EventHandler[] obj = new EventHandler[length];
+            for (int i = 0; i < length; i++) {
+                obj[i] = EventHandler.Deserialize(deserializer);
+            }
+            return new Serde.ValueArray<EventHandler>(obj);
         }
 
         public static void serialize_vector_ExternalAppRequest(Serde.ValueArray<ExternalAppRequest> value, Serde.ISerializer serializer) {
@@ -211,6 +215,38 @@ namespace _boldui_protocol {
             return new Serde.ValueArray<R2AReply>(obj);
         }
 
+        public static void serialize_vector_ResourceChunk(Serde.ValueArray<ResourceChunk> value, Serde.ISerializer serializer) {
+            serializer.serialize_len(value.Count);
+            foreach (var item in value) {
+                item.Serialize(serializer);
+            }
+        }
+
+        public static Serde.ValueArray<ResourceChunk> deserialize_vector_ResourceChunk(Serde.IDeserializer deserializer) {
+            long length = deserializer.deserialize_len();
+            ResourceChunk[] obj = new ResourceChunk[length];
+            for (int i = 0; i < length; i++) {
+                obj[i] = ResourceChunk.Deserialize(deserializer);
+            }
+            return new Serde.ValueArray<ResourceChunk>(obj);
+        }
+
+        public static void serialize_vector_ResourceDealloc(Serde.ValueArray<ResourceDealloc> value, Serde.ISerializer serializer) {
+            serializer.serialize_len(value.Count);
+            foreach (var item in value) {
+                item.Serialize(serializer);
+            }
+        }
+
+        public static Serde.ValueArray<ResourceDealloc> deserialize_vector_ResourceDealloc(Serde.IDeserializer deserializer) {
+            long length = deserializer.deserialize_len();
+            ResourceDealloc[] obj = new ResourceDealloc[length];
+            for (int i = 0; i < length; i++) {
+                obj[i] = ResourceDealloc.Deserialize(deserializer);
+            }
+            return new Serde.ValueArray<ResourceDealloc>(obj);
+        }
+
         public static void serialize_vector_Value(Serde.ValueArray<Value> value, Serde.ISerializer serializer) {
             serializer.serialize_len(value.Count);
             foreach (var item in value) {
@@ -241,22 +277,6 @@ namespace _boldui_protocol {
                 obj[i] = Watch.Deserialize(deserializer);
             }
             return new Serde.ValueArray<Watch>(obj);
-        }
-
-        public static void serialize_vector_tuple2_EventType_HandlerBlock(Serde.ValueArray<(EventType, HandlerBlock)> value, Serde.ISerializer serializer) {
-            serializer.serialize_len(value.Count);
-            foreach (var item in value) {
-                TraitHelpers.serialize_tuple2_EventType_HandlerBlock(item, serializer);
-            }
-        }
-
-        public static Serde.ValueArray<(EventType, HandlerBlock)> deserialize_vector_tuple2_EventType_HandlerBlock(Serde.IDeserializer deserializer) {
-            long length = deserializer.deserialize_len();
-            (EventType, HandlerBlock)[] obj = new (EventType, HandlerBlock)[length];
-            for (int i = 0; i < length; i++) {
-                obj[i] = TraitHelpers.deserialize_tuple2_EventType_HandlerBlock(deserializer);
-            }
-            return new Serde.ValueArray<(EventType, HandlerBlock)>(obj);
         }
 
         public static void serialize_vector_tuple2_str_Value(Serde.ValueArray<(string, Value)> value, Serde.ISerializer serializer) {

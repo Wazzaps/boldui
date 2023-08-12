@@ -6,28 +6,30 @@ import math
 import boldui
 import dataclasses
 from typing import Dict, List
+from boldui.scene_mgmt import ClientVar, Model
 from boldui_protocol import *
 from boldui import ClientSide, st
 
 # noinspection PyUnresolvedReferences
 from boldui import eprint, print
 
-app = boldui.BoldUIApplication()
-
 
 @dataclasses.dataclass
-class CalculatorState:
+class CalculatorState(Model):
     expr: str = ""
-    scene_id: int = -1
+    expr_bar: ClientVar[str] = "0"
+
+
+app = boldui.BoldUIApplication(CalculatorState)
 
 
 @app.reply_handler("/")
-def calc_reply_handler(state: CalculatorState, _query_params: Dict[str, str], value_params: List[Value]):
+def calc_reply_handler(
+    state: CalculatorState, _query_params: Dict[str, str], value_params: List[Value]
+):
     [pressed_btn] = value_params
     assert isinstance(pressed_btn, Value__String)
     pressed_btn = pressed_btn.value
-
-    assert state.scene_id != -1
 
     match pressed_btn:
         case "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "+" | "-" | "×" | "÷" | "." | "√" | "%" | "π" | "(" | ")":
@@ -55,14 +57,16 @@ def calc_reply_handler(state: CalculatorState, _query_params: Dict[str, str], va
             HandlerBlock(
                 ops=[OpsOperation__Value(value=Value__String(state.expr))],
                 cmds=[
-                    HandlerCmd__UpdateVar(
-                        var=VarId(key="expr_bar", scene=st.uint32(state.scene_id)),
+                    HandlerCmd__SetVar(
+                        var=state.expr_bar.const_var,
                         value=OpId(scene_id=st.uint32(0), idx=st.uint32(0)),
                     )
                 ],
             ),
         ],
         external_app_requests=[],
+        resource_chunks=[],
+        resource_deallocs=[],
     )
 
     s.app.send_update(update)
@@ -75,7 +79,7 @@ def calc_view(state: CalculatorState, _query_params: Dict[str, str]):
     s.cmd_clear(s.hex_color(0x242424))
 
     # Results box
-    results_width = s.var(":width")
+    results_width = s.var(f":width_{s.scene.id}")
     results_height = 65.0
     results_rect = s.rect(
         left_top=(0.0, 1.0),
@@ -84,11 +88,10 @@ def calc_view(state: CalculatorState, _query_params: Dict[str, str]):
     s.cmd_draw_rect(paint=s.hex_color(0x363636), rect=results_rect)
 
     # Results text
-    s.decl_var("expr_bar", Value__String(str(state.expr)))
     s.cmd_draw_centered_text(
-        text=s.var("expr_bar"),
+        text=state.expr_bar,
         paint=s.hex_color(0xFFFFFF),
-        center=s.point(results_width / 2.0, results_height / 2.0),
+        center=ClientSide.point(results_width / 2.0, results_height / 2.0),
     )
 
     # Buttons
@@ -97,7 +100,9 @@ def calc_view(state: CalculatorState, _query_params: Dict[str, str]):
     equals_button_color = s.hex_color(0xE66100)
     button_text_color = s.hex_color(0xFFFFFF)
 
-    def make_btn(color: ClientSide, x: int, y: int, height: int, text: str, text_color: ClientSide):
+    def make_btn(
+        color: ClientSide, x: int, y: int, height: int, text: str, text_color: ClientSide
+    ):
         TOP_PADDING = 79.0
         LEFT_PADDING = 12.0
         X_PADDING = 4.0
@@ -118,19 +123,20 @@ def calc_view(state: CalculatorState, _query_params: Dict[str, str]):
         s.cmd_draw_rect(paint=color, rect=rect)
 
         text_val = s.value(text)
-        text_pos = s.point(
+        text_pos = ClientSide.point(
             left=s.value(LEFT_PADDING + x * (X_PADDING + BTN_WIDTH) + BTN_WIDTH / 2.0),
             top=TOP_PADDING + y * (Y_PADDING + BTN_HEIGHT) + (BTN_HEIGHT * height) / 2.0,
         )
         s.cmd_draw_centered_text(text=text_val, paint=text_color, center=text_pos)
 
         s.scene.event_handlers.append(
-            (
-                EventType__Click(rect=rect.op),
+            EventHandler(
+                EventType__MouseDown(rect=rect.op),
                 HandlerBlock(
                     ops=[],
                     cmds=[HandlerCmd__Reply(f"/?session={s.session_id}", [text_val.op])],
                 ),
+                continue_handling=s.value(0).op,
             )
         )
 
@@ -168,11 +174,9 @@ def calc_view(state: CalculatorState, _query_params: Dict[str, str]):
     make_action_btn(2, 4, "%")
     make_action_btn(3, 4, "+")
 
-    state.scene_id = int(s.scene.id)
-
     s.add_watch(
-        condition=s.var("expr_bar") == s.value("1337"),
-        handler=lambda h: h.hcmd_reply(s.scene.uri, "."),
+        condition=s.var("/expr_bar") == s.value("1337"),
+        handler=lambda h: h.reply("/", "."),
     )
 
     s.create_window(title="Calculator", initial_size=(334, 327))
@@ -256,13 +260,13 @@ if __name__ == "__main__":
 #             self.counter += 1
 #             update_widget()
 #
-#         return Stack([
+#         return Stack(
 #             # Background
 #             Rectangle(color=0xff242424),
 #
 #             # Counter
 #             Center(
-#                 Row([
+#                 Row(
 #                     SizedBox(
 #                         width=41, height=41,
 #                         child=Button(
@@ -281,6 +285,6 @@ if __name__ == "__main__":
 #                             on_mouse_down=inc,
 #                         ),
 #                     ),
-#                 ]),
+#                 ),
 #             ),
-#         ])
+#         )

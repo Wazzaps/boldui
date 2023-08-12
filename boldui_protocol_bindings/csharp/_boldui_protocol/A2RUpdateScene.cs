@@ -9,38 +9,20 @@ namespace _boldui_protocol {
 
     public sealed class A2RUpdateScene: IEquatable<A2RUpdateScene>, ICloneable {
         public uint id;
-        public OpId paint;
-        public OpId backdrop;
-        public OpId transform;
-        public OpId clip;
-        public string uri;
-        public OpId dimensions;
+        public Serde.ValueDictionary<uint, OpId> attrs;
         public Serde.ValueArray<OpsOperation> ops;
         public Serde.ValueArray<CmdsCommand> cmds;
-        public Serde.ValueDictionary<string, Value> var_decls;
         public Serde.ValueArray<Watch> watches;
-        public Serde.ValueArray<(EventType, HandlerBlock)> event_handlers;
+        public Serde.ValueArray<EventHandler> event_handlers;
 
-        public A2RUpdateScene(uint _id, OpId _paint, OpId _backdrop, OpId _transform, OpId _clip, string _uri, OpId _dimensions, Serde.ValueArray<OpsOperation> _ops, Serde.ValueArray<CmdsCommand> _cmds, Serde.ValueDictionary<string, Value> _var_decls, Serde.ValueArray<Watch> _watches, Serde.ValueArray<(EventType, HandlerBlock)> _event_handlers) {
+        public A2RUpdateScene(uint _id, Serde.ValueDictionary<uint, OpId> _attrs, Serde.ValueArray<OpsOperation> _ops, Serde.ValueArray<CmdsCommand> _cmds, Serde.ValueArray<Watch> _watches, Serde.ValueArray<EventHandler> _event_handlers) {
             id = _id;
-            if (_paint == null) throw new ArgumentNullException(nameof(_paint));
-            paint = _paint;
-            if (_backdrop == null) throw new ArgumentNullException(nameof(_backdrop));
-            backdrop = _backdrop;
-            if (_transform == null) throw new ArgumentNullException(nameof(_transform));
-            transform = _transform;
-            if (_clip == null) throw new ArgumentNullException(nameof(_clip));
-            clip = _clip;
-            if (_uri == null) throw new ArgumentNullException(nameof(_uri));
-            uri = _uri;
-            if (_dimensions == null) throw new ArgumentNullException(nameof(_dimensions));
-            dimensions = _dimensions;
+            if (_attrs == null) throw new ArgumentNullException(nameof(_attrs));
+            attrs = _attrs;
             if (_ops == null) throw new ArgumentNullException(nameof(_ops));
             ops = _ops;
             if (_cmds == null) throw new ArgumentNullException(nameof(_cmds));
             cmds = _cmds;
-            if (_var_decls == null) throw new ArgumentNullException(nameof(_var_decls));
-            var_decls = _var_decls;
             if (_watches == null) throw new ArgumentNullException(nameof(_watches));
             watches = _watches;
             if (_event_handlers == null) throw new ArgumentNullException(nameof(_event_handlers));
@@ -50,17 +32,11 @@ namespace _boldui_protocol {
         public void Serialize(Serde.ISerializer serializer) {
             serializer.increase_container_depth();
             serializer.serialize_u32(id);
-            paint.Serialize(serializer);
-            backdrop.Serialize(serializer);
-            transform.Serialize(serializer);
-            clip.Serialize(serializer);
-            serializer.serialize_str(uri);
-            dimensions.Serialize(serializer);
+            TraitHelpers.serialize_map_u32_to_OpId(attrs, serializer);
             TraitHelpers.serialize_vector_OpsOperation(ops, serializer);
             TraitHelpers.serialize_vector_CmdsCommand(cmds, serializer);
-            TraitHelpers.serialize_map_str_to_Value(var_decls, serializer);
             TraitHelpers.serialize_vector_Watch(watches, serializer);
-            TraitHelpers.serialize_vector_tuple2_EventType_HandlerBlock(event_handlers, serializer);
+            TraitHelpers.serialize_vector_EventHandler(event_handlers, serializer);
             serializer.decrease_container_depth();
         }
 
@@ -82,17 +58,11 @@ namespace _boldui_protocol {
             deserializer.increase_container_depth();
             A2RUpdateScene obj = new A2RUpdateScene(
             	deserializer.deserialize_u32(),
-            	OpId.Deserialize(deserializer),
-            	OpId.Deserialize(deserializer),
-            	OpId.Deserialize(deserializer),
-            	OpId.Deserialize(deserializer),
-            	deserializer.deserialize_str(),
-            	OpId.Deserialize(deserializer),
+            	TraitHelpers.deserialize_map_u32_to_OpId(deserializer),
             	TraitHelpers.deserialize_vector_OpsOperation(deserializer),
             	TraitHelpers.deserialize_vector_CmdsCommand(deserializer),
-            	TraitHelpers.deserialize_map_str_to_Value(deserializer),
             	TraitHelpers.deserialize_vector_Watch(deserializer),
-            	TraitHelpers.deserialize_vector_tuple2_EventType_HandlerBlock(deserializer));
+            	TraitHelpers.deserialize_vector_EventHandler(deserializer));
             deserializer.decrease_container_depth();
             return obj;
         }
@@ -120,15 +90,9 @@ namespace _boldui_protocol {
             if (other == null) return false;
             if (ReferenceEquals(this, other)) return true;
             if (!id.Equals(other.id)) return false;
-            if (!paint.Equals(other.paint)) return false;
-            if (!backdrop.Equals(other.backdrop)) return false;
-            if (!transform.Equals(other.transform)) return false;
-            if (!clip.Equals(other.clip)) return false;
-            if (!uri.Equals(other.uri)) return false;
-            if (!dimensions.Equals(other.dimensions)) return false;
+            if (!attrs.Equals(other.attrs)) return false;
             if (!ops.Equals(other.ops)) return false;
             if (!cmds.Equals(other.cmds)) return false;
-            if (!var_decls.Equals(other.var_decls)) return false;
             if (!watches.Equals(other.watches)) return false;
             if (!event_handlers.Equals(other.event_handlers)) return false;
             return true;
@@ -138,15 +102,9 @@ namespace _boldui_protocol {
             unchecked {
                 int value = 7;
                 value = 31 * value + id.GetHashCode();
-                value = 31 * value + paint.GetHashCode();
-                value = 31 * value + backdrop.GetHashCode();
-                value = 31 * value + transform.GetHashCode();
-                value = 31 * value + clip.GetHashCode();
-                value = 31 * value + uri.GetHashCode();
-                value = 31 * value + dimensions.GetHashCode();
+                value = 31 * value + attrs.GetHashCode();
                 value = 31 * value + ops.GetHashCode();
                 value = 31 * value + cmds.GetHashCode();
-                value = 31 * value + var_decls.GetHashCode();
                 value = 31 * value + watches.GetHashCode();
                 value = 31 * value + event_handlers.GetHashCode();
                 return value;

@@ -18,8 +18,10 @@ namespace _boldui_protocol {
                 case 1: return Double.Load(deserializer);
                 case 2: return String.Load(deserializer);
                 case 3: return Color.Load(deserializer);
-                case 4: return Point.Load(deserializer);
-                case 5: return Rect.Load(deserializer);
+                case 4: return Resource.Load(deserializer);
+                case 5: return VarRef.Load(deserializer);
+                case 6: return Point.Load(deserializer);
+                case 7: return Rect.Load(deserializer);
                 default: throw new Serde.DeserializationException("Unknown variant index for Value: " + index);
             }
         }
@@ -57,6 +59,8 @@ namespace _boldui_protocol {
             case Double x: return x.GetHashCode();
             case String x: return x.GetHashCode();
             case Color x: return x.GetHashCode();
+            case Resource x: return x.GetHashCode();
+            case VarRef x: return x.GetHashCode();
             case Point x: return x.GetHashCode();
             case Rect x: return x.GetHashCode();
             default: throw new InvalidOperationException("Unknown variant type");
@@ -73,6 +77,8 @@ namespace _boldui_protocol {
             case Double x: return x.Equals((Double)other);
             case String x: return x.Equals((String)other);
             case Color x: return x.Equals((Color)other);
+            case Resource x: return x.Equals((Resource)other);
+            case VarRef x: return x.Equals((VarRef)other);
             case Point x: return x.Equals((Point)other);
             case Rect x: return x.Equals((Rect)other);
             default: throw new InvalidOperationException("Unknown variant type");
@@ -263,6 +269,95 @@ namespace _boldui_protocol {
 
         }
 
+        public sealed class Resource: Value, IEquatable<Resource>, ICloneable {
+            public uint value;
+
+            public Resource(uint _value) {
+                value = _value;
+            }
+
+            public override void Serialize(Serde.ISerializer serializer) {
+                serializer.increase_container_depth();
+                serializer.serialize_variant_index(4);
+                serializer.serialize_u32(value);
+                serializer.decrease_container_depth();
+            }
+
+            internal static Resource Load(Serde.IDeserializer deserializer) {
+                deserializer.increase_container_depth();
+                Resource obj = new Resource(
+                	deserializer.deserialize_u32());
+                deserializer.decrease_container_depth();
+                return obj;
+            }
+            public override bool Equals(object obj) => obj is Resource other && Equals(other);
+
+            public static bool operator ==(Resource left, Resource right) => Equals(left, right);
+
+            public static bool operator !=(Resource left, Resource right) => !Equals(left, right);
+
+            public bool Equals(Resource other) {
+                if (other == null) return false;
+                if (ReferenceEquals(this, other)) return true;
+                if (!value.Equals(other.value)) return false;
+                return true;
+            }
+
+            public override int GetHashCode() {
+                unchecked {
+                    int value = 7;
+                    value = 31 * value + value.GetHashCode();
+                    return value;
+                }
+            }
+
+        }
+
+        public sealed class VarRef: Value, IEquatable<VarRef>, ICloneable {
+            public VarId value;
+
+            public VarRef(VarId _value) {
+                if (_value == null) throw new ArgumentNullException(nameof(_value));
+                value = _value;
+            }
+
+            public override void Serialize(Serde.ISerializer serializer) {
+                serializer.increase_container_depth();
+                serializer.serialize_variant_index(5);
+                value.Serialize(serializer);
+                serializer.decrease_container_depth();
+            }
+
+            internal static VarRef Load(Serde.IDeserializer deserializer) {
+                deserializer.increase_container_depth();
+                VarRef obj = new VarRef(
+                	VarId.Deserialize(deserializer));
+                deserializer.decrease_container_depth();
+                return obj;
+            }
+            public override bool Equals(object obj) => obj is VarRef other && Equals(other);
+
+            public static bool operator ==(VarRef left, VarRef right) => Equals(left, right);
+
+            public static bool operator !=(VarRef left, VarRef right) => !Equals(left, right);
+
+            public bool Equals(VarRef other) {
+                if (other == null) return false;
+                if (ReferenceEquals(this, other)) return true;
+                if (!value.Equals(other.value)) return false;
+                return true;
+            }
+
+            public override int GetHashCode() {
+                unchecked {
+                    int value = 7;
+                    value = 31 * value + value.GetHashCode();
+                    return value;
+                }
+            }
+
+        }
+
         public sealed class Point: Value, IEquatable<Point>, ICloneable {
             public double left;
             public double top;
@@ -274,7 +369,7 @@ namespace _boldui_protocol {
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
-                serializer.serialize_variant_index(4);
+                serializer.serialize_variant_index(6);
                 serializer.serialize_f64(left);
                 serializer.serialize_f64(top);
                 serializer.decrease_container_depth();
@@ -328,7 +423,7 @@ namespace _boldui_protocol {
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
-                serializer.serialize_variant_index(5);
+                serializer.serialize_variant_index(7);
                 serializer.serialize_f64(left);
                 serializer.serialize_f64(top);
                 serializer.serialize_f64(right);

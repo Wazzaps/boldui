@@ -35,6 +35,8 @@ struct EA2RMessage;
 
 struct Error;
 
+struct EventHandler;
+
 struct EventType;
 
 struct ExternalAppRequest;
@@ -68,6 +70,12 @@ struct R2EAMessage;
 struct R2EAOpen;
 
 struct R2EAUpdate;
+
+struct ResourceChunk;
+
+struct ResourceDealloc;
+
+struct SceneAttr;
 
 struct Value;
 
@@ -123,11 +131,11 @@ struct A2RReparentScene {
     enum A2RReparentScene_TAGS _tag;
 
     if (_tag == 0) {
-        uint32 value;
+        OpId value;
     }
 
     if (_tag == 1) {
-        uint32 value;
+        OpId value;
     }
 
     if (_tag == 2) {
@@ -144,23 +152,19 @@ struct A2RReparentScene {
 struct A2RUpdate {
     struct { uint64 len; A2RUpdateScene items[len] <optimize=false>; } updated_scenes;
     struct { uint64 len; HandlerBlock items[len] <optimize=false>; } run_blocks;
+    struct { uint64 len; ResourceChunk items[len] <optimize=false>; } resource_chunks;
+    struct { uint64 len; ResourceDealloc items[len] <optimize=false>; } resource_deallocs;
     struct { uint64 len; ExternalAppRequest items[len] <optimize=false>; } external_app_requests;
 };
 
 
 struct A2RUpdateScene {
     uint32 id;
-    OpId paint;
-    OpId backdrop;
-    OpId transform;
-    OpId clip;
-    String uri;
-    OpId dimensions;
+    struct { uint64 len; struct { uint32 key; OpId value; } items[len] <optimize=false>; } attrs;
     struct { uint64 len; OpsOperation items[len] <optimize=false>; } ops;
     struct { uint64 len; CmdsCommand items[len] <optimize=false>; } cmds;
-    struct { uint64 len; struct { String key; Value value; } items[len] <optimize=false>; } var_decls;
     struct { uint64 len; Watch items[len] <optimize=false>; } watches;
-    struct { uint64 len; struct { EventType f0; HandlerBlock f1; } items[len] <optimize=false>; } event_handlers;
+    struct { uint64 len; EventHandler items[len] <optimize=false>; } event_handlers;
 };
 
 
@@ -169,6 +173,7 @@ enum <uint32> CmdsCommand_TAGS {
     CmdsCommand_DrawRect = 1,
     CmdsCommand_DrawRoundRect = 2,
     CmdsCommand_DrawCenteredText = 3,
+    CmdsCommand_DrawImage = 4,
 };
 
 struct CmdsCommand {
@@ -193,6 +198,11 @@ struct CmdsCommand {
         OpId text;
         OpId paint;
         OpId center;
+    }
+
+    if (_tag == 4) {
+        OpId res;
+        OpId top_left;
     }
 
 };
@@ -249,9 +259,17 @@ struct Error {
 };
 
 
+struct EventHandler {
+    EventType event_type;
+    HandlerBlock handler;
+    OpId continue_handling;
+};
+
+
 enum <uint32> EventType_TAGS {
     EventType_MouseDown = 0,
     EventType_MouseUp = 1,
+    EventType_MouseMove = 2,
 };
 
 struct EventType {
@@ -262,6 +280,10 @@ struct EventType {
     }
 
     if (_tag == 1) {
+        OpId rect;
+    }
+
+    if (_tag == 2) {
         OpId rect;
     }
 
@@ -283,10 +305,14 @@ enum <uint32> HandlerCmd_TAGS {
     HandlerCmd_Nop = 0,
     HandlerCmd_AllocateWindowId = 1,
     HandlerCmd_ReparentScene = 2,
-    HandlerCmd_UpdateVar = 3,
-    HandlerCmd_DebugMessage = 4,
-    HandlerCmd_Reply = 5,
-    HandlerCmd_If = 6,
+    HandlerCmd_SetVar = 3,
+    HandlerCmd_SetVarByRef = 4,
+    HandlerCmd_DeleteVar = 5,
+    HandlerCmd_DeleteVarByRef = 6,
+    HandlerCmd_DebugMessage = 7,
+    HandlerCmd_Reply = 8,
+    HandlerCmd_Open = 9,
+    HandlerCmd_If = 10,
 };
 
 struct HandlerCmd {
@@ -299,7 +325,7 @@ struct HandlerCmd {
     }
 
     if (_tag == 2) {
-        uint32 scene;
+        OpId scene;
         A2RReparentScene to;
     }
 
@@ -309,18 +335,37 @@ struct HandlerCmd {
     }
 
     if (_tag == 4) {
-        String msg;
+        OpId var;
+        OpId value;
     }
 
     if (_tag == 5) {
+        VarId var;
+        OpId value;
+    }
+
+    if (_tag == 6) {
+        OpId var;
+        OpId value;
+    }
+
+    if (_tag == 7) {
+        String msg;
+    }
+
+    if (_tag == 8) {
         String path;
         struct { uint64 len; OpId items[len] <optimize=false>; } params;
     }
 
-    if (_tag == 6) {
+    if (_tag == 9) {
+        String path;
+    }
+
+    if (_tag == 10) {
         OpId condition;
-        HandlerCmd then;
-        HandlerCmd or_else;
+        struct { uint64 len; HandlerCmd items[len] <optimize=false>; } then;
+        struct { uint64 len; HandlerCmd items[len] <optimize=false>; } or_else;
     }
 
 };
@@ -342,20 +387,24 @@ enum <uint32> OpsOperation_TAGS {
     OpsOperation_Div = 7,
     OpsOperation_FloorDiv = 8,
     OpsOperation_Eq = 9,
-    OpsOperation_Min = 10,
-    OpsOperation_Max = 11,
-    OpsOperation_Or = 12,
-    OpsOperation_And = 13,
-    OpsOperation_GreaterThan = 14,
-    OpsOperation_Abs = 15,
-    OpsOperation_Sin = 16,
-    OpsOperation_Cos = 17,
-    OpsOperation_MakePoint = 18,
-    OpsOperation_MakeRectFromPoints = 19,
-    OpsOperation_MakeRectFromSides = 20,
-    OpsOperation_MakeColor = 21,
-    OpsOperation_ToString = 22,
-    OpsOperation_If = 23,
+    OpsOperation_Neq = 10,
+    OpsOperation_Min = 11,
+    OpsOperation_Max = 12,
+    OpsOperation_Or = 13,
+    OpsOperation_And = 14,
+    OpsOperation_GreaterThan = 15,
+    OpsOperation_Abs = 16,
+    OpsOperation_Sin = 17,
+    OpsOperation_Cos = 18,
+    OpsOperation_MakePoint = 19,
+    OpsOperation_MakeRectFromPoints = 20,
+    OpsOperation_MakeRectFromSides = 21,
+    OpsOperation_MakeColor = 22,
+    OpsOperation_ToString = 23,
+    OpsOperation_GetImageDimensions = 24,
+    OpsOperation_GetPointTop = 25,
+    OpsOperation_GetPointLeft = 26,
+    OpsOperation_If = 27,
 };
 
 struct OpsOperation {
@@ -433,6 +482,7 @@ struct OpsOperation {
 
     if (_tag == 15) {
         OpId a;
+        OpId b;
     }
 
     if (_tag == 16) {
@@ -444,34 +494,50 @@ struct OpsOperation {
     }
 
     if (_tag == 18) {
+        OpId a;
+    }
+
+    if (_tag == 19) {
         OpId left;
         OpId top;
     }
 
-    if (_tag == 19) {
+    if (_tag == 20) {
         OpId left_top;
         OpId right_bottom;
     }
 
-    if (_tag == 20) {
+    if (_tag == 21) {
         OpId left;
         OpId top;
         OpId right;
         OpId bottom;
     }
 
-    if (_tag == 21) {
+    if (_tag == 22) {
         OpId r;
         OpId g;
         OpId b;
         OpId a;
     }
 
-    if (_tag == 22) {
+    if (_tag == 23) {
         OpId a;
     }
 
-    if (_tag == 23) {
+    if (_tag == 24) {
+        OpId res;
+    }
+
+    if (_tag == 25) {
+        OpId point;
+    }
+
+    if (_tag == 26) {
+        OpId point;
+    }
+
+    if (_tag == 27) {
         OpId condition;
         OpId then;
         OpId or_else;
@@ -575,13 +641,85 @@ struct R2EAUpdate {
 };
 
 
+struct ResourceChunk {
+    uint32 id;
+    uint64 offset;
+    struct { uint64 len; ubyte items[len] <optimize=false>; } data;
+};
+
+
+struct ResourceDealloc {
+    uint32 id;
+    uint64 offset;
+    uint64 length;
+};
+
+
+enum <uint32> SceneAttr_TAGS {
+    SceneAttr_Transform = 0,
+    SceneAttr_Paint = 1,
+    SceneAttr_BackdropPaint = 2,
+    SceneAttr_Clip = 3,
+    SceneAttr_Uri = 4,
+    SceneAttr_Size = 5,
+    SceneAttr_WindowId = 6,
+    SceneAttr_WindowInitialPosition = 7,
+    SceneAttr_WindowInitialState = 8,
+    SceneAttr_WindowTitle = 9,
+    SceneAttr_WindowIcon = 10,
+    SceneAttr_WindowDecorations = 11,
+};
+
+struct SceneAttr {
+    enum SceneAttr_TAGS _tag;
+
+    if (_tag == 0) {
+    }
+
+    if (_tag == 1) {
+    }
+
+    if (_tag == 2) {
+    }
+
+    if (_tag == 3) {
+    }
+
+    if (_tag == 4) {
+    }
+
+    if (_tag == 5) {
+    }
+
+    if (_tag == 6) {
+    }
+
+    if (_tag == 7) {
+    }
+
+    if (_tag == 8) {
+    }
+
+    if (_tag == 9) {
+    }
+
+    if (_tag == 10) {
+    }
+
+    if (_tag == 11) {
+    }
+
+};
+
 enum <uint32> Value_TAGS {
     Value_Sint64 = 0,
     Value_Double = 1,
     Value_String = 2,
     Value_Color = 3,
-    Value_Point = 4,
-    Value_Rect = 5,
+    Value_Resource = 4,
+    Value_VarRef = 5,
+    Value_Point = 6,
+    Value_Rect = 7,
 };
 
 struct Value {
@@ -604,11 +742,19 @@ struct Value {
     }
 
     if (_tag == 4) {
+        uint32 value;
+    }
+
+    if (_tag == 5) {
+        VarId value;
+    }
+
+    if (_tag == 6) {
         double left;
         double top;
     }
 
-    if (_tag == 5) {
+    if (_tag == 7) {
         double left;
         double top;
         double right;
@@ -618,7 +764,6 @@ struct Value {
 };
 
 struct VarId {
-    uint32 scene;
     String key;
 };
 

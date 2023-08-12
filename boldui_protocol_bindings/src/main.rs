@@ -36,6 +36,7 @@ pub fn main() {
         .unwrap();
     tracer.trace_simple_type::<EA2RMessage>().unwrap();
     tracer.trace_simple_type::<EventType>().unwrap();
+    tracer.trace_simple_type::<SceneAttr>().unwrap();
     let registry = tracer.registry().unwrap();
 
     // Make sure type sizes are in check (do not depend on this, this is for internal use (prevent memory balooning))

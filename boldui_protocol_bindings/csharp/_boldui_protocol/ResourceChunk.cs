@@ -7,17 +7,23 @@ using System.Numerics;
 
 namespace _boldui_protocol {
 
-    public sealed class VarId: IEquatable<VarId>, ICloneable {
-        public string key;
+    public sealed class ResourceChunk: IEquatable<ResourceChunk>, ICloneable {
+        public uint id;
+        public ulong offset;
+        public Serde.ValueArray<byte> data;
 
-        public VarId(string _key) {
-            if (_key == null) throw new ArgumentNullException(nameof(_key));
-            key = _key;
+        public ResourceChunk(uint _id, ulong _offset, Serde.ValueArray<byte> _data) {
+            id = _id;
+            offset = _offset;
+            if (_data == null) throw new ArgumentNullException(nameof(_data));
+            data = _data;
         }
 
         public void Serialize(Serde.ISerializer serializer) {
             serializer.increase_container_depth();
-            serializer.serialize_str(key);
+            serializer.serialize_u32(id);
+            serializer.serialize_u64(offset);
+            TraitHelpers.serialize_vector_u8(data, serializer);
             serializer.decrease_container_depth();
         }
 
@@ -35,50 +41,56 @@ namespace _boldui_protocol {
             return serializer.get_bytes();
         }
 
-        public static VarId Deserialize(Serde.IDeserializer deserializer) {
+        public static ResourceChunk Deserialize(Serde.IDeserializer deserializer) {
             deserializer.increase_container_depth();
-            VarId obj = new VarId(
-            	deserializer.deserialize_str());
+            ResourceChunk obj = new ResourceChunk(
+            	deserializer.deserialize_u32(),
+            	deserializer.deserialize_u64(),
+            	TraitHelpers.deserialize_vector_u8(deserializer));
             deserializer.decrease_container_depth();
             return obj;
         }
 
-        public static VarId BincodeDeserialize(byte[] input) => BincodeDeserialize(new ArraySegment<byte>(input));
+        public static ResourceChunk BincodeDeserialize(byte[] input) => BincodeDeserialize(new ArraySegment<byte>(input));
 
-        public static VarId BincodeDeserialize(ArraySegment<byte> input) {
+        public static ResourceChunk BincodeDeserialize(ArraySegment<byte> input) {
             if (input == null) {
                  throw new Serde.DeserializationException("Cannot deserialize null array");
             }
             Serde.IDeserializer deserializer = new Bincode.BincodeDeserializer(input);
-            VarId value = Deserialize(deserializer);
+            ResourceChunk value = Deserialize(deserializer);
             if (deserializer.get_buffer_offset() < input.Count) {
                  throw new Serde.DeserializationException("Some input bytes were not read");
             }
             return value;
         }
-        public override bool Equals(object obj) => obj is VarId other && Equals(other);
+        public override bool Equals(object obj) => obj is ResourceChunk other && Equals(other);
 
-        public static bool operator ==(VarId left, VarId right) => Equals(left, right);
+        public static bool operator ==(ResourceChunk left, ResourceChunk right) => Equals(left, right);
 
-        public static bool operator !=(VarId left, VarId right) => !Equals(left, right);
+        public static bool operator !=(ResourceChunk left, ResourceChunk right) => !Equals(left, right);
 
-        public bool Equals(VarId other) {
+        public bool Equals(ResourceChunk other) {
             if (other == null) return false;
             if (ReferenceEquals(this, other)) return true;
-            if (!key.Equals(other.key)) return false;
+            if (!id.Equals(other.id)) return false;
+            if (!offset.Equals(other.offset)) return false;
+            if (!data.Equals(other.data)) return false;
             return true;
         }
 
         public override int GetHashCode() {
             unchecked {
                 int value = 7;
-                value = 31 * value + key.GetHashCode();
+                value = 31 * value + id.GetHashCode();
+                value = 31 * value + offset.GetHashCode();
+                value = 31 * value + data.GetHashCode();
                 return value;
             }
         }
 
         /// <summary>Creates a shallow clone of the object.</summary>
-        public VarId Clone() => (VarId)MemberwiseClone();
+        public ResourceChunk Clone() => (ResourceChunk)MemberwiseClone();
 
         object ICloneable.Clone() => Clone();
 

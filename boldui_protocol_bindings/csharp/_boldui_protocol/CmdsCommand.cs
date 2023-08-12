@@ -18,6 +18,7 @@ namespace _boldui_protocol {
                 case 1: return DrawRect.Load(deserializer);
                 case 2: return DrawRoundRect.Load(deserializer);
                 case 3: return DrawCenteredText.Load(deserializer);
+                case 4: return DrawImage.Load(deserializer);
                 default: throw new Serde.DeserializationException("Unknown variant index for CmdsCommand: " + index);
             }
         }
@@ -55,6 +56,7 @@ namespace _boldui_protocol {
             case DrawRect x: return x.GetHashCode();
             case DrawRoundRect x: return x.GetHashCode();
             case DrawCenteredText x: return x.GetHashCode();
+            case DrawImage x: return x.GetHashCode();
             default: throw new InvalidOperationException("Unknown variant type");
             }
         }
@@ -69,6 +71,7 @@ namespace _boldui_protocol {
             case DrawRect x: return x.Equals((DrawRect)other);
             case DrawRoundRect x: return x.Equals((DrawRoundRect)other);
             case DrawCenteredText x: return x.Equals((DrawCenteredText)other);
+            case DrawImage x: return x.Equals((DrawImage)other);
             default: throw new InvalidOperationException("Unknown variant type");
             }
         }
@@ -288,6 +291,58 @@ namespace _boldui_protocol {
                     value = 31 * value + text.GetHashCode();
                     value = 31 * value + paint.GetHashCode();
                     value = 31 * value + center.GetHashCode();
+                    return value;
+                }
+            }
+
+        }
+
+        public sealed class DrawImage: CmdsCommand, IEquatable<DrawImage>, ICloneable {
+            public OpId res;
+            public OpId top_left;
+
+            public DrawImage(OpId _res, OpId _top_left) {
+                if (_res == null) throw new ArgumentNullException(nameof(_res));
+                res = _res;
+                if (_top_left == null) throw new ArgumentNullException(nameof(_top_left));
+                top_left = _top_left;
+            }
+
+            public override void Serialize(Serde.ISerializer serializer) {
+                serializer.increase_container_depth();
+                serializer.serialize_variant_index(4);
+                res.Serialize(serializer);
+                top_left.Serialize(serializer);
+                serializer.decrease_container_depth();
+            }
+
+            internal static DrawImage Load(Serde.IDeserializer deserializer) {
+                deserializer.increase_container_depth();
+                DrawImage obj = new DrawImage(
+                	OpId.Deserialize(deserializer),
+                	OpId.Deserialize(deserializer));
+                deserializer.decrease_container_depth();
+                return obj;
+            }
+            public override bool Equals(object obj) => obj is DrawImage other && Equals(other);
+
+            public static bool operator ==(DrawImage left, DrawImage right) => Equals(left, right);
+
+            public static bool operator !=(DrawImage left, DrawImage right) => !Equals(left, right);
+
+            public bool Equals(DrawImage other) {
+                if (other == null) return false;
+                if (ReferenceEquals(this, other)) return true;
+                if (!res.Equals(other.res)) return false;
+                if (!top_left.Equals(other.top_left)) return false;
+                return true;
+            }
+
+            public override int GetHashCode() {
+                unchecked {
+                    int value = 7;
+                    value = 31 * value + res.GetHashCode();
+                    value = 31 * value + top_left.GetHashCode();
                     return value;
                 }
             }

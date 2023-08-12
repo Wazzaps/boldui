@@ -16,6 +16,7 @@ namespace _boldui_protocol {
             switch (index) {
                 case 0: return MouseDown.Load(deserializer);
                 case 1: return MouseUp.Load(deserializer);
+                case 2: return MouseMove.Load(deserializer);
                 default: throw new Serde.DeserializationException("Unknown variant index for EventType: " + index);
             }
         }
@@ -51,6 +52,7 @@ namespace _boldui_protocol {
             switch (this) {
             case MouseDown x: return x.GetHashCode();
             case MouseUp x: return x.GetHashCode();
+            case MouseMove x: return x.GetHashCode();
             default: throw new InvalidOperationException("Unknown variant type");
             }
         }
@@ -63,6 +65,7 @@ namespace _boldui_protocol {
             switch (this) {
             case MouseDown x: return x.Equals((MouseDown)other);
             case MouseUp x: return x.Equals((MouseUp)other);
+            case MouseMove x: return x.Equals((MouseMove)other);
             default: throw new InvalidOperationException("Unknown variant type");
             }
         }
@@ -147,6 +150,51 @@ namespace _boldui_protocol {
             public static bool operator !=(MouseUp left, MouseUp right) => !Equals(left, right);
 
             public bool Equals(MouseUp other) {
+                if (other == null) return false;
+                if (ReferenceEquals(this, other)) return true;
+                if (!rect.Equals(other.rect)) return false;
+                return true;
+            }
+
+            public override int GetHashCode() {
+                unchecked {
+                    int value = 7;
+                    value = 31 * value + rect.GetHashCode();
+                    return value;
+                }
+            }
+
+        }
+
+        public sealed class MouseMove: EventType, IEquatable<MouseMove>, ICloneable {
+            public OpId rect;
+
+            public MouseMove(OpId _rect) {
+                if (_rect == null) throw new ArgumentNullException(nameof(_rect));
+                rect = _rect;
+            }
+
+            public override void Serialize(Serde.ISerializer serializer) {
+                serializer.increase_container_depth();
+                serializer.serialize_variant_index(2);
+                rect.Serialize(serializer);
+                serializer.decrease_container_depth();
+            }
+
+            internal static MouseMove Load(Serde.IDeserializer deserializer) {
+                deserializer.increase_container_depth();
+                MouseMove obj = new MouseMove(
+                	OpId.Deserialize(deserializer));
+                deserializer.decrease_container_depth();
+                return obj;
+            }
+            public override bool Equals(object obj) => obj is MouseMove other && Equals(other);
+
+            public static bool operator ==(MouseMove left, MouseMove right) => Equals(left, right);
+
+            public static bool operator !=(MouseMove left, MouseMove right) => !Equals(left, right);
+
+            public bool Equals(MouseMove other) {
                 if (other == null) return false;
                 if (ReferenceEquals(this, other)) return true;
                 if (!rect.Equals(other.rect)) return false;

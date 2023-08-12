@@ -83,23 +83,24 @@ namespace _boldui_protocol {
 
 
         public sealed class Inside: A2RReparentScene, IEquatable<Inside>, ICloneable {
-            public uint value;
+            public OpId value;
 
-            public Inside(uint _value) {
+            public Inside(OpId _value) {
+                if (_value == null) throw new ArgumentNullException(nameof(_value));
                 value = _value;
             }
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
                 serializer.serialize_variant_index(0);
-                serializer.serialize_u32(value);
+                value.Serialize(serializer);
                 serializer.decrease_container_depth();
             }
 
             internal static Inside Load(Serde.IDeserializer deserializer) {
                 deserializer.increase_container_depth();
                 Inside obj = new Inside(
-                	deserializer.deserialize_u32());
+                	OpId.Deserialize(deserializer));
                 deserializer.decrease_container_depth();
                 return obj;
             }
@@ -127,23 +128,24 @@ namespace _boldui_protocol {
         }
 
         public sealed class After: A2RReparentScene, IEquatable<After>, ICloneable {
-            public uint value;
+            public OpId value;
 
-            public After(uint _value) {
+            public After(OpId _value) {
+                if (_value == null) throw new ArgumentNullException(nameof(_value));
                 value = _value;
             }
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
                 serializer.serialize_variant_index(1);
-                serializer.serialize_u32(value);
+                value.Serialize(serializer);
                 serializer.decrease_container_depth();
             }
 
             internal static After Load(Serde.IDeserializer deserializer) {
                 deserializer.increase_container_depth();
                 After obj = new After(
-                	deserializer.deserialize_u32());
+                	OpId.Deserialize(deserializer));
                 deserializer.decrease_container_depth();
                 return obj;
             }

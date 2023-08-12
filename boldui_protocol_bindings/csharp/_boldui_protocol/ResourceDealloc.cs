@@ -7,17 +7,22 @@ using System.Numerics;
 
 namespace _boldui_protocol {
 
-    public sealed class VarId: IEquatable<VarId>, ICloneable {
-        public string key;
+    public sealed class ResourceDealloc: IEquatable<ResourceDealloc>, ICloneable {
+        public uint id;
+        public ulong offset;
+        public ulong length;
 
-        public VarId(string _key) {
-            if (_key == null) throw new ArgumentNullException(nameof(_key));
-            key = _key;
+        public ResourceDealloc(uint _id, ulong _offset, ulong _length) {
+            id = _id;
+            offset = _offset;
+            length = _length;
         }
 
         public void Serialize(Serde.ISerializer serializer) {
             serializer.increase_container_depth();
-            serializer.serialize_str(key);
+            serializer.serialize_u32(id);
+            serializer.serialize_u64(offset);
+            serializer.serialize_u64(length);
             serializer.decrease_container_depth();
         }
 
@@ -35,50 +40,56 @@ namespace _boldui_protocol {
             return serializer.get_bytes();
         }
 
-        public static VarId Deserialize(Serde.IDeserializer deserializer) {
+        public static ResourceDealloc Deserialize(Serde.IDeserializer deserializer) {
             deserializer.increase_container_depth();
-            VarId obj = new VarId(
-            	deserializer.deserialize_str());
+            ResourceDealloc obj = new ResourceDealloc(
+            	deserializer.deserialize_u32(),
+            	deserializer.deserialize_u64(),
+            	deserializer.deserialize_u64());
             deserializer.decrease_container_depth();
             return obj;
         }
 
-        public static VarId BincodeDeserialize(byte[] input) => BincodeDeserialize(new ArraySegment<byte>(input));
+        public static ResourceDealloc BincodeDeserialize(byte[] input) => BincodeDeserialize(new ArraySegment<byte>(input));
 
-        public static VarId BincodeDeserialize(ArraySegment<byte> input) {
+        public static ResourceDealloc BincodeDeserialize(ArraySegment<byte> input) {
             if (input == null) {
                  throw new Serde.DeserializationException("Cannot deserialize null array");
             }
             Serde.IDeserializer deserializer = new Bincode.BincodeDeserializer(input);
-            VarId value = Deserialize(deserializer);
+            ResourceDealloc value = Deserialize(deserializer);
             if (deserializer.get_buffer_offset() < input.Count) {
                  throw new Serde.DeserializationException("Some input bytes were not read");
             }
             return value;
         }
-        public override bool Equals(object obj) => obj is VarId other && Equals(other);
+        public override bool Equals(object obj) => obj is ResourceDealloc other && Equals(other);
 
-        public static bool operator ==(VarId left, VarId right) => Equals(left, right);
+        public static bool operator ==(ResourceDealloc left, ResourceDealloc right) => Equals(left, right);
 
-        public static bool operator !=(VarId left, VarId right) => !Equals(left, right);
+        public static bool operator !=(ResourceDealloc left, ResourceDealloc right) => !Equals(left, right);
 
-        public bool Equals(VarId other) {
+        public bool Equals(ResourceDealloc other) {
             if (other == null) return false;
             if (ReferenceEquals(this, other)) return true;
-            if (!key.Equals(other.key)) return false;
+            if (!id.Equals(other.id)) return false;
+            if (!offset.Equals(other.offset)) return false;
+            if (!length.Equals(other.length)) return false;
             return true;
         }
 
         public override int GetHashCode() {
             unchecked {
                 int value = 7;
-                value = 31 * value + key.GetHashCode();
+                value = 31 * value + id.GetHashCode();
+                value = 31 * value + offset.GetHashCode();
+                value = 31 * value + length.GetHashCode();
                 return value;
             }
         }
 
         /// <summary>Creates a shallow clone of the object.</summary>
-        public VarId Clone() => (VarId)MemberwiseClone();
+        public ResourceDealloc Clone() => (ResourceDealloc)MemberwiseClone();
 
         object ICloneable.Clone() => Clone();
 

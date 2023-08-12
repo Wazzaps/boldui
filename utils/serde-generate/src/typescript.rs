@@ -530,6 +530,9 @@ return list;
                 base, name
             )?;
             writeln!(self.out, "  static _variant = \"{}\";", name)?;
+            if let Some(index) = variant_index {
+                writeln!(self.out, "  static _tag = {};", index)?;
+            }
             variant_base_name = format!("{0}Variant", base);
         } else {
             self.output_comment(name)?;
@@ -655,6 +658,10 @@ return list;
         writeln!(
             self.out,
             "  static _variant: string = undefined as unknown as string;"
+        )?;
+        writeln!(
+            self.out,
+            "  static _tag: number;"
         )?;
         if self.generator.config.serialization {
             writeln!(

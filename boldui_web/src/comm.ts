@@ -122,7 +122,7 @@ export class Communicator {
                     console.timeEnd("update");
                 },
                 Error: (err) => {
-                    alert(`Error in app (code ${Number(err.value.code)}):\n${err.value.text}`);
+                    console.error(`Error in app (code ${Number(err.value.code)}):\n${err.value.text}`);
                 },
                 _: (_) => {
                     throw new Error("Unknown message type: " + debugFmt(msg));

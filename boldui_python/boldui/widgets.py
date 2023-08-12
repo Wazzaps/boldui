@@ -1,6 +1,16 @@
 import abc
-from typing import List, Optional, Tuple, Literal, Callable, TypeVar
-from boldui.scene_mgmt import CurrentScene, ClientSide, ClientVar, CurrentHandler
+import dataclasses
+from typing import List, Optional, Tuple, Literal, Callable, TypeVar, ClassVar
+from boldui.scene_mgmt import (
+    CurrentScene,
+    ClientSide,
+    ClientVar,
+    CurrentHandler,
+    Model,
+    get_current_scene,
+    get_current_handler,
+    field,
+)
 from boldui_protocol import Color, EventType__MouseDown, EventType__MouseUp
 
 # noinspection PyUnresolvedReferences
@@ -55,7 +65,7 @@ class Widget:
 class Row(Widget):
     BUILDS_CHILDREN = True
 
-    def __init__(self, children, perp_align="middle"):
+    def __init__(self, *children, perp_align="middle"):
         self.children = children
         self.perp_align = perp_align
         self._built_children = []
@@ -93,14 +103,14 @@ class Row(Widget):
             zip(self._built_children, children_flex_x, children_flex_y)
         ):
             get_layout = lazy(lambda: child.layout(scn, 0, min_height, max_width, max_height))
-            children_sizes[i][0] = scn.if_(
+            children_sizes[i][0] = ClientSide.if_(
                 child_flex_x == 0, lambda: get_layout()[0], lambda: scn.value(0)
             )
-            children_sizes[i][1] = scn.if_(
+            children_sizes[i][1] = ClientSide.if_(
                 child_flex_y == 0, lambda: get_layout()[1], lambda: scn.value(0)
             )
 
-        width = scn.if_(
+        width = ClientSide.if_(
             total_flex_x == 0,
             lambda: sum((size[0] for size in children_sizes), scn.value(0)),
             lambda: width,
@@ -112,7 +122,7 @@ class Row(Widget):
                 result = result.max(size[1])
             return result
 
-        height = scn.if_(total_flex_y == 0, get_biggest_height, lambda: height)
+        height = ClientSide.if_(total_flex_y == 0, get_biggest_height, lambda: height)
 
         return width, height
 
@@ -149,17 +159,17 @@ class Row(Widget):
                     )
                 )
             )
-            children_sizes[i][0] = scn.if_(
+            children_sizes[i][0] = ClientSide.if_(
                 cond,
                 lambda: get_layout()[0],
                 lambda: children_sizes[i][0],
             )
-            children_sizes[i][1] = scn.if_(
+            children_sizes[i][1] = ClientSide.if_(
                 cond,
                 lambda: get_layout()[1],
                 lambda: children_sizes[i][1],
             )
-            free_space = scn.if_(
+            free_space = ClientSide.if_(
                 child_flex == 0,
                 lambda: free_space - children_sizes[i][0],
                 lambda: free_space,
@@ -176,7 +186,7 @@ class Row(Widget):
         children_starts: List[Optional[ClientSide]] = [None for _ in self._built_children]
         children_ends: List[Optional[ClientSide]] = [None for _ in self._built_children]
         for i, child_flex_x in enumerate(children_flex):
-            children_sizes[i][0] = scn.if_(
+            children_sizes[i][0] = ClientSide.if_(
                 child_flex_x > 0,
                 # = per_flex_unit_size * child_flex_x
                 lambda: get_per_flex_unit_size() * child_flex_x,
@@ -188,7 +198,7 @@ class Row(Widget):
             floating_size_so_far = new_size_so_far
 
         for i, child_flex_perp in enumerate(children_flex_perp):
-            children_sizes[i][1] = scn.if_(
+            children_sizes[i][1] = ClientSide.if_(
                 child_flex_perp > 0,
                 lambda: perp_end - perp_start,
                 lambda: children_sizes[i][1],
@@ -241,7 +251,7 @@ class Row(Widget):
 #     # FIXME: flex is not clientside settable due to ifs
 #     BUILDS_CHILDREN = True
 #
-#     def __init__(self, children, align="center"):
+#     def __init__(self, *children, align="center"):
 #         self.children = children
 #         self.align = align
 #         self._built_children = []
@@ -505,7 +515,7 @@ class Center(Widget):
 class SizedBox(Widget):
     BUILDS_CHILDREN = True
 
-    def __init__(self, child, width=None, height=None):
+    def __init__(self, child=None, width=None, height=None):
         self.child = child
         self._built_child = None
         self.width = width
@@ -678,7 +688,7 @@ class Text(Widget):
         scn.cmd_draw_centered_text(
             text=scn.value(self.text),
             paint=color,
-            center=scn.point(
+            center=ClientSide.point(
                 left=(left + right) // 2,
                 top=(top + bottom) // 2,
             ),
@@ -761,8 +771,8 @@ class Flexible(Widget):
             get_layout = lazy(
                 lambda: self._built_child.layout(scn, min_width, min_height, max_width, max_height)
             )
-            width = scn.if_(self.flex_x == 0, lambda: get_layout()[0], lambda: width)
-            height = scn.if_(self.flex_y == 0, lambda: get_layout()[1], lambda: height)
+            width = ClientSide.if_(self.flex_x == 0, lambda: get_layout()[0], lambda: width)
+            height = ClientSide.if_(self.flex_y == 0, lambda: get_layout()[1], lambda: height)
 
         return width, height
 
@@ -777,8 +787,8 @@ class EventHandler(Widget):
     def __init__(
         self,
         child=None,
-        on_mouse_down: Optional[Callable[[CurrentHandler], None]] = None,
-        on_mouse_up: Optional[Callable[[CurrentHandler], None]] = None,
+        on_mouse_down: Optional[Callable[[CurrentHandler], ClientSide[int]]] = None,
+        on_mouse_up: Optional[Callable[[CurrentHandler], ClientSide[int]]] = None,
     ):
         self.child = child
         self.on_mouse_down = on_mouse_down
@@ -1074,7 +1084,7 @@ class Clear(Widget):
 class Stack(Widget):
     BUILDS_CHILDREN = True
 
-    def __init__(self, children, align="center", fit: Literal["expand", "tight"] = "expand"):
+    def __init__(self, *children, align="center", fit: Literal["expand", "tight"] = "expand"):
         self.children = children
         self.align = align
         self.fit = fit
@@ -1401,10 +1411,9 @@ class DBGHighlight(Widget):
 
     def build(self) -> Widget:
         return Stack(
-            [
-                Rectangle(self.color),
-                self.child,
-            ],
+            Rectangle(self.color),
+            Padding(Rectangle(0x000000), all=2),
+            self.child,
             fit="tight",
         )
 
@@ -1421,10 +1430,11 @@ class DBGHighlight(Widget):
 #     def build(self) -> Widget:
 #         return EventHandler(
 #             on_mouse_down=self.on_mouse_down,
-#             child=Stack([
+#             child=Stack(
 #                 RoundRect(color=0xff3a3a3a, radius=5.0),
 #                 Padding(self.child, vertical=11, horizontal=18),
-#             ], fit='tight'),
+#                 fit='tight'
+#             ),
 #         )
 #
 #
@@ -1503,7 +1513,7 @@ class DBGHighlight(Widget):
 #             SizedBox(
 #                 width=48,
 #                 height=26,
-#                 child=Stack([
+#                 child=Stack(
 #                     RoundRect(
 #                         color=track_color,
 #                         radius=13.0,
@@ -1523,7 +1533,7 @@ class DBGHighlight(Widget):
 #
 #                         x=offset,
 #                     )
-#                 ])
+#                 )
 #             ),
 #             on_mouse_down=self._on_mouse_down,
 #         )
@@ -1532,6 +1542,102 @@ class DBGHighlight(Widget):
 #         _, _, press_time = event
 #         self.state.animation_start = press_time
 #         self.state.is_active = 0 if self.state.is_active else 1
+
+
+@dataclasses.dataclass
+class AnimatedValue(Model):
+    a: ClientVar[float]
+    b: ClientVar[float]
+    start_time: ClientVar[float] = 0.0
+    duration_sec: ClientVar[float] = 0.0
+
+    def __init__(self, initial_value: float):
+        self.a = initial_value
+        self.b = initial_value
+        super().__init__()
+
+    @property
+    def value(self):
+        scn = get_current_scene()
+        lerp = (
+            (
+                (
+                    scn.time((self.start_time, self.start_time + self.duration_sec))
+                    - self.start_time
+                )
+                / self.duration_sec
+            )
+            .min(1.0)
+            .max(0.0)
+        )
+        return self.a * (-lerp + 1) + self.b * lerp
+
+    def set(
+        self,
+        new_value: ClientVar[float],
+        duration_sec: ClientVar[float],
+        from_value: ClientVar[float] | None = None,
+    ):
+        ctx = get_current_handler()
+        ctx.set_var(self.a, self.value if from_value is None else ctx.value(from_value))
+        ctx.set_var(self.b, ctx.value(new_value))
+        ctx.set_var(self.duration_sec, ctx.value(duration_sec))
+        ctx.set_var(self.start_time, ctx.time())
+
+
+class Button(Widget):
+    DEFAULT_BRIGHTNESS: ClassVar = 0.5
+    PRESSED_BRIGHTNESS: ClassVar = 0.3
+    ANIMATION_DURATION_SEC: ClassVar = 0.1
+
+    @dataclasses.dataclass
+    class State(Model):
+        brightness: AnimatedValue = field(lambda: AnimatedValue(Button.DEFAULT_BRIGHTNESS))
+
+        @property
+        def bgcolor(self):
+            scn = get_current_scene()
+            brightness = self.brightness.value
+            return scn.color(brightness, brightness, brightness, 1.0)
+
+    def __init__(
+        self, text, on_mouse_down: Callable[[CurrentHandler], ClientSide[int]], state: State
+    ):
+        self.text = text
+        self.on_mouse_down = on_mouse_down
+        self.state = state
+
+    def build(self):
+        return EventHandler(
+            Stack(
+                Rectangle(color=self.state.bgcolor),
+                Padding(
+                    SizedBox(
+                        Text(text=self.text, color=0xFFFFFF),
+                        width=100,
+                        height=100,
+                    ),
+                    all=10,
+                ),
+                fit="tight",
+            ),
+            on_mouse_down=self._on_mouse_down,
+            on_mouse_up=self._on_mouse_up,
+        )
+
+    def _on_mouse_down(self, scn: CurrentHandler) -> ClientSide[int]:
+        self.state.brightness.set(
+            new_value=Button.PRESSED_BRIGHTNESS,
+            duration_sec=Button.ANIMATION_DURATION_SEC,
+        )
+        return self.on_mouse_down(scn)
+
+    def _on_mouse_up(self, scn: CurrentHandler) -> ClientSide[int]:
+        self.state.brightness.set(
+            new_value=Button.DEFAULT_BRIGHTNESS,
+            duration_sec=Button.ANIMATION_DURATION_SEC,
+        )
+        return scn.value(0)
 
 
 def lazy(func: Callable[[], T]) -> Callable[[], T]:

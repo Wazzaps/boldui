@@ -1,9 +1,60 @@
 body {
   margin: 0;
   background: #000;
+  font-family: sans-serif;
 }
 
-#app {
-  border: 1px solid #474;
+#scenes {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.canvas {
+  border: 2px solid #c74;
   user-select: none;
+}
+
+.canvas-wrapper {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: start;
+  margin: 3px;
+}
+
+.canvas-wrapper .window-uri, .canvas-wrapper .window-title {
+  padding: 4px;
+}
+
+.canvas-wrapper .window-uri {
+  color: #cccccc;
+}
+
+.canvas-wrapper .window-title {
+  display: none;
+  color: #ffffff;
+}
+
+.canvas-wrapper.root-scene {
+  /*border: 1px solid #888;*/
+}
+
+.canvas-wrapper.root-scene .canvas {
+  border: 2px solid #474;
+}
+
+.canvas-wrapper.root-scene .window-uri {
+  display: block;
+  font-family: monospace;
+}
+
+.canvas-wrapper.root-scene .window-title {
+  display: block;
+  font-size: 18px;
+}
+
+#stats {
+  color: #eee;
+  font-size: 18px;
+  font-family: monospace;
+  margin: 2rem;
 }

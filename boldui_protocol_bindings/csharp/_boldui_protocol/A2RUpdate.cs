@@ -10,13 +10,19 @@ namespace _boldui_protocol {
     public sealed class A2RUpdate: IEquatable<A2RUpdate>, ICloneable {
         public Serde.ValueArray<A2RUpdateScene> updated_scenes;
         public Serde.ValueArray<HandlerBlock> run_blocks;
+        public Serde.ValueArray<ResourceChunk> resource_chunks;
+        public Serde.ValueArray<ResourceDealloc> resource_deallocs;
         public Serde.ValueArray<ExternalAppRequest> external_app_requests;
 
-        public A2RUpdate(Serde.ValueArray<A2RUpdateScene> _updated_scenes, Serde.ValueArray<HandlerBlock> _run_blocks, Serde.ValueArray<ExternalAppRequest> _external_app_requests) {
+        public A2RUpdate(Serde.ValueArray<A2RUpdateScene> _updated_scenes, Serde.ValueArray<HandlerBlock> _run_blocks, Serde.ValueArray<ResourceChunk> _resource_chunks, Serde.ValueArray<ResourceDealloc> _resource_deallocs, Serde.ValueArray<ExternalAppRequest> _external_app_requests) {
             if (_updated_scenes == null) throw new ArgumentNullException(nameof(_updated_scenes));
             updated_scenes = _updated_scenes;
             if (_run_blocks == null) throw new ArgumentNullException(nameof(_run_blocks));
             run_blocks = _run_blocks;
+            if (_resource_chunks == null) throw new ArgumentNullException(nameof(_resource_chunks));
+            resource_chunks = _resource_chunks;
+            if (_resource_deallocs == null) throw new ArgumentNullException(nameof(_resource_deallocs));
+            resource_deallocs = _resource_deallocs;
             if (_external_app_requests == null) throw new ArgumentNullException(nameof(_external_app_requests));
             external_app_requests = _external_app_requests;
         }
@@ -25,6 +31,8 @@ namespace _boldui_protocol {
             serializer.increase_container_depth();
             TraitHelpers.serialize_vector_A2RUpdateScene(updated_scenes, serializer);
             TraitHelpers.serialize_vector_HandlerBlock(run_blocks, serializer);
+            TraitHelpers.serialize_vector_ResourceChunk(resource_chunks, serializer);
+            TraitHelpers.serialize_vector_ResourceDealloc(resource_deallocs, serializer);
             TraitHelpers.serialize_vector_ExternalAppRequest(external_app_requests, serializer);
             serializer.decrease_container_depth();
         }
@@ -48,6 +56,8 @@ namespace _boldui_protocol {
             A2RUpdate obj = new A2RUpdate(
             	TraitHelpers.deserialize_vector_A2RUpdateScene(deserializer),
             	TraitHelpers.deserialize_vector_HandlerBlock(deserializer),
+            	TraitHelpers.deserialize_vector_ResourceChunk(deserializer),
+            	TraitHelpers.deserialize_vector_ResourceDealloc(deserializer),
             	TraitHelpers.deserialize_vector_ExternalAppRequest(deserializer));
             deserializer.decrease_container_depth();
             return obj;
@@ -77,6 +87,8 @@ namespace _boldui_protocol {
             if (ReferenceEquals(this, other)) return true;
             if (!updated_scenes.Equals(other.updated_scenes)) return false;
             if (!run_blocks.Equals(other.run_blocks)) return false;
+            if (!resource_chunks.Equals(other.resource_chunks)) return false;
+            if (!resource_deallocs.Equals(other.resource_deallocs)) return false;
             if (!external_app_requests.Equals(other.external_app_requests)) return false;
             return true;
         }
@@ -86,6 +98,8 @@ namespace _boldui_protocol {
                 int value = 7;
                 value = 31 * value + updated_scenes.GetHashCode();
                 value = 31 * value + run_blocks.GetHashCode();
+                value = 31 * value + resource_chunks.GetHashCode();
+                value = 31 * value + resource_deallocs.GetHashCode();
                 value = 31 * value + external_app_requests.GetHashCode();
                 return value;
             }

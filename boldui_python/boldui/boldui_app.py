@@ -6,7 +6,7 @@ import struct
 import sys
 import time
 import uuid
-from typing import Dict, List, Any, Optional, Sequence, Callable
+from typing import Dict, List, Any, Optional, Sequence, Callable, Tuple
 
 from numpy import unsignedinteger, signedinteger, int64, floating, float64
 
@@ -17,7 +17,6 @@ from boldui.scene_mgmt import (
     ReplyHandler,
     CurrentScene,
     _set_current_context,
-    get_current_scene,
     ClientSide,
     ModelNotBoundYet,
 )
@@ -26,7 +25,6 @@ from boldui.scene_mgmt import (
 from boldui.utils import (
     setup_logging,
     eprint,
-    print,
     _FullWriter,
     _FullReader,
     _trace,
@@ -42,11 +40,11 @@ def _pack_state(source: Model) -> Dict[str, Any]:
     result = {}
 
     for field_name, field_type in type(source).__annotations__.items():
-        if (
-            hasattr(field_type, "__metadata__")
-            and field_type.__metadata__[0] == "boldui-client-side"
+        if hasattr(field_type, "__metadata__") and field_type.__metadata__[0] in (
+            "boldui-client-side",
+            "boldui-scene-id",
         ):
-            pass  # Skip client-side vars
+            pass  # Skip client-side vars and scene IDs
         elif issubclass(field_type, Model):
             packed = _pack_state(getattr(source, field_name))
             if packed:
@@ -59,60 +57,78 @@ def _pack_state(source: Model) -> Dict[str, Any]:
     return result
 
 
-def _rehydrate_state(source: Dict[str, Any], dest: Model, scene_id: Optional[uint32], ctx: str):
+def _rehydrate_state(source: Dict[str, Any], dest: Model, ctx: str, app: "BoldUIApplication"):
     for field_name, field_type in type(dest).__annotations__.items():
-        if (
-            hasattr(field_type, "__metadata__")
-            and field_type.__metadata__[0] == "boldui-client-side"
+        if typing.get_origin(field_type) is ClientSide:
+            raise AssertionError(
+                f"You probably meant ClientVar[...] as the type of '{field_name}'"
+            )
+
+        if hasattr(field_type, "__metadata__") and field_type.__metadata__[0] in (
+            "boldui-client-side",
+            "boldui-scene-id",
         ):
-            if scene_id is not None:
-                var_name = f"{ctx}/{field_name}"
-                setattr(
-                    dest,
-                    field_name,
-                    ClientSide(NullOpId, const_var=VarId(scene_id, var_name)),
-                )
+            if field_type.__metadata__[0] == "boldui-client-side":
+                pass  # Skip client-side vars
         elif issubclass(field_type, Model):
             _rehydrate_state(
                 source.get(field_name, {}),
                 getattr(dest, field_name),
-                scene_id,
                 f"{ctx}/{field_name}",
+                app,
             )
         else:
             setattr(dest, field_name, source[field_name])
+    dest.__post_init__()
 
 
 def serialize_state(state: Model) -> str:
     return json.dumps(_pack_state(state) | {"_fmt_ver": 0})
 
 
-def deserialize_state(serialized: str, state_factory: type, scene_id: Optional[uint32]) -> Model:
+def deserialize_state(serialized: str, state_factory: type, app: "BoldUIApplication") -> Model:
     new_state = state_factory()
     data = json.loads(serialized)
     fmt_ver = data.pop("_fmt_ver")
     assert fmt_ver == 0, "Invalid format version"
-    _rehydrate_state(data, new_state, scene_id, "")
+    _rehydrate_state(data, new_state, "", app)
     return new_state
+
+
+@dataclass
+class SceneState:
+    session_id: str
+    original_uri: str
+    query_params: Dict[str, str]
+    view_handler: ViewHandler
 
 
 class BoldUIApplication:
     def __init__(self, state_factory: Callable[[], Model]):
         self._state_factory = state_factory
         self._sessions: Dict[str, Session] = {}
-        self._scene_to_session: Dict[SceneId, str] = {}
-        self._session_to_scene: Dict[str, SceneId] = {}  # FIXME
+        self._scenes: Dict[SceneId, SceneState] = {}
         self._view_handlers: List[ViewHandler] = []
         self._reply_handlers: List[ReplyHandler] = []
         self._scene_id_counter = SceneId(1)
         self._db = None
+        self.sent_resources = False  # FIXME: Hacky
+        self.scenes_instantiated: set[SceneId] = set()
+        self.state_initialized = False
         self.out = None
         self.stdout = None
         self.inp = None
 
+    def alloc_scene_id(self) -> SceneId:
+        result = self._scene_id_counter
+        self._scene_id_counter += 1
+        eprint(f"alloc_scene_id: {result}")
+        return result
+
     def view(self, path: str):
         def _inner(handler):
-            stripped_path = path.strip("/").split("/") if path else None
+            # TODO: Anonymous views?
+            stripped_path = path.strip("/").split("/")
             handler_params = inspect.signature(handler).parameters
 
             assert len(handler_params) <= 2, (
@@ -139,7 +155,8 @@ class BoldUIApplication:
 
     def reply_handler(self, path: str):
         def _inner(handler):
-            stripped_path = path.strip("/").split("/") if path else None
+            # TODO: Anonymous views?
+            stripped_path = path.strip("/").split("/")
             handler_params = inspect.signature(handler).parameters
 
             assert len(handler_params) <= 3, (
@@ -216,45 +233,53 @@ class BoldUIApplication:
         logger.debug("connected!")
 
         # Run app
-        while True:
-            msg_len = self.inp.read_or_none(4)
-            if msg_len is None:
-                logger.debug("connection closed, bye!")
-                return
-            msg_len = struct.unpack("<I", msg_len)[0]
-            _trace(f"reading message of size {msg_len}")
+        try:
+            while True:
+                msg_len = self.inp.read_or_none(4)
+                if msg_len is None:
+                    logger.debug("connection closed, bye!")
+                    return
+                msg_len = struct.unpack("<I", msg_len)[0]
+                _trace(f"reading message of size {msg_len}")
 
-            msg: Any = R2AMessage.bincode_deserialize(self.inp.read(msg_len))
-            _trace(f"R2A: {msg}")
+                msg: Any = R2AMessage.bincode_deserialize(self.inp.read(msg_len))
+                _trace(f"R2A: {msg}")
 
-            if type(msg) == R2AMessage__Update:
-                msg: R2AUpdate = msg.value
-                for reply in msg.replies:
-                    path, params = _parse_relative_path(reply.path)
-                    session_id = params.get("session", None)
-                    self._handle_reply(path, session_id, params, list(reply.params))
-            elif type(msg) == R2AMessage__Open:
-                msg: R2AOpen = msg.value
-                path, params = _parse_relative_path(msg.path)
+                if type(msg) == R2AMessage__Update:
+                    update: R2AUpdate = msg.value
+                    for reply in update.replies:
+                        path, params = _parse_relative_path(reply.path)
+                        session_id = params.get("session", None)
+                        self._handle_reply(path, session_id, params, list(reply.params))
+                elif type(msg) == R2AMessage__Open:
+                    open: R2AOpen = msg.value
+                    path, params = _parse_relative_path(open.path)
 
-                session_id = params.get("session", str(uuid.uuid4()))
-                scene_id = self._scene_id_counter
-                self._scene_id_counter += 1
+                    session_id = params.get("session", str(uuid.uuid4()))
+                    scene_id = self.alloc_scene_id()
 
-                time_start = time.time()
-                self._open_window(
-                    scene_id=scene_id,
-                    session_id=session_id,
-                    path=path,
-                    query_params=params,
-                )
-                time_end = time.time()
-                eprint(f"Open took {(time_end - time_start)*1000:.1f} ms in total")
-            elif type(msg) == R2AMessage__Error:
-                msg: Error = msg.value
-                logger.error(f"Renderer error: {msg.code}: {msg.text}")
-            else:
-                raise RuntimeError(f"Unknown message type: {type(msg)}")
+                    time_start = time.time()
+                    self._open_window(
+                        scene_id=scene_id,
+                        session_id=session_id,
+                        raw_path=open.path,
+                        path=path,
+                        query_params=params,
+                    )
+                    time_end = time.time()
+                    eprint(f"Open took {(time_end - time_start)*1000:.1f} ms in total")
+                elif type(msg) == R2AMessage__Error:
+                    err: Error = msg.value
+                    logger.error(f"Renderer error: {err.code}: {err.text}")
+                else:
+                    raise RuntimeError(f"Unknown message type: {type(msg)}")
+        except Exception as e:
+            msg = A2RMessage__Error(
+                Error(code=st.uint64(1), text=str(type(e).__name__) + ": " + str(e))
+            ).bincode_serialize()
+            self.stdout.write(struct.pack("<I", len(msg)))
+            self.stdout.write(msg)
+            raise
 
     def _get_view_handler_by_path(self, path: List[str]) -> Optional[ViewHandler]:
         for view_handler in self._view_handlers:
@@ -274,9 +299,7 @@ class BoldUIApplication:
             "SELECT data FROM sessions s WHERE s.sess_id = ?",
             (session_id,),
         ).fetchone():
-            return deserialize_state(
-                res[0], state_factory, self._session_to_scene.get(session_id, None)
-            )
+            return deserialize_state(res[0], state_factory, self)
 
     def _fetch_session(self, session_id, state_factory) -> Session:
         if session_id in self._sessions:
@@ -318,16 +341,12 @@ class BoldUIApplication:
 
         reply_handler = self._get_reply_handler_by_path(path)
         if reply_handler is None:
-            logger.error(f"Could not find reply handler for path {path}")
-            msg = A2RMessage__Error(
-                Error(code=st.uint64(1), text=f"Not found: {path}")
-            ).bincode_serialize()
-            self.stdout.write(struct.pack("<I", len(msg)))
-            self.stdout.write(msg)
-            return
+            raise RuntimeError(f"Could not find reply handler for path {path}")
 
         session = self._fetch_session(session_id, self._state_factory)
-        _set_current_context(CurrentScene(app=self, scene=None, session_id=session_id))
+        _set_current_context(
+            CurrentScene(app=self, scene=None, session_id=session_id, parent=None)
+        )
 
         if reply_handler.accepts_value_params:
             reply_handler.handler(session.state, query_params, value_params)
@@ -335,6 +354,10 @@ class BoldUIApplication:
             reply_handler.handler(session.state, query_params)
         else:
             reply_handler.handler(session.state)
+
+        for scene_id in session.scene_ids:
+            # FIXME: only rerun if relevant vars changed
+            self._rerun_view_handler(scene_id)
 
         if self._db:
             serialized = serialize_state(session.state)
@@ -344,10 +367,64 @@ class BoldUIApplication:
             self._db.commit()
         _set_current_context(None)
 
+    def _rerun_view_handler(self, scene_id: SceneId):
+        state = self._scenes[scene_id]
+        session = self._sessions[state.session_id]
+        query_params = state.query_params
+        view_handler = state.view_handler
+        scene = A2RUpdateScene(
+            id=scene_id,
+            attrs={},
+            ops=[],
+            cmds=[],
+            watches=[],
+            event_handlers=[],
+        )
+        ctx = CurrentScene(app=self, scene=scene, session_id=session.session_id, parent=None)
+        _set_current_context(ctx)
+        scene.attrs[uint32(SceneAttr__Uri.INDEX)] = ctx.value(state.original_uri).op
+        if "window_id" in query_params:
+            scene.attrs[uint32(SceneAttr__WindowId.INDEX)] = ctx.value(
+                query_params["window_id"]
+            ).op
+
+        if session.state is not None and not self.state_initialized:
+            new_vars: List[Tuple[VarId, Value]] = []
+            self._bind_model_client_vars(session.state, "", new_vars)
+            if new_vars:
+                update = A2RUpdate(
+                    updated_scenes=[],
+                    run_blocks=[
+                        HandlerBlock(
+                            ops=[OpsOperation__Value(val) for _var, val in new_vars],
+                            cmds=[
+                                HandlerCmd__SetVar(var=var, value=OpId(uint32(0), uint32(i)))
+                                for i, (var, _val) in enumerate(new_vars)
+                            ],
+                        ),
+                    ],
+                    resource_chunks=[],
+                    resource_deallocs=[],
+                    external_app_requests=[],
+                )
+
+                self.send_update(update)
+            self.state_initialized = True
+
+        time_start = time.time()
+        if view_handler.accepts_query_params:
+            view_handler.handler(session.state, query_params)
+        else:
+            view_handler.handler(session.state)
+        time_end = time.time()
+        eprint(f"View handler took {(time_end - time_start)*1000:.1f} ms")
+        _set_current_context(None)
+
     def _open_window(
         self,
         scene_id: SceneId,
         session_id: str,
+        raw_path: str,
         path: List[str],
         query_params: Dict[str, str],
     ):
@@ -368,36 +445,24 @@ class BoldUIApplication:
         session = self._fetch_session(session_id, self._state_factory)
         session.scene_ids.append(scene_id)
 
-        self._scene_to_session[scene_id] = session_id
-        self._session_to_scene[session_id] = scene_id  # FIXME
+        # Fix raw path
+        raw_path = "/" + raw_path
+        if "session" not in query_params:
+            if len(query_params):
+                raw_path += "&"
+            else:
+                raw_path += "?"
+            raw_path += f"session={session_id}"
 
-        scene = A2RUpdateScene(
-            id=scene_id,
-            paint=NullOpId,
-            backdrop=NullOpId,
-            transform=NullOpId,
-            clip=NullOpId,
-            dimensions=NullOpId,
-            uri=f"/?session={session_id}",  # FIXME: Add actual path
-            ops=[],
-            cmds=[],
-            var_decls={},
-            watches=[],
-            event_handlers=[],
+        self._scenes[scene_id] = SceneState(
+            session_id=session_id,
+            original_uri=raw_path,
+            query_params=query_params,
+            view_handler=view_handler,
         )
-        if "window_id" in query_params:
-            scene.var_decls[":window_id"] = Value__String(query_params["window_id"])
-        _set_current_context(CurrentScene(app=self, scene=scene, session_id=session_id))
-        if session.state is not None:
-            BoldUIApplication._bind_model_client_vars(session.state, get_current_scene(), "")
 
-        time_start = time.time()
-        if view_handler.accepts_query_params:
-            view_handler.handler(session.state, query_params)
-        else:
-            view_handler.handler(session.state)
-        time_end = time.time()
-        eprint(f"View handler took {(time_end - time_start)*1000:.1f} ms")
+        self._rerun_view_handler(scene_id)
+        self.scenes_instantiated.add(scene_id)
 
         if self._db:
             time_start = time.time()
@@ -408,24 +473,32 @@ class BoldUIApplication:
             self._db.commit()
             time_end = time.time()
             eprint(f"DB commit took {(time_end - time_start)*1000:.1f} ms")
-        _set_current_context(None)
 
-    @staticmethod
-    def _bind_model_client_vars(model: Model, s: CurrentScene, ctx: str):
+    def _bind_model_client_vars(self, model: Model, ctx: str, out_vars: List[Tuple[VarId, Value]]):
         for field_name, field_type in type(model).__annotations__.items():
-            if (
-                hasattr(field_type, "__metadata__")
-                and field_type.__metadata__[0] == "boldui-client-side"
+            if typing.get_origin(field_type) is ClientSide:
+                raise AssertionError(
+                    f"You probably meant ClientVar[...] as the type of '{field_name}'"
+                )
+
+            if hasattr(field_type, "__metadata__") and field_type.__metadata__[0] in (
+                "boldui-client-side",
+                "boldui-scene-id",
             ):
-                inner_val = typing.cast(ModelNotBoundYet, getattr(model, field_name)).default_value
-                default_val = BoldUIApplication._wrap_value(inner_val)
-                assert default_val is not None
-                var_name = f"{ctx}/{field_name}"
-                s.decl_var(var_name, default_val)
-                setattr(model, field_name, s.var(var_name))
+                if field_type.__metadata__[0] == "boldui-client-side":
+                    inner_val = typing.cast(
+                        ModelNotBoundYet, getattr(model, field_name)
+                    ).default_value
+                    default_val = BoldUIApplication._wrap_value(inner_val)
+                    assert default_val is not None
+                    var_id = VarId(f"{ctx}/{field_name}")
+                    out_vars.append((var_id, default_val))
+                    setattr(model, field_name, ClientSide(_op=NullOpId, const_var=var_id))
+                elif field_type.__metadata__[0] == "boldui-scene-id":
+                    setattr(model, field_name, self.alloc_scene_id())
             elif issubclass(field_type, Model):
-                BoldUIApplication._bind_model_client_vars(
-                    getattr(model, field_name), s, f"{ctx}/{field_name}"
+                self._bind_model_client_vars(
+                    getattr(model, field_name), f"{ctx}/{field_name}", out_vars
                 )
 
     @staticmethod
@@ -460,14 +533,14 @@ class BoldUIApplication:
 
         for scn in update.updated_scenes:
             for op_id, op in enumerate(scn.ops):
-                seen_ops.add(OpId(scn.id, op_id))
+                seen_ops.add(OpId(scn.id, uint32(op_id)))
                 visit(op)
 
             for cmd in scn.cmds:
                 visit(cmd)
 
-            for _, handler_block in scn.event_handlers:
-                for cmd in handler_block.cmds:
+            for evt_hnd in scn.event_handlers:
+                for cmd in evt_hnd.handler.cmds:
                     visit(cmd)
 
             for watch in scn.watches:
@@ -533,7 +606,7 @@ class OpListVisualizer:
                         return repr(value.value)
             case OpsOperation__Var(value=var_id):
                 var_id: VarId
-                return f"var({var_id.scene}, '{var_id.key}')"
+                return f"var('{var_id.key}')"
             # case OpsOperation__GetTime():
             #     return repr(op)
             # case OpsOperation__GetTimeAndClamp():

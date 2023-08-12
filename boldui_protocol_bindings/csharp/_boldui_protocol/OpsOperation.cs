@@ -24,20 +24,24 @@ namespace _boldui_protocol {
                 case 7: return Div.Load(deserializer);
                 case 8: return FloorDiv.Load(deserializer);
                 case 9: return Eq.Load(deserializer);
-                case 10: return Min.Load(deserializer);
-                case 11: return Max.Load(deserializer);
-                case 12: return Or.Load(deserializer);
-                case 13: return And.Load(deserializer);
-                case 14: return GreaterThan.Load(deserializer);
-                case 15: return Abs.Load(deserializer);
-                case 16: return Sin.Load(deserializer);
-                case 17: return Cos.Load(deserializer);
-                case 18: return MakePoint.Load(deserializer);
-                case 19: return MakeRectFromPoints.Load(deserializer);
-                case 20: return MakeRectFromSides.Load(deserializer);
-                case 21: return MakeColor.Load(deserializer);
-                case 22: return ToString.Load(deserializer);
-                case 23: return If.Load(deserializer);
+                case 10: return Neq.Load(deserializer);
+                case 11: return Min.Load(deserializer);
+                case 12: return Max.Load(deserializer);
+                case 13: return Or.Load(deserializer);
+                case 14: return And.Load(deserializer);
+                case 15: return GreaterThan.Load(deserializer);
+                case 16: return Abs.Load(deserializer);
+                case 17: return Sin.Load(deserializer);
+                case 18: return Cos.Load(deserializer);
+                case 19: return MakePoint.Load(deserializer);
+                case 20: return MakeRectFromPoints.Load(deserializer);
+                case 21: return MakeRectFromSides.Load(deserializer);
+                case 22: return MakeColor.Load(deserializer);
+                case 23: return ToString.Load(deserializer);
+                case 24: return GetImageDimensions.Load(deserializer);
+                case 25: return GetPointTop.Load(deserializer);
+                case 26: return GetPointLeft.Load(deserializer);
+                case 27: return If.Load(deserializer);
                 default: throw new Serde.DeserializationException("Unknown variant index for OpsOperation: " + index);
             }
         }
@@ -81,6 +85,7 @@ namespace _boldui_protocol {
             case Div x: return x.GetHashCode();
             case FloorDiv x: return x.GetHashCode();
             case Eq x: return x.GetHashCode();
+            case Neq x: return x.GetHashCode();
             case Min x: return x.GetHashCode();
             case Max x: return x.GetHashCode();
             case Or x: return x.GetHashCode();
@@ -94,6 +99,9 @@ namespace _boldui_protocol {
             case MakeRectFromSides x: return x.GetHashCode();
             case MakeColor x: return x.GetHashCode();
             case ToString x: return x.GetHashCode();
+            case GetImageDimensions x: return x.GetHashCode();
+            case GetPointTop x: return x.GetHashCode();
+            case GetPointLeft x: return x.GetHashCode();
             case If x: return x.GetHashCode();
             default: throw new InvalidOperationException("Unknown variant type");
             }
@@ -115,6 +123,7 @@ namespace _boldui_protocol {
             case Div x: return x.Equals((Div)other);
             case FloorDiv x: return x.Equals((FloorDiv)other);
             case Eq x: return x.Equals((Eq)other);
+            case Neq x: return x.Equals((Neq)other);
             case Min x: return x.Equals((Min)other);
             case Max x: return x.Equals((Max)other);
             case Or x: return x.Equals((Or)other);
@@ -128,6 +137,9 @@ namespace _boldui_protocol {
             case MakeRectFromSides x: return x.Equals((MakeRectFromSides)other);
             case MakeColor x: return x.Equals((MakeColor)other);
             case ToString x: return x.Equals((ToString)other);
+            case GetImageDimensions x: return x.Equals((GetImageDimensions)other);
+            case GetPointTop x: return x.Equals((GetPointTop)other);
+            case GetPointLeft x: return x.Equals((GetPointLeft)other);
             case If x: return x.Equals((If)other);
             default: throw new InvalidOperationException("Unknown variant type");
             }
@@ -624,6 +636,58 @@ namespace _boldui_protocol {
 
         }
 
+        public sealed class Neq: OpsOperation, IEquatable<Neq>, ICloneable {
+            public OpId a;
+            public OpId b;
+
+            public Neq(OpId _a, OpId _b) {
+                if (_a == null) throw new ArgumentNullException(nameof(_a));
+                a = _a;
+                if (_b == null) throw new ArgumentNullException(nameof(_b));
+                b = _b;
+            }
+
+            public override void Serialize(Serde.ISerializer serializer) {
+                serializer.increase_container_depth();
+                serializer.serialize_variant_index(10);
+                a.Serialize(serializer);
+                b.Serialize(serializer);
+                serializer.decrease_container_depth();
+            }
+
+            internal static Neq Load(Serde.IDeserializer deserializer) {
+                deserializer.increase_container_depth();
+                Neq obj = new Neq(
+                	OpId.Deserialize(deserializer),
+                	OpId.Deserialize(deserializer));
+                deserializer.decrease_container_depth();
+                return obj;
+            }
+            public override bool Equals(object obj) => obj is Neq other && Equals(other);
+
+            public static bool operator ==(Neq left, Neq right) => Equals(left, right);
+
+            public static bool operator !=(Neq left, Neq right) => !Equals(left, right);
+
+            public bool Equals(Neq other) {
+                if (other == null) return false;
+                if (ReferenceEquals(this, other)) return true;
+                if (!a.Equals(other.a)) return false;
+                if (!b.Equals(other.b)) return false;
+                return true;
+            }
+
+            public override int GetHashCode() {
+                unchecked {
+                    int value = 7;
+                    value = 31 * value + a.GetHashCode();
+                    value = 31 * value + b.GetHashCode();
+                    return value;
+                }
+            }
+
+        }
+
         public sealed class Min: OpsOperation, IEquatable<Min>, ICloneable {
             public OpId a;
             public OpId b;
@@ -637,7 +701,7 @@ namespace _boldui_protocol {
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
-                serializer.serialize_variant_index(10);
+                serializer.serialize_variant_index(11);
                 a.Serialize(serializer);
                 b.Serialize(serializer);
                 serializer.decrease_container_depth();
@@ -689,7 +753,7 @@ namespace _boldui_protocol {
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
-                serializer.serialize_variant_index(11);
+                serializer.serialize_variant_index(12);
                 a.Serialize(serializer);
                 b.Serialize(serializer);
                 serializer.decrease_container_depth();
@@ -741,7 +805,7 @@ namespace _boldui_protocol {
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
-                serializer.serialize_variant_index(12);
+                serializer.serialize_variant_index(13);
                 a.Serialize(serializer);
                 b.Serialize(serializer);
                 serializer.decrease_container_depth();
@@ -793,7 +857,7 @@ namespace _boldui_protocol {
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
-                serializer.serialize_variant_index(13);
+                serializer.serialize_variant_index(14);
                 a.Serialize(serializer);
                 b.Serialize(serializer);
                 serializer.decrease_container_depth();
@@ -845,7 +909,7 @@ namespace _boldui_protocol {
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
-                serializer.serialize_variant_index(14);
+                serializer.serialize_variant_index(15);
                 a.Serialize(serializer);
                 b.Serialize(serializer);
                 serializer.decrease_container_depth();
@@ -894,7 +958,7 @@ namespace _boldui_protocol {
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
-                serializer.serialize_variant_index(15);
+                serializer.serialize_variant_index(16);
                 a.Serialize(serializer);
                 serializer.decrease_container_depth();
             }
@@ -939,7 +1003,7 @@ namespace _boldui_protocol {
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
-                serializer.serialize_variant_index(16);
+                serializer.serialize_variant_index(17);
                 a.Serialize(serializer);
                 serializer.decrease_container_depth();
             }
@@ -984,7 +1048,7 @@ namespace _boldui_protocol {
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
-                serializer.serialize_variant_index(17);
+                serializer.serialize_variant_index(18);
                 a.Serialize(serializer);
                 serializer.decrease_container_depth();
             }
@@ -1032,7 +1096,7 @@ namespace _boldui_protocol {
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
-                serializer.serialize_variant_index(18);
+                serializer.serialize_variant_index(19);
                 left.Serialize(serializer);
                 top.Serialize(serializer);
                 serializer.decrease_container_depth();
@@ -1084,7 +1148,7 @@ namespace _boldui_protocol {
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
-                serializer.serialize_variant_index(19);
+                serializer.serialize_variant_index(20);
                 left_top.Serialize(serializer);
                 right_bottom.Serialize(serializer);
                 serializer.decrease_container_depth();
@@ -1142,7 +1206,7 @@ namespace _boldui_protocol {
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
-                serializer.serialize_variant_index(20);
+                serializer.serialize_variant_index(21);
                 left.Serialize(serializer);
                 top.Serialize(serializer);
                 right.Serialize(serializer);
@@ -1208,7 +1272,7 @@ namespace _boldui_protocol {
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
-                serializer.serialize_variant_index(21);
+                serializer.serialize_variant_index(22);
                 r.Serialize(serializer);
                 g.Serialize(serializer);
                 b.Serialize(serializer);
@@ -1265,7 +1329,7 @@ namespace _boldui_protocol {
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
-                serializer.serialize_variant_index(22);
+                serializer.serialize_variant_index(23);
                 a.Serialize(serializer);
                 serializer.decrease_container_depth();
             }
@@ -1300,6 +1364,141 @@ namespace _boldui_protocol {
 
         }
 
+        public sealed class GetImageDimensions: OpsOperation, IEquatable<GetImageDimensions>, ICloneable {
+            public OpId res;
+
+            public GetImageDimensions(OpId _res) {
+                if (_res == null) throw new ArgumentNullException(nameof(_res));
+                res = _res;
+            }
+
+            public override void Serialize(Serde.ISerializer serializer) {
+                serializer.increase_container_depth();
+                serializer.serialize_variant_index(24);
+                res.Serialize(serializer);
+                serializer.decrease_container_depth();
+            }
+
+            internal static GetImageDimensions Load(Serde.IDeserializer deserializer) {
+                deserializer.increase_container_depth();
+                GetImageDimensions obj = new GetImageDimensions(
+                	OpId.Deserialize(deserializer));
+                deserializer.decrease_container_depth();
+                return obj;
+            }
+            public override bool Equals(object obj) => obj is GetImageDimensions other && Equals(other);
+
+            public static bool operator ==(GetImageDimensions left, GetImageDimensions right) => Equals(left, right);
+
+            public static bool operator !=(GetImageDimensions left, GetImageDimensions right) => !Equals(left, right);
+
+            public bool Equals(GetImageDimensions other) {
+                if (other == null) return false;
+                if (ReferenceEquals(this, other)) return true;
+                if (!res.Equals(other.res)) return false;
+                return true;
+            }
+
+            public override int GetHashCode() {
+                unchecked {
+                    int value = 7;
+                    value = 31 * value + res.GetHashCode();
+                    return value;
+                }
+            }
+
+        }
+
+        public sealed class GetPointTop: OpsOperation, IEquatable<GetPointTop>, ICloneable {
+            public OpId point;
+
+            public GetPointTop(OpId _point) {
+                if (_point == null) throw new ArgumentNullException(nameof(_point));
+                point = _point;
+            }
+
+            public override void Serialize(Serde.ISerializer serializer) {
+                serializer.increase_container_depth();
+                serializer.serialize_variant_index(25);
+                point.Serialize(serializer);
+                serializer.decrease_container_depth();
+            }
+
+            internal static GetPointTop Load(Serde.IDeserializer deserializer) {
+                deserializer.increase_container_depth();
+                GetPointTop obj = new GetPointTop(
+                	OpId.Deserialize(deserializer));
+                deserializer.decrease_container_depth();
+                return obj;
+            }
+            public override bool Equals(object obj) => obj is GetPointTop other && Equals(other);
+
+            public static bool operator ==(GetPointTop left, GetPointTop right) => Equals(left, right);
+
+            public static bool operator !=(GetPointTop left, GetPointTop right) => !Equals(left, right);
+
+            public bool Equals(GetPointTop other) {
+                if (other == null) return false;
+                if (ReferenceEquals(this, other)) return true;
+                if (!point.Equals(other.point)) return false;
+                return true;
+            }
+
+            public override int GetHashCode() {
+                unchecked {
+                    int value = 7;
+                    value = 31 * value + point.GetHashCode();
+                    return value;
+                }
+            }
+
+        }
+
+        public sealed class GetPointLeft: OpsOperation, IEquatable<GetPointLeft>, ICloneable {
+            public OpId point;
+
+            public GetPointLeft(OpId _point) {
+                if (_point == null) throw new ArgumentNullException(nameof(_point));
+                point = _point;
+            }
+
+            public override void Serialize(Serde.ISerializer serializer) {
+                serializer.increase_container_depth();
+                serializer.serialize_variant_index(26);
+                point.Serialize(serializer);
+                serializer.decrease_container_depth();
+            }
+
+            internal static GetPointLeft Load(Serde.IDeserializer deserializer) {
+                deserializer.increase_container_depth();
+                GetPointLeft obj = new GetPointLeft(
+                	OpId.Deserialize(deserializer));
+                deserializer.decrease_container_depth();
+                return obj;
+            }
+            public override bool Equals(object obj) => obj is GetPointLeft other && Equals(other);
+
+            public static bool operator ==(GetPointLeft left, GetPointLeft right) => Equals(left, right);
+
+            public static bool operator !=(GetPointLeft left, GetPointLeft right) => !Equals(left, right);
+
+            public bool Equals(GetPointLeft other) {
+                if (other == null) return false;
+                if (ReferenceEquals(this, other)) return true;
+                if (!point.Equals(other.point)) return false;
+                return true;
+            }
+
+            public override int GetHashCode() {
+                unchecked {
+                    int value = 7;
+                    value = 31 * value + point.GetHashCode();
+                    return value;
+                }
+            }
+
+        }
+
         public sealed class If: OpsOperation, IEquatable<If>, ICloneable {
             public OpId condition;
             public OpId then;
@@ -1316,7 +1515,7 @@ namespace _boldui_protocol {
 
             public override void Serialize(Serde.ISerializer serializer) {
                 serializer.increase_container_depth();
-                serializer.serialize_variant_index(23);
+                serializer.serialize_variant_index(27);
                 condition.Serialize(serializer);
                 then.Serialize(serializer);
                 or_else.Serialize(serializer);
