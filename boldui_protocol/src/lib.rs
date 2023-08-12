@@ -360,9 +360,9 @@ pub enum EventType {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct EventHandler {
-    event_type: EventType,
-    handler: HandlerBlock,
-    continue_handling: OpId,
+    pub event_type: EventType,
+    pub handler: HandlerBlock,
+    pub continue_handling: OpId,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]

@@ -5,9 +5,9 @@ mod util;
 
 use crate::util::SerdeSender;
 use boldui_protocol::{
-    A2RMessage, A2RReparentScene, A2RUpdate, A2RUpdateScene, CmdsCommand, Color, Error, EventType,
-    HandlerBlock, HandlerCmd, OpId, OpsOperation, R2AMessage, R2AOpen, R2AUpdate, SceneId, Value,
-    VarId,
+    A2RMessage, A2RReparentScene, A2RUpdate, A2RUpdateScene, CmdsCommand, Color, Error,
+    EventHandler, EventType, HandlerBlock, HandlerCmd, OpId, OpsOperation, R2AMessage, R2AOpen,
+    R2AUpdate, SceneAttr, SceneId, Value, VarId,
 };
 use byteorder::{ReadBytesExt, LE};
 use std::cell::RefCell;
@@ -155,25 +155,28 @@ impl<'a> OpFactory<'a> {
     }
 
     pub fn var<S: Into<String>>(&self, key: S) -> OpIdWrapper<'a> {
-        let scene_id = (*self.0).borrow().id;
-        OpIdWrapper::push_op(
-            OpsOperation::Var(VarId {
-                key: key.into(),
-                scene: scene_id,
-            }),
-            self,
-        )
+        OpIdWrapper::push_op(OpsOperation::Var(VarId { key: key.into() }), self)
     }
 
     pub fn push_cmd(&self, cmd: CmdsCommand) {
         (*self.0).borrow_mut().cmds.push(cmd);
     }
 
-    pub fn push_event_handler(&self, evt_type: EventType, handler: HandlerBlock) {
-        (*self.0)
-            .borrow_mut()
-            .event_handlers
-            .push((evt_type, handler));
+    pub fn push_event_handler(
+        &self,
+        event_type: EventType,
+        handler: HandlerBlock,
+        continue_handling: OpId,
+    ) {
+        (*self.0).borrow_mut().event_handlers.push(EventHandler {
+            event_type,
+            handler,
+            continue_handling,
+        });
+    }
+
+    pub fn set_attr(&self, attr: SceneAttr, val: OpIdWrapper) {
+        (*self.0).borrow_mut().attrs.insert(attr as u32, *val);
     }
 }
 
@@ -264,33 +267,28 @@ impl AppLogic {
                 self.sessions.insert(session_id.to_string(), scene_id);
                 let state = self.window_states.get(&scene_id).unwrap();
 
-                let mut var_decls = BTreeMap::new();
-                var_decls.insert("result_bar".to_string(), Value::String(state.a.to_string()));
-                var_decls.insert(
-                    ":window_title".to_string(),
-                    Value::String("BoldUI Example: Calculator".to_string()),
-                );
-                var_decls.insert(":window_initial_size_x".to_string(), Value::Sint64(334));
-                var_decls.insert(":window_initial_size_y".to_string(), Value::Sint64(327));
-                if let Some(window_id) = query_params.get("window_id") {
-                    // Copy from input
-                    var_decls.insert(
-                        ":window_id".to_string(),
-                        Value::String(window_id.to_string()),
-                    );
-                }
+                let mut var_names = vec!["result_bar".to_string()];
+                let mut var_vals = vec![Value::String(state.a.to_string())];
+                // let mut var_decls = vec![
+                //     ("result_bar".to_string(), ),
+                // (
+                //     ":window_title",
+                //     Value::String("BoldUI Example: Calculator".to_string()),
+                // ),
+                // (":window_initial_size_x", Value::Sint64(334)),
+                // (":window_initial_size_y", Value::Sint64(327)),
+                // ];
+
+                // if let Some(window_id) = query_params.get("window_id") {
+                //     // Copy from input
+                //     var_decls.push((":window_id", Value::String(window_id.to_string())));
+                // }
 
                 let mut scene = A2RUpdateScene {
                     id: scene_id,
-                    paint: OpId::default(),
-                    backdrop: OpId::default(),
-                    transform: OpId::default(),
-                    clip: OpId::default(),
-                    uri: format!("{}?session={}", raw_path, &session_id),
-                    dimensions: OpId::default(),
+                    attrs: BTreeMap::new(),
                     ops: vec![],
                     cmds: vec![],
-                    var_decls: Default::default(),
                     watches: vec![],
                     event_handlers: vec![],
                 };
@@ -298,13 +296,28 @@ impl AppLogic {
                 {
                     let f = OpFactory(Rc::new(RefCell::new(&mut scene)));
 
+                    f.set_attr(
+                        SceneAttr::Uri,
+                        f.new_string(format!("/{}?session={}", raw_path, &session_id)),
+                    );
+                    f.set_attr(
+                        SceneAttr::WindowTitle,
+                        f.new_string("BoldUI Example: Calculator".to_string()),
+                    );
+                    f.set_attr(SceneAttr::Size, f.new_point(334.0, 327.0));
+
+                    if let Some(window_id) = query_params.get("window_id") {
+                        // Copy from input
+                        f.set_attr(SceneAttr::WindowId, f.new_string(window_id.to_string()));
+                    }
+
                     // Background
                     let bg_color = f.new_color(Color::from_hex(0x242424));
                     f.push_cmd(CmdsCommand::Clear { color: *bg_color });
 
                     // Results box
                     let result_bg_color = f.new_color(Color::from_hex(0x363636));
-                    let results_width = f.var(":width");
+                    let results_width = f.var(":width_1");
                     const RESULTS_HEIGHT: f64 = 65.0;
                     let results_rect = f.make_rect_from_points(
                         f.new_point(0.0, 1.0),
@@ -340,8 +353,8 @@ impl AppLogic {
                     struct MakeWidgetContext<'a> {
                         f: OpFactory<'a>,
                         session_id: &'a str,
-                        scene_id: SceneId,
-                        var_decls: &'a mut BTreeMap<String, Value>,
+                        var_names: &'a mut Vec<String>,
+                        var_vals: &'a mut Vec<Value>,
                     }
 
                     fn pyramid_curve<'a>(
@@ -423,7 +436,7 @@ impl AppLogic {
 
                         // Click handler
                         ctx.f.push_event_handler(
-                            EventType::Click { rect: *rect },
+                            EventType::MouseDown { rect: *rect },
                             HandlerBlock {
                                 ops: vec![
                                     // Get the time
@@ -434,10 +447,9 @@ impl AppLogic {
                                         path: format!("/?session={}", ctx.session_id),
                                         params: vec![*text_op],
                                     },
-                                    HandlerCmd::UpdateVar {
+                                    HandlerCmd::SetVar {
                                         var: VarId {
                                             key: format!("btn_t_{text}"),
-                                            scene: ctx.scene_id,
                                         },
                                         value: OpId {
                                             scene_id: 0,
@@ -446,11 +458,12 @@ impl AppLogic {
                                     },
                                 ],
                             },
+                            ctx.f.new_i64(0).op_id,
                         );
 
                         // Start as if we pressed the button 100 secs ago
-                        ctx.var_decls
-                            .insert(format!("btn_t_{text}"), Value::Double(-100.0));
+                        ctx.var_names.push(format!("btn_t_{text}"));
+                        ctx.var_vals.push(Value::Double(-100.0));
                     }
 
                     fn make_disabled_btn(
@@ -506,11 +519,30 @@ impl AppLogic {
                         const BTN_WIDTH: f64 = 59.0;
                         const BTN_HEIGHT: f64 = 44.0;
 
-                        let rect = ctx.f.new_rect(
-                            LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH),
-                            TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT),
-                            LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + BTN_WIDTH,
-                            TOP_PADDING + ((y + 1) as f64) * (Y_PADDING + BTN_HEIGHT) + BTN_HEIGHT,
+                        let animation_start_time = ctx.f.var(format!("btn_t_{text}"));
+                        let click_anim_offset =
+                            pyramid_curve(ctx.f.clone(), animation_start_time, 0.2, 4.0);
+                        let neg_click_anim_offset = -click_anim_offset.clone();
+
+                        let rect = ctx.f.clone().make_rect_from_points(
+                            ctx.f.clone().make_point(
+                                ctx.f
+                                    .new_f64(LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH))
+                                    + click_anim_offset.clone(),
+                                ctx.f
+                                    .new_f64(TOP_PADDING + (y as f64) * (Y_PADDING + BTN_HEIGHT))
+                                    + click_anim_offset,
+                            ),
+                            ctx.f.clone().make_point(
+                                ctx.f.new_f64(
+                                    LEFT_PADDING + (x as f64) * (X_PADDING + BTN_WIDTH) + BTN_WIDTH,
+                                ) + neg_click_anim_offset.clone(),
+                                ctx.f.new_f64(
+                                    TOP_PADDING
+                                        + ((y + 1) as f64) * (Y_PADDING + BTN_HEIGHT)
+                                        + BTN_HEIGHT,
+                                ) + neg_click_anim_offset,
+                            ),
                         );
                         ctx.f.push_cmd(CmdsCommand::DrawRect {
                             paint: color,
@@ -530,25 +562,41 @@ impl AppLogic {
 
                         // Click handler
                         ctx.f.push_event_handler(
-                            EventType::Click { rect: *rect },
+                            EventType::MouseDown { rect: *rect },
                             HandlerBlock {
-                                ops: vec![],
-                                cmds: vec![HandlerCmd::Reply {
-                                    path: format!("/?session={}", ctx.session_id),
-                                    params: vec![*text_op],
-                                }],
+                                ops: vec![
+                                    // Get the time
+                                    OpsOperation::GetTime,
+                                ],
+                                cmds: vec![
+                                    HandlerCmd::Reply {
+                                        path: format!("/?session={}", ctx.session_id),
+                                        params: vec![*text_op],
+                                    },
+                                    HandlerCmd::SetVar {
+                                        var: VarId {
+                                            key: format!("btn_t_{text}"),
+                                        },
+                                        value: OpId {
+                                            scene_id: 0,
+                                            idx: 0,
+                                        },
+                                    },
+                                ],
                             },
+                            ctx.f.new_i64(0).op_id,
                         );
 
-                        ctx.var_decls
-                            .insert(format!("btn_t_{text}"), Value::Double(-100.0));
+                        // Start as if we pressed the button 100 secs ago
+                        ctx.var_names.push(format!("btn_t_{text}"));
+                        ctx.var_vals.push(Value::Double(-100.0));
                     }
 
                     let mut ctx = MakeWidgetContext {
                         f: f.clone(),
                         session_id: &session_id,
-                        scene_id,
-                        var_decls: &mut var_decls,
+                        var_names: &mut var_names,
+                        var_vals: &mut var_vals,
                     };
 
                     // Row 1
@@ -797,20 +845,47 @@ impl AppLogic {
                     );
                 }
 
-                scene.var_decls = var_decls;
+                stdout.send(&A2RMessage::Update(A2RUpdate {
+                    updated_scenes: vec![],
+                    run_blocks: vec![
+                        // Initialize vars
+                        HandlerBlock {
+                            ops: var_vals.into_iter().map(OpsOperation::Value).collect(),
+                            cmds: var_names
+                                .into_iter()
+                                .enumerate()
+                                .map(|(i, name)| HandlerCmd::SetVar {
+                                    var: VarId { key: name },
+                                    value: OpId {
+                                        scene_id: 0,
+                                        idx: i as u32,
+                                    },
+                                })
+                                .collect(),
+                        },
+                    ],
+                    resource_chunks: vec![],
+                    resource_deallocs: vec![],
+                    external_app_requests: vec![],
+                }))?;
 
                 stdout.send(&A2RMessage::Update(A2RUpdate {
                     updated_scenes: vec![scene],
                     run_blocks: vec![
                         // Reparent the scene(s)
                         HandlerBlock {
-                            ops: vec![],
+                            ops: vec![OpsOperation::Value(Value::Sint64(scene_id as i64))],
                             cmds: vec![HandlerCmd::ReparentScene {
-                                scene: scene_id,
+                                scene: OpId {
+                                    scene_id: 0,
+                                    idx: 0,
+                                },
                                 to: A2RReparentScene::Root,
                             }],
                         },
                     ],
+                    resource_chunks: vec![],
+                    resource_deallocs: vec![],
                     external_app_requests: vec![],
                 }))?;
 
@@ -874,7 +949,7 @@ impl AppLogic {
                     "/" => {
                         state.curr_op = b'/';
                     }
-                    "%" => {
+                    "%" | "mod" => {
                         state.curr_op = b'%';
                     }
                     "=" => {
@@ -902,6 +977,7 @@ impl AppLogic {
                             0 => { /* No operation, do nothing */ }
                             op => panic!("wtf: {op}"),
                         }
+                        state.b = 0.0;
                         state.should_show_b = false;
                     }
                     "x^2" => {
@@ -945,10 +1021,9 @@ impl AppLogic {
                             } else {
                                 state.a.to_string()
                             }))],
-                            cmds: vec![HandlerCmd::UpdateVar {
+                            cmds: vec![HandlerCmd::SetVar {
                                 var: VarId {
                                     key: "result_bar".to_string(),
-                                    scene: *scene_id,
                                 },
                                 value: OpId {
                                     scene_id: 0,
@@ -957,6 +1032,8 @@ impl AppLogic {
                             }],
                         },
                     ],
+                    resource_chunks: vec![],
+                    resource_deallocs: vec![],
                     external_app_requests: vec![],
                 }))?;
             }
