@@ -683,9 +683,13 @@ class CurrentScene(CurrentContext):
     def cmd_draw_rect(self, paint: ClientSide, rect: ClientSide):
         self._push_cmd(CmdsCommand__DrawRect(paint=paint.op, rect=rect.op))
 
-    def cmd_draw_centered_text(self, text: ClientSide, paint: ClientSide, center: ClientSide):
+    def cmd_draw_centered_text(
+        self, text: str | ClientSide, paint: ClientSide, center: ClientSide
+    ):
         self._push_cmd(
-            CmdsCommand__DrawCenteredText(text=text.op, paint=paint.op, center=center.op)
+            CmdsCommand__DrawCenteredText(
+                text=self.value(text).op, paint=paint.op, center=center.op
+            )
         )
 
     def cmd_draw_image(self, resource_id: int | ClientSide, top_left: Value__Point | ClientSide):

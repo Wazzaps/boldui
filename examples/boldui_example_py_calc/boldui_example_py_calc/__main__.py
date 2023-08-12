@@ -17,7 +17,6 @@ from boldui import eprint, print
 @dataclasses.dataclass
 class CalculatorState(Model):
     expr: str = ""
-    expr_bar: ClientVar[str] = "0"
 
 
 app = boldui.BoldUIApplication(CalculatorState)
@@ -53,17 +52,7 @@ def calc_reply_handler(
     s = boldui.get_current_scene()
     update = A2RUpdate(
         updated_scenes=[],
-        run_blocks=[
-            HandlerBlock(
-                ops=[OpsOperation__Value(value=Value__String(state.expr))],
-                cmds=[
-                    HandlerCmd__SetVar(
-                        var=state.expr_bar.const_var,
-                        value=OpId(scene_id=st.uint32(0), idx=st.uint32(0)),
-                    )
-                ],
-            ),
-        ],
+        run_blocks=[],
         external_app_requests=[],
         resource_chunks=[],
         resource_deallocs=[],
@@ -89,7 +78,7 @@ def calc_view(state: CalculatorState, _query_params: Dict[str, str]):
 
     # Results text
     s.cmd_draw_centered_text(
-        text=state.expr_bar,
+        text=state.expr,
         paint=s.hex_color(0xFFFFFF),
         center=ClientSide.point(results_width / 2.0, results_height / 2.0),
     )
@@ -175,7 +164,7 @@ def calc_view(state: CalculatorState, _query_params: Dict[str, str]):
     make_action_btn(3, 4, "+")
 
     s.add_watch(
-        condition=s.var("/expr_bar") == s.value("1337"),
+        condition=s.value(state.expr) == s.value("1337"),
         handler=lambda h: h.reply("/", "."),
     )
 

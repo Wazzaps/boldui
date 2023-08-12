@@ -201,6 +201,13 @@ class BoldUIApplication:
             )
             exit(1)
 
+        # Initialize DB
+        if self._db:
+            self._db.execute(
+                "CREATE TABLE IF NOT EXISTS sessions (sess_id TEXT PRIMARY KEY,data TEXT NOT NULL)"
+            )
+            self._db.commit()
+
         self.stdout = _FullWriter(sys.stdout.buffer)
         self.inp = _FullReader(sys.stdin.buffer)
 
